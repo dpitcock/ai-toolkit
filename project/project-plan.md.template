@@ -1,0 +1,35 @@
+---
+# kind/id: document type and stable identifier; owner: assigned author.
+# status: changed only through check-gate.mjs --write; revision: increment on scope changes.
+# approvals: null, appsec-only not-required, or {by, date: "YYYY-MM-DD", notes, revision}.
+# Review approvals also contain commit, matching review_commit. Never self-approve.
+# parent: relative parent document; parent_revision: revision this document was planned against.
+kind: project
+id: PROJECT
+owner: "TODO: assigned author"
+status: draft
+revision: 1
+approvals:
+  principal_engineer: null
+  appsec: null
+  qa_lead: null
+  code_review: null
+  appsec_review: null
+---
+
+# Project Plan
+
+## Goal and scope
+TODO
+
+## Success criteria
+TODO: measurable outcomes
+
+## Constraints
+TODO: budget, technology, operational requirements
+
+## Timeline
+TODO: milestones and assumptions
+
+## Epic decomposition (EM + Principal)
+TODO: IDs, owners, dependencies

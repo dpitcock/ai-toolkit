@@ -1,0 +1,60 @@
+# Agent workflow blueprint
+
+For project development, read docs/roles.md and docs/workflow.md at session start. Governance below is the outer workflow for every upstream skill and lifecycle command. Resolve paths from the repository/worktree root. Bootstrap: `bash scripts/init-project.sh`; missing skills are an installation problem, never permission to skip gates.
+
+| Intent / command | Required local workflow before upstream skill |
+|---|---|
+| goal, /spec | EM uses agent-skills interview/idea refinement + Superpowers brainstorming; write project plan |
+| /constraints | QA Lead uses test-engineer + constraint-driven-development; record epic QA bar |
+| /plan, epic assignment | Read skills/governed-plan/SKILL.md |
+| /build, /test, implement, execute plan, subagent-driven-development | Read skills/governed-build/SKILL.md |
+| /review, security review | Read skills/appsec-gate/SKILL.md; code-reviewer owns staff rubric |
+| /ship, finish branch, create PR, merge | Read skills/governed-ship/SKILL.md |
+
+Before every status transition run `node scripts/check-gate.mjs DOCUMENT TARGET --write`. Never edit status to bypass validation, fabricate a reviewer, reuse stale approvals, or reinterpret missing approval as consent. Reviewers are distinct assigned people or explicitly assigned independent agent sessions; the developer cannot approve its own work. Record actual review findings with identity/date/revision. A missing gate pauses only that epic; independent approved work may continue.
+
+Read upstream skills from `skills/upstream/{superpowers,agent-skills}/skills/NAME/SKILL.md` when native discovery is unavailable. Read agent-skills personas from its `agents/` directory; resolve missing shared references from that upstream checkout. Superpowers owns TDD, worktrees and task execution. Local gates override upstream workflow shortcuts. Use a fresh task context with only its plan, relevant interfaces, and QA requirements.
+
+Each epic has an isolated worktree and branch; this is the standing worktree preference. Load Superpowers using-git-worktrees before scripts/new-epic.sh. Do not fall back to shared-checkout implementation on a worktree failure. One task at a time per epic, separate commit per task. Concurrent epics are allowed; independent tasks across those epics can run simultaneously. Within-epic parallelism requires separate task worktrees, explicit dependency/file ownership, and developer-controlled integration.
+
+Do not open even a draft PR before both final reviews pass. Only PR-based merge is permitted. Files are cooperative governance, not authenticated authorization: see docs/gates.md for host enforcement and limitations.
+
+## File reading
+
+This section and File writing below are the authoritative, tool-neutral file-handling policies for this repository. Their thresholds are repository policy, not claims about model limits.
+
+- Prefer targeted searches and relevant line ranges.
+- Reuse notes or summaries for unchanged content.
+- Re-read relevant sections when content is uncertain, context was lost, or files may have changed.
+- For files of 500+ lines used repeatedly, retain a brief working summary of relevant sections and approximate line ranges. Keep working summaries in task context unless file writes are authorized.
+- Avoid repeated whole-file reads; narrow the scope when reads repeat.
+- Verify exact current text before editing when uncertain.
+
+## Context budget checkpoint
+
+When reported context usage reaches roughly 75% of the available
+window, or context pressure suggests a handoff is needed, post a
+concise plain-text checkpoint before continuing work.
+
+Include:
+
+- What has been completed and verified.
+- What remains, including blockers and the next action.
+- Key decisions, constraints, and relevant file paths.
+- Useful section names or approximate line anchors.
+
+Use reported usage when available; do not invent a percentage.
+The 75% threshold is repository policy, not a claim about model limits.
+
+Keep the checkpoint in the conversation unless writing a handoff file
+is authorized. A fresh session can use it to resume, but must verify
+current file content where needed before editing.
+
+## File writing
+
+- Use native patch/edit tools.
+- Estimate write size first. Split output likely to exceed roughly 200–300 lines, or whose size is uncertain, into logical chunks.
+- Prefer targeted edits to existing files, preserving unrelated content.
+- Verify completed files in bounded ranges for missing sections or truncation.
+- Repair truncated writes with smaller edits rather than repeating a large write.
+- Never use inline multiline terminal strings to write file content.

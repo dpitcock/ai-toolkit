@@ -1,0 +1,44 @@
+---
+# kind/id: document type and stable identifier; owner: assigned author.
+# status: changed only through check-gate.mjs --write; revision: increment on scope changes.
+# approvals: null, appsec-only not-required, or {by, date: "YYYY-MM-DD", notes, revision}.
+# Review approvals also contain commit, matching review_commit. Never self-approve.
+# parent: relative parent document; parent_revision: revision this document was planned against.
+kind: epic-plan
+id: EPIC-XXX-PLAN
+owner: "TODO: assigned author"
+status: draft
+revision: 1
+parent: epic.md
+parent_revision: 1
+security:
+  auth: false
+  data: false
+  external: false
+  concerns: []
+  rationale: "TODO: explain boundary assessment"
+touches_concerns: []
+tasks: [tasks/TASK-001.md]
+review_commit: null
+pr_url: null
+approvals:
+  principal_engineer: null
+  appsec: null
+  qa_lead: null
+  code_review: null
+  appsec_review: null
+---
+
+# EPIC-XXX Epic Plan
+
+## Design
+TODO: interfaces and alternatives
+
+## Security mapping
+Map every epic concern to touched or unaffected, with rationale. Boundary booleans reflect this plan, not the epic.
+
+## Small tasks
+One testable behavior per task; exact files, dependencies, QA IDs, RED/GREEN commands, and individual commit. Keep tasks minutes-sized where practical.
+
+## Review evidence
+Staff review: correctness, readability, architecture, security, performance. Record findings and fixes; mandatory AppSec final review follows.

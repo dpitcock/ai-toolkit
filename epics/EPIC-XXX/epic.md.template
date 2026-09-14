@@ -1,0 +1,41 @@
+---
+# kind/id: document type and stable identifier; owner: assigned author.
+# status: changed only through check-gate.mjs --write; revision: increment on scope changes.
+# approvals: null, appsec-only not-required, or {by, date: "YYYY-MM-DD", notes, revision}.
+# Review approvals also contain commit, matching review_commit. Never self-approve.
+# parent: relative parent document; parent_revision: revision this document was planned against.
+kind: epic
+id: EPIC-XXX
+owner: "TODO: assigned author"
+status: draft
+revision: 1
+parent: ../../project/project-plan.md
+parent_revision: 1
+security:
+  auth: false
+  data: false
+  external: false
+  concerns: []
+  rationale: "TODO: explain boundary assessment"
+qa_requirements: []
+approvals:
+  principal_engineer: null
+  appsec: null
+  qa_lead: null
+  code_review: null
+  appsec_review: null
+---
+
+# EPIC-XXX
+
+## Outcome and scope
+TODO
+
+## AppSec concerns
+Use stable IDs in security.concerns. For low-risk scope record rationale and appsec: not-required; otherwise circulate to AppSec. This is triage, not design approval.
+
+## QA requirements
+QA Lead fills qa_requirements with stable requirement IDs and defines coverage here (unit, integration, end-to-end, abuse cases, special requests).
+
+## Dependencies and ownership
+TODO: interfaces, other epics, assigned developer

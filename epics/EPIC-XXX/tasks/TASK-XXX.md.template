@@ -1,0 +1,43 @@
+---
+# kind/id: document type and stable identifier; owner: assigned author.
+# status: changed only through check-gate.mjs --write; revision: increment on scope changes.
+# approvals: null, appsec-only not-required, or {by, date: "YYYY-MM-DD", notes, revision}.
+# Review approvals also contain commit, matching review_commit. Never self-approve.
+# parent: relative parent document; parent_revision: revision this document was planned against.
+kind: task
+id: TASK-XXX
+owner: "TODO: assigned author"
+status: draft
+revision: 1
+parent: ../epic-plan.md
+parent_revision: 1
+depends_on: []
+evidence:
+  red: null
+  green: null
+  qa: null
+  commit: null
+approvals:
+  principal_engineer: null
+  appsec: null
+  qa_lead: null
+  code_review: null
+  appsec_review: null
+---
+
+# TASK-XXX
+
+## Acceptance criteria
+TODO: independently verifiable behavior
+
+## Files and dependencies
+TODO: exact paths and prerequisite task IDs
+
+## TDD steps
+TODO: failing test command and expected failure, minimum implementation, green command, refactor
+
+## QA mapping
+TODO: epic QA requirement IDs, integration tests, special requests
+
+## Handoff
+TODO: individual implementation commit and verification evidence

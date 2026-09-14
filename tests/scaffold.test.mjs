@@ -1,0 +1,32 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {execFileSync} from 'node:child_process';
+import YAML from 'yaml';
+const source=path.resolve(import.meta.dirname,'..');
+test('init is idempotent; real epic worktree is isolated and refuses collisions',t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'blueprint-scaffold-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ for(const item of ['scripts','project','epics','tests','package.json','package-lock.json','.gitignore']) fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
+ fs.symlinkSync(path.join(source,'node_modules'),path.join(root,'node_modules'),'dir');
+ const run=(cmd,args)=>execFileSync(cmd,args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']});
+ run('bash',['scripts/init-project.sh','--offline']);
+ const plan=path.join(root,'project/project-plan.md');fs.appendFileSync(plan,'Preserve this user edit\n');
+ run('bash',['scripts/init-project.sh','--offline']);assert.match(fs.readFileSync(plan,'utf8'),/Preserve this user edit/);
+ const text=fs.readFileSync(plan,'utf8');const match=text.match(/^---\n([\s\S]*?)\n---\n/);const d=YAML.parse(match[1]);
+ d.owner='EM';d.status='approved';d.approvals.principal_engineer={by:'Principal',date:'2026-09-07',notes:'Reviewed baseline',revision:1};
+ fs.writeFileSync(plan,'---\n'+YAML.stringify(d)+'---\nProject scope\n');
+ run('git',['init']);run('git',['config','user.email','test@example.invalid']);run('git',['config','user.name','Test']);run('git',['add','.']);run('git',['commit','-m','Fixture baseline']);
+ const skill=path.join(root,'skills/upstream/superpowers/skills/using-git-worktrees');fs.mkdirSync(skill,{recursive:true});fs.writeFileSync(path.join(skill,'SKILL.md'),'Worktree fixture: actual upstream installation tested separately.');
+ // Isolate this orchestration test from package registries; verify setup/test calls explicitly.
+ const bin=path.join(root,'test-bin');fs.mkdirSync(bin);fs.writeFileSync(path.join(bin,'npm'),'#!/bin/sh\nprintf "%s\\n" "$*" >> "'+root+'/npm-calls"\n');fs.chmodSync(path.join(bin,'npm'),0o755);
+ fs.appendFileSync(path.join(root,'.git/info/exclude'),'\ntest-bin/\nnpm-calls\n');
+ const env={...process.env,PATH:bin+path.delimiter+process.env.PATH};
+ execFileSync('bash',['scripts/new-epic.sh','EPIC-001'],{cwd:root,env,stdio:'pipe'});
+ const worktree=path.join(root,'.worktrees/EPIC-001');assert.ok(fs.existsSync(path.join(worktree,'epics/EPIC-001/tasks/TASK-001.md')));assert.ok(!fs.existsSync(path.join(root,'epics/EPIC-001')));
+ assert.equal(execFileSync('git',['branch','--show-current'],{cwd:worktree,encoding:'utf8'}).trim(),'epic/EPIC-001');
+ assert.match(fs.readFileSync(path.join(root,'npm-calls'),'utf8'),/ci --ignore-scripts\ntest/);
+ assert.throws(()=>execFileSync('bash',['scripts/new-epic.sh','EPIC-001'],{cwd:root,env,stdio:'pipe'}));
+ assert.throws(()=>execFileSync('bash',['scripts/new-epic.sh','../escape'],{cwd:root,env,stdio:'pipe'}));
+});
