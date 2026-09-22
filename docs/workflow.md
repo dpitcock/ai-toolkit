@@ -2,6 +2,12 @@
 
 This repository turns a project goal into independently reviewable epics. The EM owns scope and assignment, the Principal owns technical coherence, QA defines evidence, and AppSec participates at three distinct points. Developers own implementation; independent reviewers decide whether it can ship. Read roles.md for the upstream skill used at each stage and gates.md for exact approval fields.
 
+## Tool-specific execution
+
+Codex and Claude Code should carry an approved workflow forward without requesting routine confirmation: refine in-scope work, run tests, coordinate independent reviews, record evidence, and make permitted state transitions. They pause for the user only when requirements are ambiguous, credentials or external authorization are needed, or a decision would materially change scope.
+
+Cline uses an explicit handoff at the same boundaries because its adapter does not provide native Superpowers session hooks or subagent dispatch. The handoff must identify the document and gate state, work/evidence completed, the specific missing clarification or authorization, and the next safe action. This is a tool-execution difference, not a gate bypass: all tools remain subject to the same approval and PR requirements.
+
 ## Start a project
 
 Use this repository as a GitHub template or clone it, then run `bash scripts/init-project.sh`. Complete the native Superpowers installation in installation.md. The script creates project/project-plan.md without overwriting an existing plan. Nothing is pre-approved.

@@ -19,6 +19,12 @@ Each epic has an isolated worktree and branch; this is the standing worktree pre
 
 Do not open even a draft PR before both final reviews pass. Only PR-based merge is permitted. Files are cooperative governance, not authenticated authorization: see docs/gates.md for host enforcement and limitations.
 
+## Tool execution and handoffs
+
+The Cline adapter has an explicit handoff boundary because it lacks native Superpowers session hooks and subagent dispatch. When Cline reaches work it cannot safely complete in its session—such as an external authorization, credentials, a missing product decision, or an independent approval—it must provide a concise handoff naming the current document/state, completed evidence, blocker, and exact next action. It must not silently bypass a gate or infer authorization.
+
+Codex and Claude Code continue autonomously through ordinary in-scope planning, implementation, testing, review coordination, and governed transitions. They should involve the user only when clarification, credentials, external coordination, or a decision that materially changes scope is required. They must still honor every approval gate: an independent reviewer may approve only after an actual review, and an agent may not manufacture an approval or treat its absence as consent.
+
 ## File reading
 
 This section and File writing below are the authoritative, tool-neutral file-handling policies for this repository. Their thresholds are repository policy, not claims about model limits.

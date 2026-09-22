@@ -16,6 +16,8 @@ Requires Git, Bash and Node.js 22+. Setup downloads upstream skills; complete th
 
 Agents enter through AGENTS.md; Claude uses CLAUDE.md. Local skills wrap upstream planning, building and shipping. YAML gates block missing approvals, and AppSec triage, conditional design signoff and mandatory final review are separate decisions. UI changes additionally receive independent WCAG 2.2 AA accessibility triage, plan signoff, and final review.
 
+Cline uses an explicit handoff when it needs clarification or authorization; Codex and Claude Code continue normal in-scope work autonomously until one of those boundaries is reached. All tools retain the same independent approval gates.
+
 The `project/` and `epics/` directories contain templates; `skills/` contains small governance skills and pinned upstream references. No upstream code is vendored. `scripts/new-epic.sh EPIC-001` creates an isolated epic branch/worktree after project approval.
 
 Push this repository to GitHub, enable **Template repository** in repository settings, and configure branch protection as described in gates.md. File approvals are cooperative governance; enforce reviewer identity and merge restrictions on the hosting platform.
