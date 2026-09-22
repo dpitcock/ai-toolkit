@@ -8,6 +8,7 @@ The governance layer chooses the stage and validates its entry conditions. Upstr
 | Principal/epic decomposition | planning-and-task-breakdown | writing-plans | agent-skills for epic scope; Superpowers for plan mechanics |
 | AppSec/epic concerns | security-auditor, security-and-hardening | No native gate | local appsec-gate controls triage |
 | QA Lead | test-engineer, constraint-driven-development, /constraints | test-driven-development | agent-skills defines QA bar; Superpowers owns implementation TDD |
+| Accessibility reviewer (UI changes) | accessibility-review custom skill | No native gate | custom skill defines WCAG 2.2 AA triage, plan, and final-review gates |
 | Developer/epic plan | planning-and-task-breakdown, /plan | writing-plans, using-git-worktrees | Superpowers task sizing and isolation |
 | Developer/build | incremental-implementation, /build, /test | subagent-driven-development, test-driven-development | Superpowers owns execution and RED/GREEN/REFACTOR |
 | Staff code reviewer | code-reviewer, code-review-and-quality, /review | requesting-code-review, receiving-code-review | agent-skills owns five-axis rubric; Superpowers dispatches and handles feedback |

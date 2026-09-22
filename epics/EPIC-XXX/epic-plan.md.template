@@ -17,6 +17,9 @@ security:
   external: false
   concerns: []
   rationale: "TODO: explain boundary assessment"
+accessibility:
+  ui: false
+  rationale: "TODO: explain whether this plan changes a user-facing interface"
 touches_concerns: []
 tasks: [tasks/TASK-001.md]
 review_commit: null
@@ -27,6 +30,8 @@ approvals:
   qa_lead: null
   code_review: null
   appsec_review: null
+  accessibility: null
+  accessibility_review: null
 ---
 
 # EPIC-XXX Epic Plan
@@ -36,6 +41,9 @@ TODO: interfaces and alternatives
 
 ## Security mapping
 Map every epic concern to touched or unaffected, with rationale. Boundary booleans reflect this plan, not the epic.
+
+## Accessibility mapping
+For UI changes, map acceptance criteria to WCAG 2.2 AA checks: keyboard-only operation, visible focus, semantic HTML/ARIA, labels and errors, contrast, screen-reader output, and zoom/reflow. Obtain independent accessibility signoff before build and again on the reviewed implementation commit.
 
 ## Small tasks
 One testable behavior per task; exact files, dependencies, QA IDs, RED/GREEN commands, and individual commit. Keep tasks minutes-sized where practical.

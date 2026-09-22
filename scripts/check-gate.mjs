@@ -5,11 +5,11 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { execFileSync } from 'node:child_process';
 
-const roles = ['principal_engineer', 'appsec', 'qa_lead', 'code_review', 'appsec_review'];
+const roles = ['principal_engineer', 'appsec', 'qa_lead', 'code_review', 'appsec_review', 'accessibility', 'accessibility_review'];
 const graphs = {
   project: {draft:['awaiting-review'], 'awaiting-review':['approved'], approved:['in-progress']},
   epic: {draft:['awaiting-review'], 'awaiting-review':['approved'], approved:['in-progress'], 'in-progress':['merged']},
-  'epic-plan': {draft:['awaiting-principal-signoff'], 'awaiting-principal-signoff':['awaiting-appsec-signoff','approved'], 'awaiting-appsec-signoff':['approved'], approved:['in-progress'], 'in-progress':['in-review'], 'in-review':['in-appsec-review','in-progress'], 'in-appsec-review':['ready-for-pr','in-progress'], 'ready-for-pr':['merged','in-progress']},
+  'epic-plan': {draft:['awaiting-principal-signoff'], 'awaiting-principal-signoff':['awaiting-appsec-signoff','awaiting-accessibility-signoff','approved'], 'awaiting-appsec-signoff':['awaiting-accessibility-signoff','approved'], 'awaiting-accessibility-signoff':['approved'], approved:['in-progress'], 'in-progress':['in-review'], 'in-review':['in-appsec-review','in-progress'], 'in-appsec-review':['in-accessibility-review','ready-for-pr','in-progress'], 'in-accessibility-review':['ready-for-pr','in-progress'], 'ready-for-pr':['merged','in-progress']},
   task: {draft:['approved'], approved:['in-progress'], 'in-progress':['in-review'], 'in-review':['done','in-progress']},
 };
 function requireThat(ok, message) { if (!ok) throw new Error(message); }
@@ -74,10 +74,15 @@ function needsAppsec(ctx,e) {
   requireThat(ctx.data.touches_concerns.every(c=>e.data.security.concerns.includes(c)),'Unknown AppSec concern ID');
   return own || ctx.data.touches_concerns.length>0;
 }
+function needsAccessibility(ctx) {
+  requireThat(ctx.data.accessibility && typeof ctx.data.accessibility.ui==='boolean' && meaningful(ctx.data.accessibility.rationale), 'Explicit UI accessibility assessment required');
+  return ctx.data.accessibility.ui;
+}
 function planApproved(ctx) {
   const e=epicApproved(ctx); approval(ctx.data,'principal_engineer');
   if(needsAppsec(ctx,e)) approval(ctx.data,'appsec');
   else requireThat(ctx.data.approvals.appsec==='not-required','Plan needs explicit AppSec not-required decision');
+  if(needsAccessibility(ctx)) approval(ctx.data,'accessibility');
 }
 function tasks(ctx, complete=false) {
   const d=ctx.data;
@@ -121,22 +126,35 @@ export function check(file,target,{root=process.cwd(),write=false}={}) {
       approval(d,'qa_lead');
       requireThat(Array.isArray(d.qa_requirements) && d.qa_requirements.length>0 && d.qa_requirements.every(meaningful),'QA requirements required');
       if(risks(d)) approval(d,'appsec'); else requireThat(d.approvals.appsec==='not-required','Record epic triage');
+      if(needsAccessibility(ctx)) approval(d,'accessibility');
     }
     if(target==='merged') requireThat(related(ctx,'epic-plan.md','epic-plan').data.status==='merged','Merge epic plan first');
   }
   if(d.kind==='epic-plan') {
     const e=epicApproved(ctx); const needed=needsAppsec(ctx,e);
     tasks(ctx);
+    const ui=needsAccessibility(ctx);
     if(target==='awaiting-appsec-signoff') {approval(d,'principal_engineer'); requireThat(needed,'AppSec plan signoff is not required');}
-    if(!['awaiting-principal-signoff','awaiting-appsec-signoff'].includes(target)) planApproved(ctx);
-    if(target==='approved' && needed) requireThat(d.status==='awaiting-appsec-signoff','Principal then AppSec signoff required');
-    if(['in-review','in-appsec-review','ready-for-pr','pr','merged'].includes(target)) tasks(ctx,true);
-    if(['in-appsec-review','ready-for-pr','pr','merged'].includes(target)) approval(d,'code_review');
+    if(target==='awaiting-accessibility-signoff') {
+      approval(d,'principal_engineer'); requireThat(ui,'Accessibility review is not required');
+      if(needed) {requireThat(d.status==='awaiting-appsec-signoff','AppSec signoff must precede accessibility review'); approval(d,'appsec');}
+    }
+    if(!['awaiting-principal-signoff','awaiting-appsec-signoff','awaiting-accessibility-signoff'].includes(target)) planApproved(ctx);
+    if(target==='approved' && needed && !ui) requireThat(d.status==='awaiting-appsec-signoff','Principal then AppSec signoff required');
+    if(target==='approved' && ui) requireThat(d.status==='awaiting-accessibility-signoff','Accessibility signoff required before approval');
+    if(['in-review','in-appsec-review','in-accessibility-review','ready-for-pr','pr','merged'].includes(target)) tasks(ctx,true);
+    if(['in-appsec-review','in-accessibility-review','ready-for-pr','pr','merged'].includes(target)) approval(d,'code_review');
+    if(['in-accessibility-review','ready-for-pr','pr','merged'].includes(target)) approval(d,'appsec_review');
     if(['ready-for-pr','pr','merged'].includes(target)) {
       const cr=approval(d,'code_review'), ar=approval(d,'appsec_review');
       requireThat(ar.date>=cr.date,'Final AppSec review must follow code review');
       requireThat(/^[a-f0-9]{40}$/.test(d.review_commit),'review_commit must be a full commit SHA');
       requireThat(cr.commit===d.review_commit && ar.commit===d.review_commit,'Reviews must cover the same implementation commit');
+      if(ui) {
+        const aa=approval(d,'accessibility_review');
+        requireThat(aa.date>=ar.date,'Accessibility review must follow final AppSec review');
+        requireThat(aa.commit===d.review_commit,'Accessibility review must cover the reviewed implementation commit');
+      }
     }
     if(target==='pr') {
       const git=(args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
@@ -161,8 +179,8 @@ export function check(file,target,{root=process.cwd(),write=false}={}) {
   }
   if(write && target!=='pr') {
     const parsed=YAML.parseDocument(ctx.match[1]); parsed.set('status',target);
-    if(target==='in-progress' && ['in-review','in-appsec-review','ready-for-pr'].includes(d.status)) {
-      parsed.setIn(['approvals','code_review'],null); parsed.setIn(['approvals','appsec_review'],null); parsed.set('review_commit',null);
+    if(target==='in-progress' && ['in-review','in-appsec-review','in-accessibility-review','ready-for-pr'].includes(d.status)) {
+      parsed.setIn(['approvals','code_review'],null); parsed.setIn(['approvals','appsec_review'],null); parsed.setIn(['approvals','accessibility_review'],null); parsed.set('review_commit',null);
     }
     writeDocument(ctx,parsed);
   }
