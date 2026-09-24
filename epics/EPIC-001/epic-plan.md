@@ -7,7 +7,7 @@
 kind: epic-plan
 id: EPIC-001-PLAN
 owner: "Codex"
-status: in-appsec-review
+status: ready-for-pr
 revision: 1
 parent: epic.md
 parent_revision: 1
@@ -21,7 +21,7 @@ security:
     and descriptor must preserve the security boundary exactly."
 touches_concerns: [ SEC-001, SEC-002 ]
 tasks: [ tasks/TASK-001.md, tasks/TASK-002.md ]
-review_commit: null
+review_commit: "4bbbe67b721999ee37cdfbb004d1ae9abcd29188"
 pr_url: null
 approvals:
   principal_engineer:
@@ -46,7 +46,15 @@ approvals:
       and performance. No findings were supplied."
     revision: 1
     commit: "4bbbe67b721999ee37cdfbb004d1ae9abcd29188"
-  appsec_review: null
+  appsec_review:
+    by: "Andrei"
+    date: "2026-09-24"
+    notes: "Final AppSec review approved implementation commit
+      4bbbe67b721999ee37cdfbb004d1ae9abcd29188. Reviewed SEC-001 external-event
+      guidance and SEC-002 explicit authorization/action-required controls; no
+      blocking findings supplied."
+    revision: 1
+    commit: "4bbbe67b721999ee37cdfbb004d1ae9abcd29188"
 ---
 
 # EPIC-001 Epic Plan
