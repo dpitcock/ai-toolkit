@@ -97,6 +97,19 @@ function tasks(ctx, complete=false) {
 function taskEvidence(d) {
   requireThat(d.evidence && ['red','green','qa'].every(k=>meaningful(d.evidence[k])) && /^[a-f0-9]{7,40}$/.test(d.evidence.commit),'Task needs RED, GREEN, QA evidence and individual commit SHA');
 }
+function reviewComments(d, reviewer) {
+  requireThat(Array.isArray(d.review_comments),'review_comments must be an array');
+  requireThat(new Set(d.review_comments.map(c=>c?.id)).size===d.review_comments.length,'Review comment IDs must be unique');
+  for(const comment of d.review_comments) {
+    requireThat(comment && typeof comment==='object' && meaningful(comment.id),'Each review comment needs an ID');
+    requireThat(comment.status==='resolved','All review comments must be resolved');
+    requireThat(/^[a-f0-9]{40}$/.test(comment.resolution_commit),'Resolved review comments need a full resolution commit SHA');
+    requireThat(comment.verified_by===reviewer.by,'Resolved review comments must be verified by the final code reviewer');
+    requireThat(/^\d{4}-\d{2}-\d{2}$/.test(comment.verified_date) && !Number.isNaN(Date.parse(comment.verified_date)) && new Date(comment.verified_date).toISOString().slice(0,10)===comment.verified_date,'Resolved review comments need a valid reviewer verification date');
+    requireThat(comment.verified_date<=reviewer.date,'Review comment verification cannot follow final code approval');
+    requireThat(comment.verified_commit===d.review_commit,'Resolved review comments must be verified on the final review commit');
+  }
+}
 function writeDocument(ctx, parsed) {
   const lock=fs.openSync(`${ctx.file}.lock`,'wx');
   try {
@@ -143,7 +156,7 @@ export function check(file,target,{root=process.cwd(),write=false}={}) {
     if(target==='approved' && needed && !ui) requireThat(d.status==='awaiting-appsec-signoff','Principal then AppSec signoff required');
     if(target==='approved' && ui) requireThat(d.status==='awaiting-accessibility-signoff','Accessibility signoff required before approval');
     if(['in-review','in-appsec-review','in-accessibility-review','ready-for-pr','pr','merged'].includes(target)) tasks(ctx,true);
-    if(['in-appsec-review','in-accessibility-review','ready-for-pr','pr','merged'].includes(target)) approval(d,'code_review');
+    if(['in-appsec-review','in-accessibility-review','ready-for-pr','pr','merged'].includes(target)) {const cr=approval(d,'code_review'); reviewComments(d,cr);}
     if(['in-accessibility-review','ready-for-pr','pr','merged'].includes(target)) approval(d,'appsec_review');
     if(['ready-for-pr','pr','merged'].includes(target)) {
       const cr=approval(d,'code_review'), ar=approval(d,'appsec_review');

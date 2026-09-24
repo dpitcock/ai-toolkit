@@ -1,6 +1,6 @@
 # Verification
 
-Run `npm ci --ignore-scripts && npm test` on Node.js 22+. The suite covers low-risk, sensitive, and UI plans; touched concerns; required QA/Principal/accessibility approvals; stale revisions; self-approval; illegal transitions; YAML parsing; task evidence/dependencies; review order; mandatory final AppSec; conditional final accessibility review; reset/rework; and reviewed-code freshness.
+Run `npm ci --ignore-scripts && npm test` on Node.js 22+. The suite covers low-risk, sensitive, and UI plans; touched concerns; required QA/Principal/accessibility approvals; stale revisions; self-approval; illegal transitions; YAML parsing; task evidence/dependencies; review order; resolved-comment verification on the final code-review commit; mandatory final AppSec; conditional final accessibility review; reset/rework; and reviewed-code freshness.
 
 The scaffold test creates a real temporary Git repository and worktree, verifies branch isolation and collision rejection, and checks non-destructive repeated initialization. It substitutes npm in that test to avoid registry access, while asserting setup and baseline-test commands were invoked.
 

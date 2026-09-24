@@ -15,6 +15,13 @@ approvals:
   appsec_review: null
   accessibility: null
   accessibility_review: null
+review_comments:
+  - id: CR-001
+    status: resolved
+    resolution_commit: "0123456789abcdef0123456789abcdef01234567"
+    verified_by: staff-reviewer-session-4
+    verified_date: "2026-09-07"
+    verified_commit: "0123456789abcdef0123456789abcdef01234567"
 ```
 
 Commands are rooted in the current worktree:
@@ -42,9 +49,9 @@ Without `--write` the check is read-only. Failure exits nonzero with `GATE BLOCK
 
 1. **Epic concerns:** EM assesses explicit auth/data/external flags and concern IDs. Any flag/concern requires AppSec triage approval with notes. Low-risk epics can record not-required with a rationale. QA always participates. This reconciles circulation with conditional AppSec involvement: every epic gets a documented routing decision; only relevant ones require auditor participation.
 2. **Plan approval:** Principal always signs first. The plan's own boundary flags, security concerns, or nonempty touches_concerns require AppSec plan approval. A flagged epic does not automatically require every plan to touch its concerns: document unaffected concerns in the plan body. False flags are deliberate assertions, not a validator's static analysis of code. Uncertainty must be resolved by AppSec.
-3. **Final review:** code_review and appsec_review approval objects are always required. not-required is invalid for either. Both must reference the same 40-character review_commit; AppSec's date cannot precede code review's date. The transition into in-appsec-review requires code review first.
+3. **Final review:** code_review and appsec_review approval objects are always required. not-required is invalid for either. Both must reference the same 40-character review_commit; AppSec's date cannot precede code review's date. The transition into in-appsec-review requires code review first. Every `review_comments` entry must be resolved and verified by that final code reviewer on the same review_commit; an open comment, an unverified fix, or verification against an earlier commit blocks the transition.
 
-Before PR creation the validator checks the reviewed commit is an ancestor of HEAD, no tracked implementation differences exist since that commit, and no untracked files remain. `epics/` and `project/` are reserved for governance metadata and excluded from that implementation comparison, allowing approval records to be committed after code review. Never put application code there. Changes outside these directories, including rebases that change the reviewed ancestry, require both reviews again. Commit all evidence before the PR so reviewers and CI see it.
+Before PR creation the validator checks the reviewed commit is an ancestor of HEAD, no tracked implementation differences exist since that commit, and no untracked files remain. `epics/` and `project/` are reserved for governance metadata and excluded from that implementation comparison, allowing approval records to be committed after code review. Never put application code there. Changes outside these directories, including rebases that change the reviewed ancestry, require a new final code review after all outstanding comments are resolved, followed by the required final reviews. Commit all evidence before the PR so reviewers and CI see it.
 
 ## Accessibility review for UI changes
 

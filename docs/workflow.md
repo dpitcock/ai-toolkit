@@ -36,7 +36,7 @@ If scope changes, reset the affected document to draft with the validator, recon
 
 ## Review and merge
 
-Finish all tasks and run the full QA bar, then move the plan to in-review. Use the existing code-reviewer persona and code-review-and-quality skill for five axes: correctness, readability/simplicity, architecture, security and performance. Superpowers requesting-code-review and receiving-code-review coordinate feedback. Set review_commit to the full implementation SHA and record staff code_review approval for it.
+Finish all tasks and run the full QA bar, then move the plan to in-review. Use the existing code-reviewer persona and code-review-and-quality skill for five axes: correctness, readability/simplicity, architecture, security and performance. Superpowers requesting-code-review and receiving-code-review coordinate feedback. Record each finding in `review_comments`. If any finding requires a fix, make the necessary commit(s), then request a new code review. The final code reviewer records the resolution and approval only after verifying every finding on the final `review_commit`; intermediate commits do not need separate approvals.
 
 Only then move to in-appsec-review. Use appsec-gate with the existing security-auditor for the mandatory pre-merge pass, regardless of whether earlier AppSec involvement was waived. Record appsec_review for the same SHA. UI plans then move to in-accessibility-review for a final independent accessibility review of that same SHA before ready-for-pr. Commit metadata; governed-ship runs the `pr` gate immediately before opening a PR. Include the epic plan, QA evidence, findings and all applicable approvals in the PR description.
 
