@@ -2,6 +2,13 @@
 
 This repository turns a project goal into independently reviewable epics. The EM owns scope and assignment, the Principal owns technical coherence, QA defines evidence, and AppSec participates at three distinct points. Developers own implementation; independent reviewers decide whether it can ship. Read roles.md for the upstream skill used at each stage and gates.md for exact approval fields.
 
+## Optional external Slack control plane
+
+Projects that use an externally deployed Slack control plane can follow the
+[Slack control-plane guide](slack-control-plane.md). It supplies routing and safety
+contracts plus a non-secret workspace descriptor; it does not change local Codex,
+Cline, or Claude instructions.
+
 ## Start a project
 
 Use this repository as a GitHub template or clone it, then run `bash scripts/init-project.sh`. Complete the native Superpowers installation in installation.md. The script creates project/project-plan.md without overwriting an existing plan. Nothing is pre-approved.
