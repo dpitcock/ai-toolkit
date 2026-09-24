@@ -1,0 +1,8 @@
+workspace:
+  repository: example-repository
+  environment: production
+  provider: codex
+  channel_name: ws-example-repository-codex
+  timezone: America/New_York
+daily_summary:
+  local_time: "09:00"

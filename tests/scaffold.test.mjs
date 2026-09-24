@@ -8,7 +8,8 @@ import YAML from 'yaml';
 const source=path.resolve(import.meta.dirname,'..');
 test('init is idempotent; real epic worktree is isolated and refuses collisions',t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'blueprint-scaffold-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
- for(const item of ['scripts','project','epics','tests','package.json','package-lock.json','.gitignore']) fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
+ for(const item of ['scripts','project','tests','config','package.json','package-lock.json','.gitignore']) fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
+ fs.mkdirSync(path.join(root,'epics'));fs.cpSync(path.join(source,'epics','EPIC-XXX'),path.join(root,'epics','EPIC-XXX'),{recursive:true});
  fs.symlinkSync(path.join(source,'node_modules'),path.join(root,'node_modules'),'dir');
  const run=(cmd,args)=>execFileSync(cmd,args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']});
  run('bash',['scripts/init-project.sh','--offline']);
@@ -25,6 +26,7 @@ test('init is idempotent; real epic worktree is isolated and refuses collisions'
  const env={...process.env,PATH:bin+path.delimiter+process.env.PATH};
  execFileSync('bash',['scripts/new-epic.sh','EPIC-001'],{cwd:root,env,stdio:'pipe'});
  const worktree=path.join(root,'.worktrees/EPIC-001');assert.ok(fs.existsSync(path.join(worktree,'epics/EPIC-001/tasks/TASK-001.md')));assert.ok(!fs.existsSync(path.join(root,'epics/EPIC-001')));
+ assert.ok(fs.existsSync(path.join(worktree,'config','slack-workspace.example.yml')));
  assert.equal(execFileSync('git',['branch','--show-current'],{cwd:worktree,encoding:'utf8'}).trim(),'epic/EPIC-001');
  assert.match(fs.readFileSync(path.join(root,'npm-calls'),'utf8'),/ci --ignore-scripts\ntest/);
  assert.throws(()=>execFileSync('bash',['scripts/new-epic.sh','EPIC-001'],{cwd:root,env,stdio:'pipe'}));
