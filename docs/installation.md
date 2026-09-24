@@ -31,8 +31,12 @@ That alternative is not run by our installer. If used, keep the ownership rules 
 
 ## Cline
 
-Superpowers' [docs listing](https://github.com/obra/superpowers/tree/main/docs) has no native Cline guide. Our adapter links its skill directories into `.cline/skills/`, a [documented Cline skill location](https://docs.cline.bot/customization/skills). It does not emulate plugin session hooks or a native subagent tool. AGENTS.md explicitly supplies startup routing; `.clinerules/00-governance.md` is a fallback pointer. Check the Cline Skills menu and enable the local skills. If symlink discovery is unsupported by your version, read the canonical SKILL.md paths from AGENTS.md directly; do not pretend native plugin hooks exist.
+Superpowers' [docs listing](https://github.com/obra/superpowers/tree/main/docs) has no native Cline guide. Our adapter links its skill directories into `.cline/skills/`, a [documented Cline skill location](https://docs.cline.bot/customization/skills). It does not emulate plugin session hooks or a native subagent tool. AGENTS.md explicitly supplies startup routing and the Cline-only handoff protocol; `.clinerules/00-governance.md` is a fallback pointer. Check the Cline Skills menu and enable the local skills. If symlink discovery is unsupported by your version, read the canonical SKILL.md paths from AGENTS.md directly; do not pretend native plugin hooks exist.
 
 Disable global same-name skills that override these project skills. Use separate sessions when subagent dispatch is unavailable. The upstream worktree skill is markdown: `new-epic.sh` displays it and executes its shell fallback, while the agent must load it before invoking the script. With native worktree tools, let the harness create the epic branch/worktree and copy the three templates there, then run setup and baseline tests.
+
+## Autonomy boundary
+
+The Cline handoff protocol is specific to Cline. Codex and Claude Code should continue normal in-scope work until they need missing requirements, credentials, external authorization, or a scope-changing decision. This does not waive approval gates: any tool must obtain genuine independent review evidence before a gated transition.
 
 Sources were checked when authoring this blueprint. Installation and skill discovery should be smoke-tested in each target harness after upstream or tool upgrades.

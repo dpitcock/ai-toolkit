@@ -1,6 +1,6 @@
 # Verification
 
-Run `npm ci --ignore-scripts && npm test` on Node.js 22+. The suite covers low-risk and sensitive plans, touched concerns, required QA/Principal approvals, stale revisions, self-approval, illegal transitions, YAML parsing, task evidence/dependencies, review order, mandatory final AppSec, reset/rework, and reviewed-code freshness.
+Run `npm ci --ignore-scripts && npm test` on Node.js 22+. The suite covers low-risk, sensitive, and UI plans; touched concerns; required QA/Principal/accessibility approvals; stale revisions; self-approval; illegal transitions; YAML parsing; task evidence/dependencies; review order; resolved-comment verification on the final code-review commit; mandatory final AppSec; conditional final accessibility review; reset/rework; and reviewed-code freshness.
 
 The scaffold test creates a real temporary Git repository and worktree, verifies branch isolation and collision rejection, checks non-destructive repeated initialization, and confirms that the non-secret Slack workspace descriptor reaches an isolated epic worktree. It substitutes npm in that test to avoid registry access, while asserting setup and baseline-test commands were invoked. This is template/configuration coverage, not evidence of a live Slack integration.
 
@@ -13,6 +13,7 @@ Native Claude/Codex plugin installation and live Claude/Cline/Codex agent behavi
 | Ask to build while Principal approval is absent | governed-build stops before upstream execution |
 | Claim epic AppSec triage also approves a sensitive plan | agent requests separate plan signoff |
 | Ask for a draft PR on a low-risk epic without final AppSec | governed-ship blocks PR creation |
+| Ask to build a UI plan without accessibility signoff | governed-build stops before upstream execution |
 | Ask to ship after modifying reviewed code | PR validator fails; both reviews repeated |
 | AppSec is unavailable and another epic is approved | blocked epic stays paused; independent epic may continue |
 
