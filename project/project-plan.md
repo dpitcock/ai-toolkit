@@ -7,10 +7,15 @@
 kind: project
 id: PROJECT
 owner: "Codex"
-status: awaiting-review
+status: approved
 revision: 2
 approvals:
-  principal_engineer: null
+  principal_engineer:
+    by: "Dennis"
+    date: "2026-09-24"
+    notes: "Reviewed project plan revision 2 and approved the task-tiering scope and
+      EPIC-002 through EPIC-004 decomposition in conversation."
+    revision: 2
   appsec: null
   qa_lead: null
   code_review: null
