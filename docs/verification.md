@@ -2,7 +2,7 @@
 
 Run `npm ci --ignore-scripts && npm test` on Node.js 22+. The suite covers low-risk, sensitive, and UI plans; touched concerns; required QA/Principal/accessibility approvals; stale revisions; self-approval; illegal transitions; YAML parsing; task evidence/dependencies; review order; resolved-comment verification on the final code-review commit; mandatory final AppSec; conditional final accessibility review; reset/rework; and reviewed-code freshness.
 
-The scaffold test creates a real temporary Git repository and worktree, verifies branch isolation and collision rejection, and checks non-destructive repeated initialization. It substitutes npm in that test to avoid registry access, while asserting setup and baseline-test commands were invoked.
+The scaffold test creates a real temporary Git repository and worktree, verifies branch isolation and collision rejection, checks non-destructive repeated initialization, and confirms that the non-secret Slack workspace descriptor reaches an isolated epic worktree. It substitutes npm in that test to avoid registry access, while asserting setup and baseline-test commands were invoked. This is template/configuration coverage, not evidence of a live Slack integration.
 
 During scaffold development, the actual upstream installer successfully cloned both frameworks and installed the selected agent-skills with the multi-agent CLI. Local governance and Cline Superpowers links were created and checked. npm dependency auditing reported no known vulnerabilities at that time. Bash syntax and Git whitespace checks passed.
 

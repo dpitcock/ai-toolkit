@@ -9,6 +9,8 @@ npm test
 
 Requires Git, Bash and Node.js 22+. Setup downloads upstream skills; complete the tool-specific Superpowers installation in [installation](docs/installation.md). Start by filling `project/project-plan.md` as the Engineering Manager. For scaffolding without downloads, use `bash scripts/init-project.sh --offline`.
 
+If the GitHub identity app is unavailable or misbehaving, see [gh-identity](https://github.com/dpitcock/gh-identity).
+
 - [Workflow](docs/workflow.md): the complete onboarding runbook and concurrent epic worktrees.
 - [Roles](docs/roles.md): upstream mapping and overlap precedence.
 - [Gates](docs/gates.md): states, approvals, revision handling and enforcement limits.

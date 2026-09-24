@@ -8,6 +8,13 @@ Codex and Claude Code should carry an approved workflow forward without requesti
 
 Cline uses an explicit handoff at the same boundaries because its adapter does not provide native Superpowers session hooks or subagent dispatch. The handoff must identify the document and gate state, work/evidence completed, the specific missing clarification or authorization, and the next safe action. This is a tool-execution difference, not a gate bypass: all tools remain subject to the same approval and PR requirements.
 
+## Optional external Slack control plane
+
+Projects that use an externally deployed Slack control plane can follow the
+[Slack control-plane guide](slack-control-plane.md). It supplies routing and safety
+contracts plus a non-secret workspace descriptor; it does not change local Codex,
+Cline, or Claude instructions.
+
 ## Start a project
 
 Use this repository as a GitHub template or clone it, then run `bash scripts/init-project.sh`. Complete the native Superpowers installation in installation.md. The script creates project/project-plan.md without overwriting an existing plan. Nothing is pre-approved.
