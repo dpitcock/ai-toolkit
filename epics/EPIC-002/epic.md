@@ -7,7 +7,7 @@
 kind: epic
 id: EPIC-002
 owner: "Codex"
-status: in-progress
+status: merged
 revision: 1
 parent: ../../project/project-plan.md
 parent_revision: 1
@@ -33,8 +33,7 @@ approvals:
   qa_lead: { by: "Dennis", date: "2026-09-24", notes: "Approved QA-001.", revision: 1 }
   code_review: null
   appsec_review: null
-  accessibility:
-    null
+  accessibility: null
   accessibility_review: null
 ---
 
