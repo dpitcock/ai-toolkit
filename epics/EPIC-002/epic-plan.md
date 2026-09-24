@@ -7,7 +7,7 @@
 kind: epic-plan
 id: EPIC-002-PLAN
 owner: "Codex"
-status: awaiting-principal-signoff
+status: ready-for-pr
 revision: 1
 parent: epic.md
 parent_revision: 1
@@ -23,14 +23,32 @@ accessibility:
 touches_concerns: []
 tasks: [ tasks/TASK-001.md ]
 review_comments: []
-review_commit: null
+review_commit: "783096728db24849c83e6f215821c485ff865b49"
 pr_url: null
 approvals:
-  principal_engineer: null
+  principal_engineer:
+    by: "Dennis"
+    date: "2026-09-24"
+    notes: "Principal approved EPIC-002 plan revision 1."
+    revision: 1
   appsec: not-required
   qa_lead: null
-  code_review: null
-  appsec_review: null
+  code_review:
+    by: "Dennis"
+    date: "2026-09-24"
+    notes: "Independent staff review approved the final implementation across
+      correctness, readability, architecture, security, and performance; no
+      findings."
+    revision: 1
+    commit: "783096728db24849c83e6f215821c485ff865b49"
+  appsec_review:
+    by: "Andrei"
+    date: "2026-09-24"
+    notes: "Independent final AppSec review approved the governance-only
+      implementation; no auth, data, or external runtime boundary is
+      introduced."
+    revision: 1
+    commit: "783096728db24849c83e6f215821c485ff865b49"
   accessibility: null
   accessibility_review: null
 ---

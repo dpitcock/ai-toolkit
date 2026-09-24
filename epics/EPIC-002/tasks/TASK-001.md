@@ -7,15 +7,20 @@
 kind: task
 id: TASK-001
 owner: "Codex"
-status: draft
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: []
 evidence:
-  red: "41ccf89 adds UI-plan assertions that the pre-change validator cannot satisfy: it has neither the accessibility approval fields nor accessibility signoff states."
-  green: "The conditional validator and accessibility tests added in 41ccf89 pass on the implementation; the scaffold follow-up is 783096728db24849c83e6f215821c485ff865b49."
-  qa: "Fresh verification on 2026-09-24: npm test passed 17/17 and git diff --check passed; historical post-7830967 verification also passed 17/17."
+  red: "41ccf89 adds UI-plan assertions that the pre-change validator cannot
+    satisfy: it has neither the accessibility approval fields nor accessibility
+    signoff states."
+  green: "The conditional validator and accessibility tests added in 41ccf89 pass
+    on the implementation; the scaffold follow-up is
+    783096728db24849c83e6f215821c485ff865b49."
+  qa: "Fresh verification on 2026-09-24: npm test passed 17/17 and git diff
+    --check passed; historical post-7830967 verification also passed 17/17."
   commit: "783096728db24849c83e6f215821c485ff865b49"
 approvals:
   principal_engineer: null
