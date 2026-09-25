@@ -2,16 +2,19 @@
 kind: task
 id: TASK-001
 owner: "Codex"
-status: draft
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: []
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-24: node --test tests/scaffold.test.mjs failed 0/1; the fixture's
+    hardcoded approval revision 1 was stale against project revision 2."
+  green: "2026-09-24: node --test tests/scaffold.test.mjs passed 1/1 after the
+    fixture used d.revision."
+  qa: "2026-09-24: npm test passed 17/17; git diff --check and git diff --cached
+    --check were clean."
+  commit: 17453c83cded2088fc7b3a01a50e58dba89f5206
 approvals:
   principal_engineer: null
   appsec: null
