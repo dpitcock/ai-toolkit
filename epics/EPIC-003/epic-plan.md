@@ -4,7 +4,7 @@
 kind: epic-plan
 id: EPIC-003-PLAN
 owner: "Codex"
-status: ready-for-pr
+status: merged
 revision: 13
 parent: epic.md
 parent_revision: 1
