@@ -2,16 +2,25 @@
 kind: task
 id: TASK-005
 owner: "Codex"
-status: draft
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: [ tasks/TASK-004.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-25: node --test tests/workspace-config.test.mjs
+    tests/init-workspace.test.mjs failed 4 new cases: linked provenance,
+    malformed markers, policy-change command support, and stale UI-exemption
+    refusal."
+  green: "2026-09-25: node --test tests/workspace-config.test.mjs
+    tests/init-workspace.test.mjs passed 18/18 after explicit override
+    resolution and approved policy-change controls."
+  qa: "2026-09-25: npm test passed 35/35 and git diff --check was clean. Source
+    map observed workspace.provider, approvals_required.qa,
+    approvals_overrides.reason, and approvals_overrides.exempt from worktree;
+    workspace.repository and approvals_required.appsec remained root. Stale
+    no-UI exemptions and UI policy waivers were refused."
+  commit: "6ae8ae6a00bd43f37858326973e74a5e40abc5e5"
 approvals:
   principal_engineer: null
   appsec: null
