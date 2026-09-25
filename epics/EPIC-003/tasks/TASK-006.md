@@ -2,16 +2,23 @@
 kind: task
 id: TASK-006
 owner: "Codex"
-status: draft
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: [ tasks/TASK-005.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-25: node --test tests/workspace-config-slack.test.mjs
+    tests/scaffold.test.mjs failed 2/2 because the template and generated epic
+    worktree still contained config/slack-workspace.example.yml."
+  green: "2026-09-25: node --test tests/workspace-config-slack.test.mjs
+    tests/scaffold.test.mjs passed 2/2 after replacing the descriptor test and
+    removing the obsolete template descriptor."
+  qa: "2026-09-25: npm test passed 35/35 and git diff --check was clean. Active
+    docs/config path check found no slack-workspace.example or
+    workspace.channel_name matches; remaining repository matches are intentional
+    migration tests or historical plans/specs."
+  commit: "3368847eb10d4dfa1156db14bdafa8e00babb5e3"
 approvals:
   principal_engineer: null
   appsec: null
