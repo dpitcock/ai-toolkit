@@ -2,16 +2,28 @@
 kind: task
 id: TASK-007
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 2
 depends_on: [ tasks/TASK-006.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-25: node --test tests/workspace-config.test.mjs
+    tests/init-workspace.test.mjs failed 2/20 new cases: orphaned change history
+    was trusted and a stale accepted UI exemption blocked the corrective
+    candidate. A later linked-status case failed because status treated the
+    overlay as the coordination root."
+  green: "2026-09-25: node --test tests/workspace-config.test.mjs
+    tests/init-workspace.test.mjs passed 21/21 after ordered history validation,
+    candidate-only UI applicability validation, and discovered
+    coordination-root/overlay status verification."
+  qa: "2026-09-25: npm test passed 38/38 and git diff --check was clean. Accepted
+    linked status reported approvals_required.qa from worktree and
+    workspace.provider from root; unaccepted overlay status failed.
+    Orphaned/tampered history, UI drift before initial acceptance, and
+    stale-policy correction were all exercised with real temporary
+    repositories/worktrees."
+  commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
 approvals:
   principal_engineer: null
   appsec: null
