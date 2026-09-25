@@ -4,7 +4,7 @@
 kind: epic-plan
 id: EPIC-003-PLAN
 owner: "Codex"
-status: in-review
+status: in-appsec-review
 revision: 2
 parent: epic.md
 parent_revision: 1
@@ -32,23 +32,39 @@ tasks:
   - tasks/TASK-007.md
 review_comments:
   - id: CR-001
-    status: open
+    status: resolved
     finding: "Independent review found that linked worktree overrides could resolve
       without accepted evidence and CLI status could not validate linked
       policy."
+    resolution_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
+    verified_by: "staff-agent-epic003-r2"
+    verified_date: "2026-09-25"
+    verified_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
   - id: CR-002
-    status: open
+    status: resolved
     finding: "Independent review found that a stale UI exemption blocked its own
       corrective policy change."
+    resolution_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
+    verified_by: "staff-agent-epic003-r2"
+    verified_date: "2026-09-25"
+    verified_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
   - id: CR-003
-    status: open
+    status: resolved
     finding: "Independent review found that orphaned or inconsistent workspace
       history records could be trusted."
+    resolution_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
+    verified_by: "staff-agent-epic003-r2"
+    verified_date: "2026-09-25"
+    verified_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
   - id: CR-004
-    status: open
+    status: resolved
     finding: "Independent review found that initial acceptance did not re-check
       current UI applicability."
-review_commit: null
+    resolution_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
+    verified_by: "staff-agent-epic003-r2"
+    verified_date: "2026-09-25"
+    verified_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
+review_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
 pr_url: null
 approvals:
   principal_engineer:
@@ -68,7 +84,14 @@ approvals:
       history-chain, stale-UI, and legacy-retirement regression coverage."
     revision: 2
   qa_lead: null
-  code_review: null
+  code_review:
+    by: "staff-agent-epic003-r2"
+    date: "2026-09-25"
+    notes: "Independent re-review approved e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed:
+      CR-001 through CR-004 resolved; npm test 38/38 and git diff --check
+      clean."
+    revision: 2
+    commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
   appsec_review: null
   accessibility: null
   accessibility_review: null
