@@ -4,7 +4,7 @@
 kind: epic-plan
 id: EPIC-003-PLAN
 owner: "Codex"
-status: in-appsec-review
+status: ready-for-pr
 revision: 2
 parent: epic.md
 parent_revision: 1
@@ -92,7 +92,16 @@ approvals:
       clean."
     revision: 2
     commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
-  appsec_review: null
+  appsec_review:
+    by: "appsec-final-agent-epic003-r2"
+    date: "2026-09-25"
+    notes: "Independent final AppSec review approved
+      e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed for SEC-301/302/303: accepted
+      root/overlay policy, history sequence integrity, stale-policy correction,
+      UI-before-acceptance, legacy safety, YAML/path protections. npm test
+      38/38, git diff --check clean, npm audit 0 vulnerabilities."
+    revision: 2
+    commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
   accessibility: null
   accessibility_review: null
 ---
