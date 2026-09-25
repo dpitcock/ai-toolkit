@@ -2,16 +2,25 @@
 kind: task
 id: TASK-009
 owner: "Codex"
-status: draft
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 13
 depends_on: [ tasks/TASK-008.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-25: node --test tests/scaffold.test.mjs failed 1/2 because
+    scripts/install-native-lock.mjs did not exist; the new clean-install
+    regression could not establish the reviewed native-build boundary."
+  green: "2026-09-25: node --test tests/scaffold.test.mjs passed 2/2. The clean
+    temporary copy used local .npm-cache/.node-gyp, rebuilt the pinned fs-ext
+    hook, acquired/released a real advisory lock, and did not execute the
+    injected root preinstall marker."
+  qa: "2026-09-25: npm test passed 53/53; npm audit --audit-level=high --omit=dev
+    reported 0 vulnerabilities; git diff --check and staged diff checks were
+    clean. The helper first runs npm ci --ignore-scripts, validates fs-ext
+    2.1.1's exact node-gyp configure build hook, then targets only that rebuild
+    with both compatible local node-gyp devdir variables."
+  commit: "b1fd3e7"
 approvals:
   principal_engineer: null
   appsec: null
