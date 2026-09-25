@@ -2,16 +2,30 @@
 kind: task
 id: TASK-008
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 9
 depends_on: [ tasks/TASK-007.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-25: node --test tests/init-workspace.test.mjs first failed the new
+    append-failure test (missing expected exception), journal-schema test
+    (missing expected exception), post-recovery accept test (returned revision 2
+    instead of restored revision 1), cleanup-kill test (timed out waiting for
+    fixed-link removal), and intermittent concurrent bootstrap/accept tests (7/8
+    successful children with a malformed-lock rejection)."
+  green: "2026-09-25: node --test tests/init-workspace.test.mjs passed 28/28 after
+    owner-linked lock acquisition/reclaim/cleanup, pre-snapshot recovery, atomic
+    validated journal phases, compensation, and explicit phase pause checkpoints
+    were implemented."
+  qa: "2026-09-25: npm test passed 52/52 and git diff --check was clean. Real
+    child-process proposal/accept/apply contention, stale-base refusal, append
+    compensation, all durable phase kills, prepared recovery, and fixed-link
+    cleanup interruption were exercised. Independent reviewer
+    staff-agent-task008-final-rereview verified CR-005 through CR-010 on
+    e4c8804062c36ce22f1f6981986e7c97276d2d67, including 15 repeated
+    concurrent-bootstrap and 15 repeated concurrent-accept runs."
+  commit: "e4c8804062c36ce22f1f6981986e7c97276d2d67"
 approvals:
   principal_engineer: null
   appsec: null
