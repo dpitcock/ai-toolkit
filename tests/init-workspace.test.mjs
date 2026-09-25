@@ -331,7 +331,7 @@ test('a committed transaction remains accepted when journal cleanup fails',t=>{
   assert.equal(fs.existsSync(path.join(root,'project/workspace-config-transaction.json')),false);
 });
 
-test('status reclaims a killed prepared transaction owner and restores revision one',async t=>{
+test('status recovers a killed prepared transaction and retains its advisory lock file',async t=>{
   const root=fixture(t);
   const proposal=JSON.parse(run(root,'propose'));
   run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
@@ -347,7 +347,7 @@ test('status reclaims a killed prepared transaction owner and restores revision 
   assert.equal(exited.signal,'SIGKILL');
   assert.equal(JSON.parse(run(root,'status')).revision,1);
   assert.equal(fs.existsSync(path.join(root,'project/workspace-config-transaction.json')),false);
-  assert.equal(fs.existsSync(path.join(root,'project/workspace-config-history.jsonl.lock')),false);
+  assert.equal(fs.existsSync(path.join(root,'project/workspace-config-history.jsonl.lock')),true);
 });
 
 test('status resolves killed transactions at every post-prepare checkpoint',async t=>{
@@ -491,7 +491,7 @@ test('status rejects a transaction journal without its byte length and new diges
   assert.equal(fs.readFileSync(historyFile,'utf8'),oldHistory);
 });
 
-test('a dead history-lock owner is reclaimed before a policy change',t=>{
+test('a legacy dead lock-owner sidecar cannot interfere with a policy change',t=>{
   const root=fixture(t);
   const proposal=JSON.parse(run(root,'propose'));
   run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
@@ -502,27 +502,43 @@ test('a dead history-lock owner is reclaimed before a policy change',t=>{
   const lock=path.join(root,'project/workspace-config-history.jsonl.lock');
   const owner=`${lock}.99999999.dead.owner`;
   fs.writeFileSync(owner,JSON.stringify({pid:99999999,nonce:'0'.repeat(32)}));
-  fs.linkSync(owner,lock);
-  assert.equal(JSON.parse(run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','Recovered lock',
+  assert.equal(JSON.parse(run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','Ignored sidecar',
     '--digest',change.digest,'--base-digest',change.base_digest)).status,'accepted');
-  assert.equal(fs.existsSync(lock),false);assert.equal(fs.existsSync(owner),false);
+  assert.equal(fs.existsSync(lock),true);assert.equal(fs.existsSync(owner),true);
 });
 
-test('a killed stale-lock cleanup does not strand the next status operation',async t=>{
+test('a persistent advisory lock file remains usable after a legacy sidecar is left behind',t=>{
   const root=fixture(t);
   const proposal=JSON.parse(run(root,'propose'));
   run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
   const lock=path.join(root,'project/workspace-config-history.jsonl.lock');
   const owner=`${lock}.99999999.dead.owner`;
   fs.writeFileSync(owner,JSON.stringify({pid:99999999,nonce:'0'.repeat(32)}));
-  fs.linkSync(owner,lock);
-  const child=spawnWithEnv(root,{WORKSPACE_INIT_TEST_PAUSE_AFTER:'lock-fixed-unlinked'},'status');
-  await waitFor(()=>!fs.existsSync(lock) && fs.existsSync(owner),'Timed out waiting for fixed-link removal');
-  child.kill('SIGKILL');
-  const exited=await new Promise(resolve=>child.on('close',(code,signal)=>resolve({code,signal})));
-  assert.equal(exited.signal,'SIGKILL');
   assert.equal(JSON.parse(run(root,'status')).revision,1);
-  assert.equal(fs.existsSync(lock),false);
+  assert.equal(fs.existsSync(lock),true);assert.equal(fs.existsSync(owner),true);
+});
+
+test('two waiters recover after an advisory-lock holder dies without deleting its lock path',async t=>{
+ const root=fixture(t);
+ const proposal=JSON.parse(run(root,'propose'));
+ run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
+ const lock=path.join(root,'project/workspace-config-history.jsonl.lock');
+ const extension=JSON.stringify(path.join(source,'node_modules','fs-ext'));
+ const holder=spawn(process.execPath,['-e',`const fs=require('node:fs'),ext=require(${extension});const fd=fs.openSync(process.argv[1],'a');ext.flockSync(fd,'ex');console.log('ready');setInterval(()=>{},1000);`,lock],{cwd:root,stdio:['ignore','pipe','pipe']});
+ let ready='';holder.stdout.on('data',chunk=>{ready+=chunk;});
+ await waitFor(()=>ready.includes('ready'),'Timed out waiting for advisory-lock holder');
+ let firstDone=false,secondDone=false;
+ const first=runAsync(root,'status').then(result=>{firstDone=true;return result;});
+ const second=runAsync(root,'status').then(result=>{secondDone=true;return result;});
+ await new Promise(resolve=>setTimeout(resolve,100));
+ assert.equal(firstDone,false);assert.equal(secondDone,false);
+ holder.kill('SIGKILL');
+ const exited=await new Promise(resolve=>holder.on('close',(code,signal)=>resolve({code,signal})));
+ assert.equal(exited.signal,'SIGKILL');
+ for(const result of await Promise.all([first,second])) {
+   assert.equal(result.code,0,result.error);assert.equal(JSON.parse(result.output).revision,1);
+ }
+ assert.ok(fs.existsSync(lock));
 });
 
 test('stale no-UI exemptions and UI policy waivers are refused',t=>{
@@ -581,4 +597,30 @@ test('linked status requires accepted root and overlay policy with provenance',t
   const overlayProposal=JSON.parse(run(linked,'propose'));run(linked,'accept','--by','Dennis','--reason','Overlay policy','--digest',overlayProposal.digest);
   const status=JSON.parse(run(linked,'status'));
   assert.equal(status.status,'accepted');assert.equal(status.sources['approvals_required.qa'],'worktree');assert.equal(status.sources['workspace.provider'],'root');
+});
+
+test('linked status waits for and recovers a paused coordination-root transaction',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'workspace-linked-transaction-'));
+ const linked=path.join(os.tmpdir(),`workspace-linked-transaction-${path.basename(root)}`);
+ t.after(()=>{fs.rmSync(root,{recursive:true,force:true});fs.rmSync(linked,{recursive:true,force:true});});
+ fs.mkdirSync(path.join(root,'config'),{recursive:true});fs.mkdirSync(path.join(root,'project'));
+ fs.writeFileSync(path.join(root,'package.json'),JSON.stringify({name:'linked-transaction'}));
+ const config={workspace:{repository:'linked-transaction',environment:'local',provider:'codex',slack_channel_name:'ws-linked-transaction-codex',timezone:'UTC'},approvals_required:{principal:true,qa:true,appsec:true,accessibility_reviewer:false,ui_designer:false},approvals_overrides:{reason:'No UI',exempt:['accessibility_reviewer','ui_designer']},daily_summary:{local_time:'09:00'}};
+ fs.writeFileSync(path.join(root,'config/workspace-config.yaml'),YAML.stringify(config));
+ execFileSync('git',['init','-q'],{cwd:root});execFileSync('git',['config','user.email','qa@example.test'],{cwd:root});execFileSync('git',['config','user.name','QA'],{cwd:root});execFileSync('git',['add','.'],{cwd:root});execFileSync('git',['commit','-qm','fixture'],{cwd:root});execFileSync('git',['worktree','add','-q','-b','linked-transaction',linked],{cwd:root});
+ const rootProposal=JSON.parse(run(root,'propose'));run(root,'accept','--by','Dennis','--reason','Root policy','--digest',rootProposal.digest);
+ const overlay=YAML.parse(fs.readFileSync(path.join(linked,'config/workspace-config.yaml'),'utf8'));overlay.approvals_required.qa=false;overlay.worktree_overrides=['approvals_required.qa'];fs.writeFileSync(path.join(linked,'config/workspace-config.yaml'),YAML.stringify(overlay));
+ const overlayProposal=JSON.parse(run(linked,'propose'));run(linked,'accept','--by','Dennis','--reason','Overlay policy','--digest',overlayProposal.digest);
+ const before=JSON.parse(run(linked,'status'));
+ const candidate=path.join(root,'candidate.yaml');const changed=YAML.parse(fs.readFileSync(path.join(root,'config/workspace-config.yaml'),'utf8'));changed.workspace.timezone='America/New_York';fs.writeFileSync(candidate,YAML.stringify(changed));
+ const change=JSON.parse(run(root,'propose-change','--candidate',candidate));
+ const writer=spawnWithEnv(root,{WORKSPACE_INIT_TEST_PAUSE_AFTER:'history-appended'},'apply-change','--candidate',candidate,'--by','Dennis','--reason','Paused root change','--digest',change.digest,'--base-digest',change.base_digest);
+ await waitForFile(path.join(root,'project/workspace-config-transaction.json'));
+ await waitFor(()=>JSON.parse(fs.readFileSync(path.join(root,'project/workspace-config-transaction.json'),'utf8')).phase==='history-appended','Timed out waiting for root history append');
+ let complete=false;const pending=runAsync(linked,'status').then(result=>{complete=true;return result;});
+ await new Promise(resolve=>setTimeout(resolve,100));assert.equal(complete,false);
+ writer.kill('SIGKILL');
+ const exited=await new Promise(resolve=>writer.on('close',(code,signal)=>resolve({code,signal})));assert.equal(exited.signal,'SIGKILL');
+ const recovered=await pending;assert.equal(recovered.code,0,recovered.error);
+ assert.equal(JSON.parse(recovered.output).digest,before.digest);assert.equal(JSON.parse(recovered.output).revision,1);
 });

@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import YAML from 'yaml';
 import {parseWorkspaceConfig,resolveWorkspaceConfig,workspaceConfigDigest} from './lib/workspace-config.mjs';
-import {appendWorkspaceHistory,readWorkspaceHistory,parseWorkspaceHistory,assertAcceptedWorkspaceConfig,withWorkspaceHistoryLock} from './lib/workspace-history.mjs';
+import {appendWorkspaceHistory,readWorkspaceHistory,parseWorkspaceHistory,assertAcceptedWorkspaceConfig,withWorkspaceHistoryLock,withWorkspaceHistoryLocks} from './lib/workspace-history.mjs';
 
 function options(args) {
   const result={};
@@ -448,14 +448,16 @@ function accept(root,args) {
 }
 
 function status(root) {
-  return withWorkspaceHistoryLock(root,()=>{
-    const coordination=coordinationRoot(root);
+  const coordination=coordinationRoot(root);
+  return withWorkspaceHistoryLocks([coordination,root],()=>{
+    recoverWorkspaceTransaction(coordination);
+    if(root!==coordination) recoverWorkspaceTransaction(root);
     const {config,sources}=resolveWorkspaceConfig({coordinationRoot:coordination,worktreeRoot:root});
     let record=assertAcceptedWorkspaceConfig(coordination,existingConfig(coordination));
     if(root!==coordination) record=assertAcceptedWorkspaceConfig(root,existingConfig(root));
     assertCurrentUiPolicy(root,config);
     return {status:'accepted',digest:workspaceConfigDigest(config),revision:record.revision,sources};
-  },{beforeRead:()=>recoverWorkspaceTransaction(root)});
+  });
 }
 
 try {
