@@ -2,16 +2,23 @@
 kind: task
 id: TASK-004
 owner: "Codex"
-status: draft
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: [ tasks/TASK-003.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-25: four new legacy-migration integration cases failed before
+    implementation, covering preservation/retirement, matching values,
+    conflict/secret refusal, and symlink/source drift."
+  green: "2026-09-25: node --test tests/init-workspace.test.mjs passed 10/10; it
+    exercised real temporary repositories and the CLI."
+  qa: "2026-09-25: npm test passed 31/31 and git diff --cached --check was clean
+    before the implementation commit. Legacy values and unrelated files were
+    preserved until acceptance; conflicting/secret content, symlinks, and
+    post-proposal source drift refused without retiring the descriptor;
+    retirement occurred only after acceptance and retry remained idempotent."
+  commit: "912818c06b333b4e9cc48d2d20c7baef1ffe5d13"
 approvals:
   principal_engineer: null
   appsec: null
