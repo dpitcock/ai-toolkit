@@ -260,6 +260,17 @@ test('concurrent policy changes from one reviewed base leave one accepted revisi
   assert.equal(JSON.parse(run(root,'status')).status,'accepted');
 });
 
+test('concurrent accepts are idempotent and create one acceptance record',async t=>{
+  const root=fixture(t);
+  const proposal=JSON.parse(run(root,'propose'));
+  const calls=await Promise.all(Array.from({length:8},(_,index)=>runAsync(root,'accept','--by',`Reviewer-${index}`,
+    '--reason','Concurrent acceptance','--digest',proposal.digest)));
+  assert.equal(calls.filter(call=>call.code===0).length,8);
+  const history=readWorkspaceHistory(root);
+  assert.equal(history.length,2);assert.equal(history[1].kind,'acceptance');
+  assert.equal(JSON.parse(run(root,'status')).status,'accepted');
+});
+
 test('stale no-UI exemptions and UI policy waivers are refused',t=>{
   const root=fixture(t,'web-app',{react:'19.0.0'});
   const proposal=JSON.parse(run(root,'propose'));

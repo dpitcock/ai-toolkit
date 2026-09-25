@@ -291,34 +291,26 @@ function accept(root,args) {
   if(!by || !reason || !/^[a-f0-9]{64}$/.test(expected ?? '')) {
     throw new Error('Acceptance requires --by, --reason, and --digest');
   }
-  const file=configPath(root);
-  const config=parseWorkspaceConfig(fs.readFileSync(file,'utf8'));
-  const digest=workspaceConfigDigest(config);
-  if(expected!==digest) throw new Error('Config digest differs from the reviewed proposal');
-  assertCurrentUiPolicy(root,config);
-  const proposal=readWorkspaceHistory(root).at(-1);
-  const legacy=readLegacy(root);
-  if(proposal && ['acceptance','change'].includes(proposal.kind)) {
-    assertAcceptedWorkspaceConfig(root,config);
-    if(legacy) {
-      assertLegacySource(proposal,legacy,config);
-      retireLegacy(root,legacy);
+  return withWorkspaceHistoryLock(root,({records,append})=>{
+    const file=configPath(root);
+    const config=parseWorkspaceConfig(fs.readFileSync(file,'utf8'));
+    const digest=workspaceConfigDigest(config);
+    if(expected!==digest) throw new Error('Config digest differs from the reviewed proposal');
+    assertCurrentUiPolicy(root,config);
+    const proposal=records.at(-1);
+    const legacy=readLegacy(root);
+    if(proposal && ['acceptance','change'].includes(proposal.kind)) {
+      assertAcceptedWorkspaceConfig(root,config);
+      if(legacy) { assertLegacySource(proposal,legacy,config);retireLegacy(root,legacy); }
+      return {status:'accepted',digest,revision:proposal.revision};
     }
-    return {status:'accepted',digest,revision:proposal.revision};
-  }
-  if(!proposal || proposal.kind!=='proposal') {
-    throw new Error('A pending proposal is required before acceptance');
-  }
-  assertLegacySource(proposal,legacy,config);
-  const record={
-    kind:'acceptance',digest,revision:proposal.revision,
-    date:new Date().toISOString().slice(0,10),by,reason,
-    changes:changedFields(proposal.config,config),
-    ...(legacy ? {legacyDigest:legacy.digest} : {}),
-  };
-  appendWorkspaceHistory(root,record);
-  if(legacy) retireLegacy(root,legacy);
-  return {status:'accepted',digest,revision:record.revision};
+    if(!proposal || proposal.kind!=='proposal') throw new Error('A pending proposal is required before acceptance');
+    assertLegacySource(proposal,legacy,config);
+    const record={kind:'acceptance',digest,revision:proposal.revision,date:new Date().toISOString().slice(0,10),by,reason,
+      changes:changedFields(proposal.config,config),...(legacy ? {legacyDigest:legacy.digest} : {})};
+    append(record);if(legacy) retireLegacy(root,legacy);
+    return {status:'accepted',digest,revision:record.revision};
+  });
 }
 
 function status(root) {

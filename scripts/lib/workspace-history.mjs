@@ -81,7 +81,14 @@ export function readWorkspaceHistory(root) {
 export function withWorkspaceHistoryLock(root,callback) {
   const file=historyPath(root,{createDirectory:true});
   const lock=`${file}.lock`;
-  const descriptor=fs.openSync(lock,'wx',0o600);
+  let descriptor;
+  for(let attempt=0;attempt<100;attempt+=1) {
+    try { descriptor=fs.openSync(lock,'wx',0o600);break; }
+    catch(error) {
+      if(error.code!=='EEXIST' || attempt===99) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10);
+    }
+  }
   try {
     const records=readWorkspaceHistory(root);
     return callback({records,append(record){
