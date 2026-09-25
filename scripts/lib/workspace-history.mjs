@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {randomBytes} from 'node:crypto';
 import {workspaceConfigDigest} from './workspace-config.mjs';
 
 function historyPath(root,{createDirectory=false}={}) {
@@ -65,10 +66,8 @@ function validateHistory(records) {
   return records;
 }
 
-export function readWorkspaceHistory(root) {
-  const file=historyPath(root);
-  if(!file || !fs.existsSync(file)) return [];
-  const text=fs.readFileSync(file,'utf8');
+export function parseWorkspaceHistory(text) {
+  if(typeof text!=='string') throw new Error('Workspace history must be text');
   if(!text) return [];
   if(!text.endsWith('\n')) throw new Error('Workspace history has an incomplete record');
   const records=text.trimEnd().split('\n').map((line,index)=>{
@@ -78,29 +77,55 @@ export function readWorkspaceHistory(root) {
   return validateHistory(records);
 }
 
+export function readWorkspaceHistory(root) {
+  const file=historyPath(root);
+  if(!file || !fs.existsSync(file)) return [];
+  return parseWorkspaceHistory(fs.readFileSync(file,'utf8'));
+}
+
+function syncDirectory(directory) { const fd=fs.openSync(directory,'r');try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); } }
+function pauseForTest(checkpoint) { if(process.env.WORKSPACE_INIT_TEST_PAUSE_AFTER===checkpoint) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,60_000); }
+function lockStat(file,links) { const stat=fs.lstatSync(file);if(stat.isSymbolicLink() || !stat.isFile() || stat.nlink!==links) throw new Error('Workspace history lock is malformed');return stat; }
+function sameFile(left,right) { return left.dev===right.dev && left.ino===right.ino; }
+function ownerFor(lock) {
+  const directory=path.dirname(lock),prefix=`${path.basename(lock)}.`;
+  let fixed;
+  try { fixed=lockStat(lock,2); } catch(error) { if(error.code==='ENOENT') return null;throw error; }
+  const names=fs.readdirSync(directory).filter(name=>name.startsWith(prefix) && name.endsWith('.owner'));
+  const owners=names.map(name=>path.join(directory,name)).filter(file=>{ try { return sameFile(fixed,lockStat(file,2)); } catch { return false; } });
+  if(owners.length!==1) {
+    try { if(!sameFile(fixed,lockStat(lock,2))) return null; } catch(error) { if(error.code==='ENOENT') return null;throw error; }
+    throw new Error('Workspace history lock is malformed');
+  }
+  let owner;try { owner=JSON.parse(fs.readFileSync(owners[0],'utf8')); } catch { throw new Error('Workspace history lock is malformed'); }
+  if(!Number.isInteger(owner?.pid) || owner.pid<1 || !/^[a-f0-9]{32}$/.test(owner?.nonce ?? '')) throw new Error('Workspace history lock is malformed');
+  try {
+    if(!sameFile(fixed,lockStat(lock,2)) || !sameFile(fixed,lockStat(owners[0],2))) return null;
+  } catch(error) { if(error.code==='ENOENT') return null;throw error; }
+  return {file:owners[0],owner,fixed};
+}
+function releaseLock(lock,owner) {
+  const fixed=lockStat(lock,2),owned=lockStat(owner,2);if(!sameFile(fixed,owned)) throw new Error('Workspace history lock changed during cleanup');
+  fs.unlinkSync(lock);syncDirectory(path.dirname(lock));
+  pauseForTest('lock-fixed-unlinked');
+  lockStat(owner,1);fs.unlinkSync(owner);syncDirectory(path.dirname(lock));
+}
+
 export function withWorkspaceHistoryLock(root,callback) {
-  const file=historyPath(root,{createDirectory:true});
-  const lock=`${file}.lock`;
-  let descriptor;
+  const file=historyPath(root,{createDirectory:true}),lock=`${file}.lock`;
+  let ownerFile;
   for(let attempt=0;attempt<100;attempt+=1) {
+    const nonce=randomBytes(16).toString('hex');ownerFile=`${lock}.${process.pid}.${nonce}.owner`;
     try {
-      descriptor=fs.openSync(lock,'wx',0o600);
-      fs.writeFileSync(descriptor,JSON.stringify({pid:process.pid}),{encoding:'utf8'});
-      break;
-    }
-    catch(error) {
+      const fd=fs.openSync(ownerFile,'wx',0o600);try { fs.writeFileSync(fd,JSON.stringify({pid:process.pid,nonce}));fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+      fs.linkSync(ownerFile,lock);syncDirectory(path.dirname(lock));break;
+    } catch(error) {
+      if(fs.existsSync(ownerFile) && fs.lstatSync(ownerFile).nlink===1) fs.unlinkSync(ownerFile);
       if(error.code!=='EEXIST' || attempt===99) throw error;
-      const stat=fs.lstatSync(lock);
-      if(stat.isSymbolicLink() || !stat.isFile() || stat.size>1024) throw new Error('Workspace history lock must be a regular file');
-      if(stat.size===0) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10);continue; }
-      let owner;
-      try { owner=JSON.parse(fs.readFileSync(lock,'utf8')); } catch { throw new Error('Workspace history lock is malformed'); }
-      if(!Number.isInteger(owner?.pid) || owner.pid<1) throw new Error('Workspace history lock is malformed');
-      try { process.kill(owner.pid,0); }
-      catch(ownerError) {
-        if(ownerError.code==='ESRCH') { fs.unlinkSync(lock);continue; }
-        if(ownerError.code!=='EPERM') throw ownerError;
-      }
+      const held=ownerFor(lock);
+      if(!held) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10);continue; }
+      try { process.kill(held.owner.pid,0); }
+      catch(ownerError) { if(ownerError.code==='ESRCH') { releaseLock(lock,held.file);continue; } if(ownerError.code!=='EPERM') throw ownerError; }
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10);
     }
   }
@@ -108,11 +133,15 @@ export function withWorkspaceHistoryLock(root,callback) {
     const records=readWorkspaceHistory(root);
     return callback({records,append(record){
       validRecord(record);validateHistory([...records,record]);
-      fs.writeFileSync(file,`${JSON.stringify(record)}\n`,{flag:'a',mode:0o600});records.push(record);
+      const descriptor=fs.openSync(file,'a',0o600);
+      try {
+        fs.writeFileSync(descriptor,`${JSON.stringify(record)}\n`,'utf8');
+        fs.fsyncSync(descriptor);
+      } finally { fs.closeSync(descriptor); }
+      records.push(record);
     }});
   } finally {
-    fs.closeSync(descriptor);
-    fs.unlinkSync(lock);
+    releaseLock(lock,ownerFile);
   }
 }
 

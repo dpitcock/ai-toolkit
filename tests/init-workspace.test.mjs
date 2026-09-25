@@ -33,6 +33,12 @@ function run(root,...args) {
   return execFileSync(process.execPath,[cli,...args,'--root',root],{encoding:'utf8',stdio:['ignore','pipe','pipe']});
 }
 
+function runWithEnv(root,env,...args) {
+  return execFileSync(process.execPath,[cli,...args,'--root',root],{
+    encoding:'utf8',stdio:['ignore','pipe','pipe'],env:{...process.env,...env},
+  });
+}
+
 function runAsync(root,...args) {
   return new Promise(resolve=>{
     const child=spawn(process.execPath,[cli,...args,'--root',root],{stdio:['ignore','pipe','pipe']});
@@ -40,6 +46,26 @@ function runAsync(root,...args) {
     child.stdout.on('data',chunk=>{output+=chunk;});child.stderr.on('data',chunk=>{error+=chunk;});
     child.on('close',code=>resolve({code,output,error}));
   });
+}
+
+function spawnWithEnv(root,env,...args) {
+  return spawn(process.execPath,[cli,...args,'--root',root],{stdio:['ignore','pipe','pipe'],env:{...process.env,...env}});
+}
+
+async function waitForFile(file) {
+  for(let attempt=0;attempt<100;attempt+=1) {
+    if(fs.existsSync(file)) return;
+    await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  throw new Error(`Timed out waiting for ${file}`);
+}
+
+async function waitFor(check,message) {
+  for(let attempt=0;attempt<100;attempt+=1) {
+    if(check()) return;
+    await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  throw new Error(message);
 }
 
 test('headless proposal explains roles and stays pending on repeat',t=>{
@@ -260,12 +286,66 @@ test('concurrent policy changes from one reviewed base leave one accepted revisi
   assert.equal(JSON.parse(run(root,'status')).status,'accepted');
 });
 
+test('a failed history append restores the accepted config and history pair',t=>{
+  const root=fixture(t);
+  const proposal=JSON.parse(run(root,'propose'));
+  run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
+  const configFile=path.join(root,'config/workspace-config.yaml');
+  const historyFile=path.join(root,'project/workspace-config-history.jsonl');
+  const oldConfig=fs.readFileSync(configFile,'utf8');
+  const oldHistory=fs.readFileSync(historyFile,'utf8');
+  const candidate=path.join(root,'candidate.yaml');
+  const changed=YAML.parse(oldConfig);changed.approvals_required.qa=false;fs.writeFileSync(candidate,YAML.stringify(changed));
+  const change=JSON.parse(run(root,'propose-change','--candidate',candidate));
+  assert.throws(()=>runWithEnv(root,{WORKSPACE_INIT_TEST_FAULT:'history-append'},'apply-change','--candidate',candidate,
+    '--by','Dennis','--reason','Injected append failure','--digest',change.digest,'--base-digest',change.base_digest));
+  assert.equal(fs.readFileSync(configFile,'utf8'),oldConfig);
+  assert.equal(fs.readFileSync(historyFile,'utf8'),oldHistory);
+  assert.equal(fs.existsSync(path.join(root,'project/workspace-config-transaction.json')),false);
+  assert.equal(JSON.parse(run(root,'status')).revision,1);
+});
+
+test('a committed transaction remains accepted when journal cleanup fails',t=>{
+  const root=fixture(t);
+  const proposal=JSON.parse(run(root,'propose'));
+  run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
+  const candidate=path.join(root,'candidate.yaml');
+  const changed=YAML.parse(fs.readFileSync(path.join(root,'config/workspace-config.yaml'),'utf8'));
+  changed.approvals_required.qa=false;fs.writeFileSync(candidate,YAML.stringify(changed));
+  const change=JSON.parse(run(root,'propose-change','--candidate',candidate));
+  assert.throws(()=>runWithEnv(root,{WORKSPACE_INIT_TEST_FAULT:'journal-cleanup'},'apply-change','--candidate',candidate,
+    '--by','Dennis','--reason','Injected cleanup failure','--digest',change.digest,'--base-digest',change.base_digest));
+  assert.equal(readWorkspaceHistory(root).at(-1).revision,2);
+  assert.equal(fs.existsSync(path.join(root,'project/workspace-config-transaction.json')),true);
+  assert.equal(JSON.parse(run(root,'status')).revision,2);
+  assert.equal(fs.existsSync(path.join(root,'project/workspace-config-transaction.json')),false);
+});
+
+test('status reclaims a killed prepared transaction owner and restores revision one',async t=>{
+  const root=fixture(t);
+  const proposal=JSON.parse(run(root,'propose'));
+  run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
+  const candidate=path.join(root,'candidate.yaml');
+  const changed=YAML.parse(fs.readFileSync(path.join(root,'config/workspace-config.yaml'),'utf8'));
+  changed.approvals_required.qa=false;fs.writeFileSync(candidate,YAML.stringify(changed));
+  const change=JSON.parse(run(root,'propose-change','--candidate',candidate));
+  const child=spawnWithEnv(root,{WORKSPACE_INIT_TEST_PAUSE_AFTER:'prepared'},'apply-change','--candidate',candidate,
+    '--by','Dennis','--reason','Interrupted change','--digest',change.digest,'--base-digest',change.base_digest);
+  await waitForFile(path.join(root,'project/workspace-config-transaction.json'));
+  child.kill('SIGKILL');
+  const exited=await new Promise(resolve=>child.on('close',(code,signal)=>resolve({code,signal})));
+  assert.equal(exited.signal,'SIGKILL');
+  assert.equal(JSON.parse(run(root,'status')).revision,1);
+  assert.equal(fs.existsSync(path.join(root,'project/workspace-config-transaction.json')),false);
+  assert.equal(fs.existsSync(path.join(root,'project/workspace-config-history.jsonl.lock')),false);
+});
+
 test('concurrent accepts are idempotent and create one acceptance record',async t=>{
   const root=fixture(t);
   const proposal=JSON.parse(run(root,'propose'));
   const calls=await Promise.all(Array.from({length:8},(_,index)=>runAsync(root,'accept','--by',`Reviewer-${index}`,
     '--reason','Concurrent acceptance','--digest',proposal.digest)));
-  assert.equal(calls.filter(call=>call.code===0).length,8);
+  assert.equal(calls.filter(call=>call.code===0).length,8,calls.filter(call=>call.code!==0).map(call=>call.error).join('\n'));
   const history=readWorkspaceHistory(root);
   assert.equal(history.length,2);assert.equal(history[1].kind,'acceptance');
   assert.equal(JSON.parse(run(root,'status')).status,'accepted');
@@ -283,12 +363,58 @@ test('status recovers an interrupted policy change to its accepted pair',t=>{
   const newConfig=YAML.stringify(candidate);
   const record={kind:'change',digest:workspaceConfigDigest(parseWorkspaceConfig(newConfig)),revision:2,date:'2026-09-25',by:'Dennis',reason:'Interrupted change',changes:['approvals_required.qa']};
   fs.writeFileSync(configFile,newConfig);
-  fs.writeFileSync(path.join(root,'project/workspace-config-transaction.json'),JSON.stringify({phase:'config-replaced',oldConfig,oldHistory,newConfig,record}));
+  fs.writeFileSync(path.join(root,'project/workspace-config-transaction.json'),JSON.stringify({
+    phase:'config-replaced',oldConfig,oldHistory,oldHistoryLength:Buffer.byteLength(oldHistory),newConfig,
+    newDigest:record.digest,record,
+  }));
   const status=JSON.parse(run(root,'status'));
   assert.equal(status.status,'accepted');assert.equal(status.revision,1);
   assert.equal(fs.readFileSync(configFile,'utf8'),oldConfig);
   assert.equal(fs.readFileSync(historyFile,'utf8'),oldHistory);
   assert.equal(fs.existsSync(path.join(root,'project/workspace-config-transaction.json')),false);
+});
+
+test('status resolves every durable transaction phase to its valid pair',t=>{
+  for(const phase of ['prepared','config-replaced','history-appended','committed']) {
+    const root=fixture(t,`phase-${phase}`);
+    const proposal=JSON.parse(run(root,'propose'));
+    run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
+    const configFile=path.join(root,'config/workspace-config.yaml');
+    const historyFile=path.join(root,'project/workspace-config-history.jsonl');
+    const oldConfig=fs.readFileSync(configFile,'utf8');
+    const oldHistory=fs.readFileSync(historyFile,'utf8');
+    const candidate=YAML.parse(oldConfig);candidate.approvals_required.qa=false;
+    const newConfig=YAML.stringify(candidate);
+    const record={kind:'change',digest:workspaceConfigDigest(parseWorkspaceConfig(newConfig)),revision:2,date:'2026-09-25',by:'Dennis',reason:'Interrupted change',changes:['approvals_required.qa']};
+    const newHistory=`${oldHistory}${JSON.stringify(record)}\n`;
+    if(phase!=='prepared') fs.writeFileSync(configFile,newConfig);
+    if(['history-appended','committed'].includes(phase)) fs.writeFileSync(historyFile,newHistory);
+    fs.writeFileSync(path.join(root,'project/workspace-config-transaction.json'),JSON.stringify({
+      phase,oldConfig,oldHistory,oldHistoryLength:Buffer.byteLength(oldHistory),newConfig,newDigest:record.digest,record,
+    }));
+    const status=JSON.parse(run(root,'status'));
+    assert.equal(status.revision,phase==='committed' ? 2 : 1);
+    assert.equal(fs.readFileSync(configFile,'utf8'),phase==='committed' ? newConfig : oldConfig);
+    assert.equal(fs.readFileSync(historyFile,'utf8'),phase==='committed' ? newHistory : oldHistory);
+    assert.equal(fs.existsSync(path.join(root,'project/workspace-config-transaction.json')),false);
+  }
+});
+
+test('status rejects a transaction journal without its byte length and new digest',t=>{
+  const root=fixture(t);
+  const proposal=JSON.parse(run(root,'propose'));
+  run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
+  const configFile=path.join(root,'config/workspace-config.yaml');
+  const historyFile=path.join(root,'project/workspace-config-history.jsonl');
+  const oldConfig=fs.readFileSync(configFile,'utf8');
+  const oldHistory=fs.readFileSync(historyFile,'utf8');
+  const candidate=YAML.parse(oldConfig);candidate.approvals_required.qa=false;
+  const newConfig=YAML.stringify(candidate);
+  const record={kind:'change',digest:workspaceConfigDigest(parseWorkspaceConfig(newConfig)),revision:2,date:'2026-09-25',by:'Dennis',reason:'Interrupted change',changes:['approvals_required.qa']};
+  fs.writeFileSync(path.join(root,'project/workspace-config-transaction.json'),JSON.stringify({phase:'prepared',oldConfig,oldHistory,newConfig,record}));
+  assert.throws(()=>run(root,'status'));
+  assert.equal(fs.readFileSync(configFile,'utf8'),oldConfig);
+  assert.equal(fs.readFileSync(historyFile,'utf8'),oldHistory);
 });
 
 test('a dead history-lock owner is reclaimed before a policy change',t=>{
@@ -299,9 +425,30 @@ test('a dead history-lock owner is reclaimed before a policy change',t=>{
   const changed=YAML.parse(fs.readFileSync(path.join(root,'config/workspace-config.yaml'),'utf8'));
   changed.approvals_required.qa=false;fs.writeFileSync(candidate,YAML.stringify(changed));
   const change=JSON.parse(run(root,'propose-change','--candidate',candidate));
-  fs.writeFileSync(path.join(root,'project/workspace-config-history.jsonl.lock'),JSON.stringify({pid:99999999}));
+  const lock=path.join(root,'project/workspace-config-history.jsonl.lock');
+  const owner=`${lock}.99999999.dead.owner`;
+  fs.writeFileSync(owner,JSON.stringify({pid:99999999,nonce:'0'.repeat(32)}));
+  fs.linkSync(owner,lock);
   assert.equal(JSON.parse(run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','Recovered lock',
     '--digest',change.digest,'--base-digest',change.base_digest)).status,'accepted');
+  assert.equal(fs.existsSync(lock),false);assert.equal(fs.existsSync(owner),false);
+});
+
+test('a killed stale-lock cleanup does not strand the next status operation',async t=>{
+  const root=fixture(t);
+  const proposal=JSON.parse(run(root,'propose'));
+  run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
+  const lock=path.join(root,'project/workspace-config-history.jsonl.lock');
+  const owner=`${lock}.99999999.dead.owner`;
+  fs.writeFileSync(owner,JSON.stringify({pid:99999999,nonce:'0'.repeat(32)}));
+  fs.linkSync(owner,lock);
+  const child=spawnWithEnv(root,{WORKSPACE_INIT_TEST_PAUSE_AFTER:'lock-fixed-unlinked'},'status');
+  await waitFor(()=>!fs.existsSync(lock) && fs.existsSync(owner),'Timed out waiting for fixed-link removal');
+  child.kill('SIGKILL');
+  const exited=await new Promise(resolve=>child.on('close',(code,signal)=>resolve({code,signal})));
+  assert.equal(exited.signal,'SIGKILL');
+  assert.equal(JSON.parse(run(root,'status')).revision,1);
+  assert.equal(fs.existsSync(lock),false);
 });
 
 test('stale no-UI exemptions and UI policy waivers are refused',t=>{
