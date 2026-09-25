@@ -32,6 +32,43 @@ function configPath(root) {
   return file;
 }
 
+function transactionPath(root) {
+  const base=fs.realpathSync(root),directory=path.join(base,'project');
+  fs.mkdirSync(directory,{recursive:true});
+  const actual=fs.realpathSync(directory);
+  if(fs.lstatSync(directory).isSymbolicLink() || !actual.startsWith(base+path.sep)) {
+    throw new Error('Workspace transaction directory must be inside the repository');
+  }
+  const file=path.join(directory,'workspace-config-transaction.json');
+  if(fs.existsSync(file) && (fs.lstatSync(file).isSymbolicLink() || !fs.statSync(file).isFile())) {
+    throw new Error('Workspace transaction must be a regular file');
+  }
+  return file;
+}
+
+function recoverWorkspaceTransaction(root) {
+  const journal=transactionPath(root);
+  if(!fs.existsSync(journal)) return;
+  let entry;
+  try { entry=JSON.parse(fs.readFileSync(journal,'utf8')); }
+  catch { throw new Error('Workspace transaction is malformed'); }
+  if(!entry || !['prepared','config-replaced','history-appended','committed'].includes(entry.phase) ||
+    ![entry.oldConfig,entry.oldHistory,entry.newConfig].every(value=>typeof value==='string') || !entry.record) {
+    throw new Error('Workspace transaction is malformed');
+  }
+  const config=configPath(root),history=path.join(root,'project','workspace-config-history.jsonl');
+  if(entry.phase==='committed') {
+    const current=parseWorkspaceConfig(fs.readFileSync(config,'utf8'));
+    const latest=readWorkspaceHistory(root).at(-1);
+    if(workspaceConfigDigest(current)!==workspaceConfigDigest(parseWorkspaceConfig(entry.newConfig)) ||
+      JSON.stringify(latest)!==JSON.stringify(entry.record)) throw new Error('Workspace transaction committed state is inconsistent');
+  } else {
+    fs.writeFileSync(config,entry.oldConfig,{mode:0o600});
+    fs.writeFileSync(history,entry.oldHistory,{mode:0o600});
+  }
+  fs.unlinkSync(journal);
+}
+
 function coordinationRoot(root) {
   try {
     const worktrees=execFileSync('git',['-C',root,'worktree','list','--porcelain'],{encoding:'utf8'})
@@ -242,13 +279,19 @@ function applyChange(root,args) {
     const temporary=`${file}.${process.pid}.change`;
     const rollback=`${file}.${process.pid}.rollback`;
     const previous=fs.readFileSync(file,'utf8');
+    const historyFile=path.join(root,'project','workspace-config-history.jsonl');
+    const journal=transactionPath(root);
+    const entry={phase:'prepared',oldConfig:previous,oldHistory:fs.readFileSync(historyFile,'utf8'),newConfig:YAML.stringify(candidate),record};
+    fs.writeFileSync(journal,JSON.stringify(entry),{flag:'wx',mode:0o600});
     fs.writeFileSync(temporary,YAML.stringify(candidate),{flag:'wx',mode:0o600});
     try {
       fs.renameSync(temporary,file);
-      try { append(record); }
+      entry.phase='config-replaced';fs.writeFileSync(journal,JSON.stringify(entry),{mode:0o600});
+      try { append(record);entry.phase='committed';fs.writeFileSync(journal,JSON.stringify(entry),{mode:0o600});fs.unlinkSync(journal); }
       catch(error) {
         fs.writeFileSync(rollback,previous,{flag:'wx',mode:0o600});
         fs.renameSync(rollback,file);
+        if(fs.existsSync(journal)) fs.unlinkSync(journal);
         throw error;
       }
     } finally {
@@ -347,6 +390,7 @@ try {
   if(!['propose-change','apply-change'].includes(action) && Object.hasOwn(args,'--candidate')) {
     throw new Error('Candidate config is only valid with policy changes');
   }
+  recoverWorkspaceTransaction(root);
   const result=action==='propose' ? propose(root) : action==='accept' ? accept(root,args) : action==='status' ? status(root) :
     action==='propose-change' ? proposeChange(root,args) : applyChange(root,args);
   console.log(JSON.stringify(result));

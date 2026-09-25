@@ -271,6 +271,26 @@ test('concurrent accepts are idempotent and create one acceptance record',async 
   assert.equal(JSON.parse(run(root,'status')).status,'accepted');
 });
 
+test('status recovers an interrupted policy change to its accepted pair',t=>{
+  const root=fixture(t);
+  const proposal=JSON.parse(run(root,'propose'));
+  run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
+  const configFile=path.join(root,'config/workspace-config.yaml');
+  const historyFile=path.join(root,'project/workspace-config-history.jsonl');
+  const oldConfig=fs.readFileSync(configFile,'utf8');
+  const oldHistory=fs.readFileSync(historyFile,'utf8');
+  const candidate=YAML.parse(oldConfig);candidate.approvals_required.qa=false;
+  const newConfig=YAML.stringify(candidate);
+  const record={kind:'change',digest:workspaceConfigDigest(parseWorkspaceConfig(newConfig)),revision:2,date:'2026-09-25',by:'Dennis',reason:'Interrupted change',changes:['approvals_required.qa']};
+  fs.writeFileSync(configFile,newConfig);
+  fs.writeFileSync(path.join(root,'project/workspace-config-transaction.json'),JSON.stringify({phase:'config-replaced',oldConfig,oldHistory,newConfig,record}));
+  const status=JSON.parse(run(root,'status'));
+  assert.equal(status.status,'accepted');assert.equal(status.revision,1);
+  assert.equal(fs.readFileSync(configFile,'utf8'),oldConfig);
+  assert.equal(fs.readFileSync(historyFile,'utf8'),oldHistory);
+  assert.equal(fs.existsSync(path.join(root,'project/workspace-config-transaction.json')),false);
+});
+
 test('stale no-UI exemptions and UI policy waivers are refused',t=>{
   const root=fixture(t,'web-app',{react:'19.0.0'});
   const proposal=JSON.parse(run(root,'propose'));
