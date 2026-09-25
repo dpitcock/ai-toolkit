@@ -5,7 +5,7 @@ owner: "Codex"
 status: done
 revision: 1
 parent: ../epic-plan.md
-parent_revision: 2
+parent_revision: 9
 depends_on: [ tasks/TASK-002.md ]
 evidence:
   red: "2026-09-25: init-workspace test failed with ERR_MODULE_NOT_FOUND for

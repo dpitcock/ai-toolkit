@@ -4,8 +4,8 @@
 kind: epic-plan
 id: EPIC-003-PLAN
 owner: "Codex"
-status: ready-for-pr
-revision: 2
+status: in-progress
+revision: 9
 parent: epic.md
 parent_revision: 1
 security:
@@ -30,6 +30,7 @@ tasks:
   - tasks/TASK-005.md
   - tasks/TASK-006.md
   - tasks/TASK-007.md
+  - tasks/TASK-008.md
 review_comments:
   - id: CR-001
     status: resolved
@@ -64,44 +65,61 @@ review_comments:
     verified_by: "staff-agent-epic003-r2"
     verified_date: "2026-09-25"
     verified_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
-review_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
+  - id: CR-005
+    status: open
+    finding: "Independent PR review reproduced concurrent apply-change calls
+      appending duplicate or non-contiguous revisions because the accepted
+      baseline is read before the history lock and the appended record itself is
+      not validated as part of that critical section."
+  - id: CR-006
+    status: open
+    finding: "Independent AppSec plan review found that an unspecified
+      config/history transaction could not prove recovery after interruptions
+      between its separate filesystem mutations."
+  - id: CR-007
+    status: open
+    finding: "Independent Principal plan review found that a plain exclusive lock
+      file survives abrupt process death, preventing the required next operation
+      from acquiring the lock to recover an interrupted journal."
+  - id: CR-008
+    status: open
+    finding: "Independent Principal plan review found that lock cleanup and journal
+      phase persistence needed explicit inode-safe and fsynced atomic transition
+      requirements to make crash recovery deterministic."
+  - id: CR-009
+    status: open
+    finding: "Independent Principal plan review found that lock cleanup and stale
+      reclamation needed an explicit fixed-link-first order and durable cleanup
+      boundary so a fixed lock cannot outlive its owner companion."
+  - id: CR-010
+    status: open
+    finding: "Independent AppSec plan review found that locking only apply-change
+      left concurrent accept and proposal/bootstrap writers able to append
+      invalid acceptance history or interleave with policy changes."
+review_commit: null
 pr_url: "https://github.com/dpitcock/ai-toolkit/pull/5"
 approvals:
   principal_engineer:
-    by: "principal-agent-epic003-r2"
+    by: "principal-agent-epic003-r9"
     date: "2026-09-25"
-    notes: "Independent plan review of revision 2 at
-      f235b9036aae637d4c193b72eeb04e132fff6518 approved TASK-007 sizing,
-      accepted-policy interfaces, CR-001 through CR-004 coverage, and
-      real-worktree test strategy."
-    revision: 2
+    notes: "Independent Principal review approved revision 9 and TASK-008's bounded
+      CR-005 through CR-010 remediation, including a common validated lock for
+      proposal bootstrap, acceptance/legacy retirement, and policy changes;
+      concurrency and interruption evidence; and prior lock/journal durability
+      controls."
+    revision: 9
   appsec:
-    by: "appsec-agent-epic003-r2"
+    by: "appsec-agent-epic003-r9"
     date: "2026-09-25"
-    notes: "Independent AppSec review of revision 2 at
-      4a0028016f25ec483d31e92ad84fc0a8bf6133d6 approved TASK-007's
-      SEC-301/302/303 remediation plan and its accepted-root/overlay,
-      history-chain, stale-UI, and legacy-retirement regression coverage."
-    revision: 2
+    notes: "Independent AppSec review approved revision 9 and TASK-008's SEC-301
+      remediation: common verified-root writer lock for bootstrap,
+      acceptance/legacy retirement, and policy changes; combined-history
+      validation; journal recovery; owner-safe cleanup; and real concurrent
+      writer/interruption coverage."
+    revision: 9
   qa_lead: null
-  code_review:
-    by: "staff-agent-epic003-r2"
-    date: "2026-09-25"
-    notes: "Independent re-review approved e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed:
-      CR-001 through CR-004 resolved; npm test 38/38 and git diff --check
-      clean."
-    revision: 2
-    commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
-  appsec_review:
-    by: "appsec-final-agent-epic003-r2"
-    date: "2026-09-25"
-    notes: "Independent final AppSec review approved
-      e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed for SEC-301/302/303: accepted
-      root/overlay policy, history sequence integrity, stale-policy correction,
-      UI-before-acceptance, legacy safety, YAML/path protections. npm test
-      38/38, git diff --check clean, npm audit 0 vulnerabilities."
-    revision: 2
-    commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
+  code_review: null
+  appsec_review: null
   accessibility: null
   accessibility_review: null
 ---
@@ -178,6 +196,12 @@ reason, and the current proposal digest. A proposal never claims approval.
 - **SEC-303 touched:** TASK-004 preserves legacy values and stops on conflicts;
   TASK-006 retires the old descriptor without adding live Slack state.
   TASK-003 keeps proposals non-secret.
+- **SEC-301 touched:** TASK-008 routes proposal bootstrap, acceptance, and
+  policy change through one combined-history root-local lock; it binds reviewed
+  policy changes to the accepted base digest and uses a recoverable
+  config/history transaction so concurrent callers and a failed second
+  filesystem operation cannot corrupt audit history or silently overwrite an
+  intervening policy.
 
 No concern is unaffected. AppSec plan signoff follows Principal signoff;
 mandatory final AppSec review remains a later gate.
@@ -189,6 +213,9 @@ mandatory final AppSec review remains a later gate.
 - A legacy conflict must leave original files and audit history untouched.
 - A copied worktree config must not accidentally override root requirements.
 - A user-facing UI change must still require the merged accessibility reviews.
+- Concurrent policy-change requests and interrupted config/history updates
+  must preserve or recover one valid accepted revision; stale requests cannot
+  replace the accepted config.
 
 ## Tasks and checkpoints
 
@@ -201,11 +228,14 @@ mandatory final AppSec review remains a later gate.
 6. `tasks/TASK-006.md` — Slack descriptor consolidation and scaffold
    regression (QA-303/305).
 7. `tasks/TASK-007.md` — accepted-policy review remediation (QA-302/304/305).
+8. `tasks/TASK-008.md` — recoverable concurrent policy-change remediation
+   (QA-302/304).
 
 Dependencies are sequential and declared in each task. Checkpoints follow
 TASK-003 (greenfield init), TASK-006 (legacy, worktree, Slack, and current
 accessibility paths), and TASK-007 (accepted root/worktree policy and history
-integrity). Each runs `npm test` and reviews the security mapping.
+integrity), and TASK-008 (concurrent and interrupted policy-change integrity).
+Each runs `npm test` and reviews the security mapping.
 
 ## Accessibility mapping
 
@@ -222,4 +252,6 @@ implementation, an independent staff reviewer checks correctness, clarity,
 architecture, security, and performance; a separate final AppSec pass checks
 the exact implementation commit. Revision 2 adds TASK-007 to address the
 independent staff review's four policy-integrity findings before any final
-approval. Record actual findings and fixes here.
+approval. Revision 9 extends TASK-008's common history writer lock to resolve
+CR-005 through CR-010 before renewed final approvals. Record actual findings
+and fixes here.
