@@ -2,16 +2,21 @@
 kind: task
 id: TASK-003
 owner: "Codex"
-status: draft
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: [ tasks/TASK-002.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-25: init-workspace test failed with ERR_MODULE_NOT_FOUND for
+    workspace-history.mjs. A second RED case showed the frontend proposal
+    rejected its normalized empty exemption reason."
+  green: "2026-09-25: node --test tests/workspace-config.test.mjs
+    tests/init-workspace.test.mjs passed 10/10 after CLI, history, and
+    empty-exemption normalization."
+  qa: "2026-09-25: npm test passed 27/27; git diff --check and git diff --cached
+    --check were clean."
+  commit: 3a39a6c44c3256ad5e46f1f8e27e3967722fe171
 approvals:
   principal_engineer: null
   appsec: null
