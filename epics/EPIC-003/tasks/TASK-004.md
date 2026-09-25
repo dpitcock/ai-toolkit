@@ -5,7 +5,7 @@ owner: "Codex"
 status: done
 revision: 1
 parent: ../epic-plan.md
-parent_revision: 9
+parent_revision: 13
 depends_on: [ tasks/TASK-003.md ]
 evidence:
   red: "2026-09-25: four new legacy-migration integration cases failed before

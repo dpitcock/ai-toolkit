@@ -5,7 +5,7 @@ kind: epic-plan
 id: EPIC-003-PLAN
 owner: "Codex"
 status: in-progress
-revision: 9
+revision: 13
 parent: epic.md
 parent_revision: 1
 security:
@@ -31,6 +31,8 @@ tasks:
   - tasks/TASK-006.md
   - tasks/TASK-007.md
   - tasks/TASK-008.md
+  - tasks/TASK-009.md
+  - tasks/TASK-010.md
 review_comments:
   - id: CR-001
     status: resolved
@@ -38,85 +40,121 @@ review_comments:
       without accepted evidence and CLI status could not validate linked
       policy."
     resolution_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
-    verified_by: "staff-agent-epic003-r2"
+    verified_by: "staff-agent-task008-final-rereview"
     verified_date: "2026-09-25"
-    verified_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
+    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
   - id: CR-002
     status: resolved
     finding: "Independent review found that a stale UI exemption blocked its own
       corrective policy change."
     resolution_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
-    verified_by: "staff-agent-epic003-r2"
+    verified_by: "staff-agent-task008-final-rereview"
     verified_date: "2026-09-25"
-    verified_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
+    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
   - id: CR-003
     status: resolved
     finding: "Independent review found that orphaned or inconsistent workspace
       history records could be trusted."
     resolution_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
-    verified_by: "staff-agent-epic003-r2"
+    verified_by: "staff-agent-task008-final-rereview"
     verified_date: "2026-09-25"
-    verified_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
+    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
   - id: CR-004
     status: resolved
     finding: "Independent review found that initial acceptance did not re-check
       current UI applicability."
     resolution_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
-    verified_by: "staff-agent-epic003-r2"
+    verified_by: "staff-agent-task008-final-rereview"
     verified_date: "2026-09-25"
-    verified_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
+    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
   - id: CR-005
-    status: open
+    status: resolved
     finding: "Independent PR review reproduced concurrent apply-change calls
       appending duplicate or non-contiguous revisions because the accepted
       baseline is read before the history lock and the appended record itself is
       not validated as part of that critical section."
+    resolution_commit: "e4c8804062c36ce22f1f6981986e7c97276d2d67"
+    verified_by: "staff-agent-task008-final-rereview"
+    verified_date: "2026-09-25"
+    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
   - id: CR-006
-    status: open
+    status: resolved
     finding: "Independent AppSec plan review found that an unspecified
       config/history transaction could not prove recovery after interruptions
       between its separate filesystem mutations."
+    resolution_commit: "e4c8804062c36ce22f1f6981986e7c97276d2d67"
+    verified_by: "staff-agent-task008-final-rereview"
+    verified_date: "2026-09-25"
+    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
   - id: CR-007
-    status: open
+    status: resolved
     finding: "Independent Principal plan review found that a plain exclusive lock
       file survives abrupt process death, preventing the required next operation
       from acquiring the lock to recover an interrupted journal."
+    resolution_commit: "e4c8804062c36ce22f1f6981986e7c97276d2d67"
+    verified_by: "staff-agent-task008-final-rereview"
+    verified_date: "2026-09-25"
+    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
   - id: CR-008
-    status: open
+    status: resolved
     finding: "Independent Principal plan review found that lock cleanup and journal
       phase persistence needed explicit inode-safe and fsynced atomic transition
       requirements to make crash recovery deterministic."
+    resolution_commit: "e4c8804062c36ce22f1f6981986e7c97276d2d67"
+    verified_by: "staff-agent-task008-final-rereview"
+    verified_date: "2026-09-25"
+    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
   - id: CR-009
-    status: open
+    status: resolved
     finding: "Independent Principal plan review found that lock cleanup and stale
       reclamation needed an explicit fixed-link-first order and durable cleanup
       boundary so a fixed lock cannot outlive its owner companion."
+    resolution_commit: "e4c8804062c36ce22f1f6981986e7c97276d2d67"
+    verified_by: "staff-agent-task008-final-rereview"
+    verified_date: "2026-09-25"
+    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
   - id: CR-010
-    status: open
+    status: resolved
     finding: "Independent AppSec plan review found that locking only apply-change
       left concurrent accept and proposal/bootstrap writers able to append
       invalid acceptance history or interleave with policy changes."
+    resolution_commit: "e4c8804062c36ce22f1f6981986e7c97276d2d67"
+    verified_by: "staff-agent-task008-final-rereview"
+    verified_date: "2026-09-25"
+    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
+  - id: CR-011
+    status: open
+    finding: "Final AppSec review reproduced two stale-lock reclaimers deleting a
+      live replacement fixed lock after independently validating the same dead
+      owner."
+  - id: CR-012
+    status: open
+    finding: "Final AppSec review reproduced linked status reporting an uncommitted
+      coordination-root policy while its transaction remained at
+      history-appended."
 review_commit: null
 pr_url: "https://github.com/dpitcock/ai-toolkit/pull/5"
 approvals:
   principal_engineer:
-    by: "principal-agent-epic003-r9"
+    by: "principal-agent-epic003-r2"
     date: "2026-09-25"
-    notes: "Independent Principal review approved revision 9 and TASK-008's bounded
-      CR-005 through CR-010 remediation, including a common validated lock for
-      proposal bootstrap, acceptance/legacy retirement, and policy changes;
-      concurrency and interruption evidence; and prior lock/journal durability
-      controls."
-    revision: 9
+    notes: "Independent Principal review approved revision 13: TASK-009 uses one
+      shared fail-closed helper for script-disabled install, exact pinned fs-ext
+      hook validation, and targeted native rebuild; it retains cache isolation,
+      both compatible devdir variables, actual SDK verification, and an
+      unexpected-hook regression. TASK-010's advisory lock and ordered dual-root
+      recovery design remains sound."
+    revision: 13
   appsec:
-    by: "appsec-agent-epic003-r9"
+    by: "appsec-agent-epic003-r13"
     date: "2026-09-25"
-    notes: "Independent AppSec review approved revision 9 and TASK-008's SEC-301
-      remediation: common verified-root writer lock for bootstrap,
-      acceptance/legacy retirement, and policy changes; combined-history
-      validation; journal recovery; owner-safe cleanup; and real concurrent
-      writer/interruption coverage."
-    revision: 9
+    notes: "Independent AppSec review approved revision 13. TASK-009 now installs
+      fail-closed, validates the pinned fs-ext@2.1.1 build hook, and rebuilds
+      only that reviewed package; the unexpected-hook regression, local
+      cache/devdir isolation, and actual SDK check are required. TASK-010's
+      descriptor advisory locks and ordered dual-root recovery address
+      CR-011/012 while retaining SEC-301/302/303 controls."
+    revision: 13
   qa_lead: null
   code_review: null
   appsec_review: null
@@ -139,7 +177,8 @@ YAML file. The initializer proposes values and applies an accepted migration;
 a versioned governance log records acceptance and later policy changes. Slack
 guidance and tests consume the generated config path.
 
-**Tech stack:** Node.js >=22, `yaml` 2.9.0, shell bootstrap, Node test runner.
+**Tech stack:** Node.js >=22, `yaml` 2.9.0, `fs-ext` 2.1.1, shell bootstrap,
+Node test runner.
 
 **Spec:** `docs/superpowers/specs/2026-09-24-task-tiering-workspace-config-design.md`.
 
@@ -161,6 +200,14 @@ guidance and tests consume the generated config path.
   independent accessibility triage, plan signoff, or final review for UI work.
 - Every task records focused RED/GREEN evidence and an individual commit.
   Run `npm test` and `git diff --check` before branch review.
+- Native workspace-policy locks use `fs-ext` advisory locks. Scope npm cache
+  and node-gyp SDK download/build writes to the active worktree's ignored
+  `.npm-cache/`, `.node-gyp/`, and `node_modules/` paths using
+  both `npm_package_config_node_gyp_devdir` and legacy `npm_config_devdir`; do
+  not use `--nodedir`, which selects a Node source tree rather than an SDK
+  cache. Start script-disabled, verify the exact pinned `fs-ext` build hook,
+  then rebuild only `fs-ext`; the clean-install test verifies the actual SDK
+  directory and that an unexpected lifecycle hook cannot run.
 
 ## File responsibilities and interfaces
 
@@ -170,9 +217,11 @@ guidance and tests consume the generated config path.
 | `scripts/lib/workspace-config.mjs` | Strict YAML parsing, schema validation, canonical digest, root/worktree resolution with provenance. |
 | `scripts/lib/workspace-history.mjs` | Versioned acceptance/change records and current-digest verification. |
 | `scripts/init-workspace.mjs` | Proposal, acceptance, status, and safe legacy migration CLI. |
-| `scripts/init-project.sh` | Propose workspace config during bootstrap without accepting or committing it. |
+| `scripts/init-project.sh` | Runs the fail-closed reviewed native-lock install, then proposes workspace config without accepting or committing it. |
+| `scripts/install-native-lock.mjs` | Validates the pinned `fs-ext` hook and runs its only permitted native rebuild. |
 | `tests/workspace-config.test.mjs` | Parser, resolver, exemption, and history behavior. |
 | `tests/init-workspace.test.mjs` | Greenfield and legacy CLI/migration integration cases. |
+| `docs/workflow.md` | Documents worktree-local npm/node-gyp cache, native lock dependency, and filesystem policy. |
 | `docs/slack-control-plane.md` | Document unified config as Slack's descriptor. |
 | `tests/workspace-config-slack.test.mjs` | Generated-config Slack contract; replaces the old example test. |
 
@@ -216,6 +265,9 @@ mandatory final AppSec review remains a later gate.
 - Concurrent policy-change requests and interrupted config/history updates
   must preserve or recover one valid accepted revision; stale requests cannot
   replace the accepted config.
+- Native installs must build the pinned lock dependency without writing npm or
+  node-gyp state outside the active worktree; unsupported filesystems fail
+  before policy mutation.
 
 ## Tasks and checkpoints
 
@@ -230,6 +282,10 @@ mandatory final AppSec review remains a later gate.
 7. `tasks/TASK-007.md` — accepted-policy review remediation (QA-302/304/305).
 8. `tasks/TASK-008.md` — recoverable concurrent policy-change remediation
    (QA-302/304).
+9. `tasks/TASK-009.md` — reproducible native advisory-lock installation
+   (QA-301/304; SEC-302).
+10. `tasks/TASK-010.md` — OS-advisory lock and linked-transaction remediation
+    (QA-302/304; SEC-301/302).
 
 Dependencies are sequential and declared in each task. Checkpoints follow
 TASK-003 (greenfield init), TASK-006 (legacy, worktree, Slack, and current
@@ -253,5 +309,11 @@ architecture, security, and performance; a separate final AppSec pass checks
 the exact implementation commit. Revision 2 adds TASK-007 to address the
 independent staff review's four policy-integrity findings before any final
 approval. Revision 9 extends TASK-008's common history writer lock to resolve
-CR-005 through CR-010 before renewed final approvals. Record actual findings
-and fixes here.
+CR-005 through CR-010 before renewed final approvals. Revision 11 splits the
+OS-level advisory-lock remediation into TASK-009 for reproducible, sandbox-local
+native installation and TASK-010 for CR-011/012 locking and linked-root
+transaction integrity. Revision 12 makes the SDK-cache contract compatible
+with pre-11.4 node-gyp by setting both supported devdir variables and checking
+the resulting directory. Revision 13 makes lifecycle execution fail closed:
+the locked graph installs with scripts disabled and only the inspected pinned
+`fs-ext` build is later rebuilt. Record actual findings and fixes here.

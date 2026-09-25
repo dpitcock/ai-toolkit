@@ -5,7 +5,7 @@ owner: "Codex"
 status: done
 revision: 1
 parent: ../epic-plan.md
-parent_revision: 9
+parent_revision: 13
 depends_on: []
 evidence:
   red: "2026-09-24: node --test tests/scaffold.test.mjs failed 0/1; the fixture's
