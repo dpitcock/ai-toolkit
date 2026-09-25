@@ -4,7 +4,7 @@
 kind: epic-plan
 id: EPIC-003-PLAN
 owner: "Codex"
-status: awaiting-principal-signoff
+status: approved
 revision: 1
 parent: epic.md
 parent_revision: 1
@@ -33,8 +33,18 @@ review_comments: []
 review_commit: null
 pr_url: null
 approvals:
-  principal_engineer: null
-  appsec: null
+  principal_engineer:
+    by: "Dennis"
+    date: "2026-09-24"
+    notes: "The requester relayed Dennis's approval of EPIC-003-PLAN revision 1 and
+      its six tasks and interfaces; no separate findings were supplied."
+    revision: 1
+  appsec:
+    by: "Andrei"
+    date: "2026-09-24"
+    notes: "The requester relayed Andrei's approval of EPIC-003-PLAN revision 1 and
+      its SEC-301 through SEC-303 mapping; no separate findings were supplied."
+    revision: 1
   qa_lead: null
   code_review: null
   appsec_review: null
