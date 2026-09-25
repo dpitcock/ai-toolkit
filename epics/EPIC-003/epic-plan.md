@@ -65,7 +65,7 @@ review_comments:
     verified_date: "2026-09-25"
     verified_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
 review_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
-pr_url: null
+pr_url: "https://github.com/dpitcock/ai-toolkit/pull/5"
 approvals:
   principal_engineer:
     by: "principal-agent-epic003-r2"
