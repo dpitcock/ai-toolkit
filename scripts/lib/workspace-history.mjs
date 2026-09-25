@@ -85,16 +85,24 @@ export function readWorkspaceHistory(root) {
 
 function syncDirectory(directory) { const fd=fs.openSync(directory,'r');try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); } }
 function pauseForTest(checkpoint) { if(process.env.WORKSPACE_INIT_TEST_PAUSE_AFTER===checkpoint) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,60_000); }
-function lockStat(file,links) { const stat=fs.lstatSync(file);if(stat.isSymbolicLink() || !stat.isFile() || stat.nlink!==links) throw new Error('Workspace history lock is malformed');return stat; }
+function lockStat(file,links) {
+  const stat=fs.lstatSync(file);
+  if(stat.isSymbolicLink() || !stat.isFile() || stat.nlink!==links) throw new Error('Workspace history lock is malformed');
+  return stat;
+}
 function sameFile(left,right) { return left.dev===right.dev && left.ino===right.ino; }
+function fixedChanged(lock,fixed) {
+  try { return !sameFile(fixed,lockStat(lock,2)); }
+  catch { return true; }
+}
 function ownerFor(lock) {
   const directory=path.dirname(lock),prefix=`${path.basename(lock)}.`;
   let fixed;
-  try { fixed=lockStat(lock,2); } catch(error) { if(error.code==='ENOENT') return null;throw error; }
+  try { fixed=lockStat(lock,2); } catch { return null; }
   const names=fs.readdirSync(directory).filter(name=>name.startsWith(prefix) && name.endsWith('.owner'));
   const owners=names.map(name=>path.join(directory,name)).filter(file=>{ try { return sameFile(fixed,lockStat(file,2)); } catch { return false; } });
   if(owners.length!==1) {
-    try { if(!sameFile(fixed,lockStat(lock,2))) return null; } catch(error) { if(error.code==='ENOENT') return null;throw error; }
+    if(fixedChanged(lock,fixed)) return null;
     throw new Error('Workspace history lock is malformed');
   }
   let owner;
@@ -103,9 +111,13 @@ function ownerFor(lock) {
   if(!Number.isInteger(owner?.pid) || owner.pid<1 || !/^[a-f0-9]{32}$/.test(owner?.nonce ?? '')) throw new Error('Workspace history lock is malformed');
   try {
     if(!sameFile(fixed,lockStat(lock,2)) || !sameFile(fixed,lockStat(owners[0],2))) return null;
-  } catch(error) { if(error.code==='ENOENT') return null;throw error; }
+  } catch(error) { if(error.code==='ENOENT' || fixedChanged(lock,fixed)) return null;throw error; }
   let ownerStat;
-  try { ownerStat=lockStat(owners[0],2); } catch(error) { if(error.code==='ENOENT') return null;throw error; }
+  try { ownerStat=lockStat(owners[0],2); }
+  catch(error) {
+    if(fixedChanged(lock,fixed)) return null;
+    throw error;
+  }
   return {file:owners[0],owner,fixed,ownerStat};
 }
 function releaseLock(lock,held) {
