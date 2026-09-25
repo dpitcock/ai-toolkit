@@ -4,7 +4,7 @@
 kind: epic
 id: EPIC-003
 owner: "Codex"
-status: awaiting-review
+status: in-progress
 revision: 1
 parent: ../../project/project-plan.md
 parent_revision: 2
@@ -23,9 +23,24 @@ accessibility:
     conditional accessibility gate remains in force for later UI work."
 qa_requirements: [ QA-301, QA-302, QA-303, QA-304, QA-305 ]
 approvals:
-  principal_engineer: null
-  appsec: null
-  qa_lead: null
+  principal_engineer:
+    by: "Dennis"
+    date: "2026-09-24"
+    notes: "The requester relayed Dennis's approval of EPIC-003 revision 1 scope and
+      dependencies; no separate findings were supplied."
+    revision: 1
+  appsec:
+    by: "Andrei"
+    date: "2026-09-24"
+    notes: "The requester relayed Andrei's approval of EPIC-003 revision 1 triage
+      for SEC-301 through SEC-303; no separate findings were supplied."
+    revision: 1
+  qa_lead:
+    by: "Karen"
+    date: "2026-09-24"
+    notes: "The requester relayed Karen's approval of QA-301 through QA-305 for
+      EPIC-003 revision 1; no separate findings were supplied."
+    revision: 1
   code_review: null
   appsec_review: null
   accessibility: null
@@ -50,7 +65,7 @@ guidance and tests, and removes the old example only after its values are
 represented by the initializer. No live Slack service, credentials, or mutable
 session state are added. Existing accessibility governance is preserved.
 
-## AppSec concerns — proposed for Andrei's fresh triage
+## AppSec concerns
 
 - **SEC-301 — Approval authority and audit integrity.** A locally editable
   record cannot authenticate a reviewer. Require explicit acceptance, retain
@@ -69,7 +84,10 @@ external-descriptor boundaries. Plan signoff and final implementation review
 are separate, later AppSec decisions. No approval from the superseded local
 task-tiering branch transfers to this epic.
 
-## QA requirements — proposed for Karen's fresh review
+The requester relayed Andrei's approval of SEC-301 through SEC-303 for this
+epic revision on 2026-09-24; no separate findings were supplied.
+
+## QA requirements
 
 - **QA-301 — Bootstrap regression.** The scaffold fixture must use the copied
   project plan's actual revision when constructing its independent approval.
@@ -90,8 +108,8 @@ task-tiering branch transfers to this epic.
   scaffold assertion; ensure the existing UI accessibility gate still fails
   closed; run `npm test` and `git diff --check`.
 
-These are proposed QA requirements, not a QA Lead approval. Karen must review
-and record findings against this epic revision before approval.
+The requester relayed Karen's approval of QA-301 through QA-305 for this epic
+revision on 2026-09-24; no amendments or separate findings were supplied.
 
 ## Accessibility triage
 
