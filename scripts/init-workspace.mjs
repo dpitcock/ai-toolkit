@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
 import YAML from 'yaml';
 import {parseWorkspaceConfig,resolveWorkspaceConfig,workspaceConfigDigest} from './lib/workspace-config.mjs';
 import {appendWorkspaceHistory,readWorkspaceHistory,assertAcceptedWorkspaceConfig} from './lib/workspace-history.mjs';
@@ -29,6 +30,20 @@ function configPath(root) {
     throw new Error('Workspace config must be a regular file');
   }
   return file;
+}
+
+function coordinationRoot(root) {
+  try {
+    const worktrees=execFileSync('git',['-C',root,'worktree','list','--porcelain'],{encoding:'utf8'})
+      .split('\n').filter(line=>line.startsWith('worktree '));
+    return worktrees.length ? fs.realpathSync(worktrees[0].slice(9)) : root;
+  } catch { return root; }
+}
+
+function existingConfig(root) {
+  const file=configPath(root);
+  if(!fs.existsSync(file)) throw new Error('Workspace config is missing');
+  return parseWorkspaceConfig(fs.readFileSync(file,'utf8'));
 }
 
 function candidateConfig(root,candidate) {
@@ -200,7 +215,6 @@ function acceptedConfig(root) {
   const file=configPath(root);
   const config=parseWorkspaceConfig(fs.readFileSync(file,'utf8'));
   const record=assertAcceptedWorkspaceConfig(root,config);
-  assertCurrentUiPolicy(root,config);
   return {file,config,record};
 }
 
@@ -282,6 +296,7 @@ function accept(root,args) {
   const config=parseWorkspaceConfig(fs.readFileSync(file,'utf8'));
   const digest=workspaceConfigDigest(config);
   if(expected!==digest) throw new Error('Config digest differs from the reviewed proposal');
+  assertCurrentUiPolicy(root,config);
   const proposal=readWorkspaceHistory(root).at(-1);
   const legacy=readLegacy(root);
   if(proposal && ['acceptance','change'].includes(proposal.kind)) {
@@ -308,10 +323,12 @@ function accept(root,args) {
 }
 
 function status(root) {
-  const {config}=resolveWorkspaceConfig({coordinationRoot:root});
-  const record=assertAcceptedWorkspaceConfig(root,config);
+  const coordination=coordinationRoot(root);
+  const {config,sources}=resolveWorkspaceConfig({coordinationRoot:coordination,worktreeRoot:root});
+  let record=assertAcceptedWorkspaceConfig(coordination,existingConfig(coordination));
+  if(root!==coordination) record=assertAcceptedWorkspaceConfig(root,existingConfig(root));
   assertCurrentUiPolicy(root,config);
-  return {status:'accepted',digest:record.digest,revision:record.revision};
+  return {status:'accepted',digest:workspaceConfigDigest(config),revision:record.revision,sources};
 }
 
 try {

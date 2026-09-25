@@ -251,3 +251,42 @@ test('stale no-UI exemptions and UI policy waivers are refused',t=>{
   fs.writeFileSync(path.join(headless,'src/App.tsx'),'export default function App() { return null; }\n');
   assert.throws(()=>run(headless,'status'),/stale|accessibility/i);
 });
+
+test('a stale accepted policy can be corrected but cannot be newly accepted for UI work',t=>{
+  const root=fixture(t);
+  const proposal=JSON.parse(run(root,'propose'));
+  run(root,'accept','--by','Dennis','--reason','Initial headless policy','--digest',proposal.digest);
+  fs.mkdirSync(path.join(root,'src'));
+  fs.writeFileSync(path.join(root,'src/App.tsx'),'export default function App() { return null; }\n');
+  const candidate=path.join(root,'candidate.yaml');
+  const corrected=YAML.parse(fs.readFileSync(path.join(root,'config/workspace-config.yaml'),'utf8'));
+  corrected.approvals_required.accessibility_reviewer=true;
+  corrected.approvals_required.ui_designer=true;
+  corrected.approvals_overrides={exempt:[]};
+  fs.writeFileSync(candidate,YAML.stringify(corrected));
+  const change=JSON.parse(run(root,'propose-change','--candidate',candidate));
+  assert.equal(JSON.parse(run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','UI policy restored','--digest',change.digest)).status,'accepted');
+  assert.equal(JSON.parse(run(root,'status')).status,'accepted');
+  const pending=fixture(t);
+  const pendingProposal=JSON.parse(run(pending,'propose'));
+  fs.mkdirSync(path.join(pending,'src'));
+  fs.writeFileSync(path.join(pending,'src/App.tsx'),'export default function App() { return null; }\n');
+  assert.throws(()=>run(pending,'accept','--by','Dennis','--reason','Stale policy','--digest',pendingProposal.digest),/accessibility/i);
+});
+
+test('linked status requires accepted root and overlay policy with provenance',t=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'workspace-linked-status-'));
+  const linked=path.join(os.tmpdir(),`workspace-linked-status-${path.basename(root)}`);
+  t.after(()=>{fs.rmSync(root,{recursive:true,force:true});fs.rmSync(linked,{recursive:true,force:true});});
+  fs.mkdirSync(path.join(root,'config'),{recursive:true});fs.mkdirSync(path.join(root,'project'));
+  fs.writeFileSync(path.join(root,'package.json'),JSON.stringify({name:'linked-status'}));
+  const rootConfig={workspace:{repository:'linked-status',environment:'local',provider:'codex',slack_channel_name:'ws-linked-status-codex',timezone:'UTC'},approvals_required:{principal:true,qa:true,appsec:true,accessibility_reviewer:false,ui_designer:false},approvals_overrides:{reason:'No UI',exempt:['accessibility_reviewer','ui_designer']},daily_summary:{local_time:'09:00'}};
+  fs.writeFileSync(path.join(root,'config/workspace-config.yaml'),YAML.stringify(rootConfig));
+  execFileSync('git',['init','-q'],{cwd:root});execFileSync('git',['config','user.email','qa@example.test'],{cwd:root});execFileSync('git',['config','user.name','QA'],{cwd:root});execFileSync('git',['add','.'],{cwd:root});execFileSync('git',['commit','-qm','fixture'],{cwd:root});execFileSync('git',['worktree','add','-q','-b','linked-status',linked],{cwd:root});
+  const rootProposal=JSON.parse(run(root,'propose'));run(root,'accept','--by','Dennis','--reason','Root policy','--digest',rootProposal.digest);
+  const overlay=YAML.parse(fs.readFileSync(path.join(linked,'config/workspace-config.yaml'),'utf8'));overlay.approvals_required.qa=false;overlay.worktree_overrides=['approvals_required.qa'];fs.writeFileSync(path.join(linked,'config/workspace-config.yaml'),YAML.stringify(overlay));
+  assert.throws(()=>run(linked,'status'));
+  const overlayProposal=JSON.parse(run(linked,'propose'));run(linked,'accept','--by','Dennis','--reason','Overlay policy','--digest',overlayProposal.digest);
+  const status=JSON.parse(run(linked,'status'));
+  assert.equal(status.status,'accepted');assert.equal(status.sources['approvals_required.qa'],'worktree');assert.equal(status.sources['workspace.provider'],'root');
+});

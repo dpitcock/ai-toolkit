@@ -55,10 +55,26 @@ export function readWorkspaceHistory(root) {
   const text=fs.readFileSync(file,'utf8');
   if(!text) return [];
   if(!text.endsWith('\n')) throw new Error('Workspace history has an incomplete record');
-  return text.trimEnd().split('\n').map((line,index)=>{
+  const records=text.trimEnd().split('\n').map((line,index)=>{
     try { return validRecord(JSON.parse(line)); }
     catch(error) { throw new Error(`Workspace history line ${index+1}: ${error.message}`); }
   });
+  const first=records[0];
+  if(first.kind!=='proposal' || first.revision!==1) throw new Error('Workspace history requires an initial proposal at revision 1');
+  if(workspaceConfigDigest(first.config)!==first.digest) throw new Error('Workspace history proposal digest does not match its snapshot');
+  for(let index=1;index<records.length;index+=1) {
+    const previous=records[index-1],record=records[index];
+    if(record.kind==='acceptance') {
+      if(previous.kind!=='proposal' || record.revision!==previous.revision) {
+        throw new Error('Workspace history acceptance must match the pending proposal revision');
+      }
+    } else if(record.kind==='change') {
+      if(!['acceptance','change'].includes(previous.kind) || record.revision!==previous.revision+1) {
+        throw new Error('Workspace history change must follow accepted policy at the next revision');
+      }
+    } else throw new Error('Workspace history cannot contain a later proposal');
+  }
+  return records;
 }
 
 export function appendWorkspaceHistory(root,record) {

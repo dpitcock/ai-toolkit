@@ -10,6 +10,7 @@ import {
   resolveWorkspaceConfig,
   workspaceConfigDigest,
 } from '../scripts/lib/workspace-config.mjs';
+import {assertAcceptedWorkspaceConfig} from '../scripts/lib/workspace-history.mjs';
 
 const sample=`workspace:
   repository: example-repository
@@ -136,4 +137,21 @@ test('linked worktree rejects missing, duplicate, unknown, and incomplete overri
   assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}),/known override/);
   writeConfig(linked,{...changed,worktree_overrides:['approvals_overrides.reason']});
   assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}),/known override/);
+});
+
+test('history rejects orphaned, gapped, and tampered acceptance evidence',t=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'workspace-history-chain-'));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const config=parseWorkspaceConfig(sample);
+  writeConfig(root,config);
+  fs.mkdirSync(path.join(root,'project'));
+  const history=path.join(root,'project/workspace-config-history.jsonl');
+  const digest=workspaceConfigDigest(config);
+  const record={kind:'change',digest,revision:99,date:'2026-09-25',by:'Reviewer',reason:'forged',changes:[]};
+  fs.writeFileSync(history,`${JSON.stringify(record)}\n`);
+  assert.throws(()=>assertAcceptedWorkspaceConfig(root,config),/initial proposal|orphaned/i);
+  const proposal={kind:'proposal',digest:'0'.repeat(64),revision:1,date:'2026-09-25',config,reasons:{principal:'review'}};
+  const acceptance={kind:'acceptance',digest,revision:1,date:'2026-09-25',by:'Reviewer',reason:'reviewed',changes:[]};
+  fs.writeFileSync(history,`${JSON.stringify(proposal)}\n${JSON.stringify(acceptance)}\n`);
+  assert.throws(()=>assertAcceptedWorkspaceConfig(root,config),/proposal.*digest/i);
 });
