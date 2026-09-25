@@ -17,7 +17,7 @@ test('init is idempotent; real epic worktree is isolated and refuses collisions'
  run('bash',['scripts/init-project.sh','--offline']);assert.match(fs.readFileSync(plan,'utf8'),/Preserve this user edit/);
  const text=fs.readFileSync(plan,'utf8');const match=text.match(/^---\n([\s\S]*?)\n---\n/);const d=YAML.parse(match[1]);
  d.approvals.accessibility=null;d.approvals.accessibility_review=null;
- d.owner='EM';d.status='approved';d.approvals.principal_engineer={by:'Principal',date:'2026-09-07',notes:'Reviewed baseline',revision:1};
+ d.owner='EM';d.status='approved';d.approvals.principal_engineer={by:'Principal',date:'2026-09-07',notes:'Reviewed baseline',revision:d.revision};
  fs.writeFileSync(plan,'---\n'+YAML.stringify(d)+'---\nProject scope\n');
  run('git',['init']);run('git',['config','user.email','test@example.invalid']);run('git',['config','user.name','Test']);run('git',['add','.']);run('git',['commit','-m','Fixture baseline']);
  const skill=path.join(root,'skills/upstream/superpowers/skills/using-git-worktrees');fs.mkdirSync(skill,{recursive:true});fs.writeFileSync(path.join(skill,'SKILL.md'),'Worktree fixture: actual upstream installation tested separately.');
