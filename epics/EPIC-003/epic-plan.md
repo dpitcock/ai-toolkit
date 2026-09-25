@@ -4,7 +4,7 @@
 kind: epic-plan
 id: EPIC-003-PLAN
 owner: "Codex"
-status: awaiting-principal-signoff
+status: awaiting-appsec-signoff
 revision: 2
 parent: epic.md
 parent_revision: 1
@@ -51,7 +51,14 @@ review_comments:
 review_commit: null
 pr_url: null
 approvals:
-  principal_engineer: null
+  principal_engineer:
+    by: "principal-agent-epic003-r2"
+    date: "2026-09-25"
+    notes: "Independent plan review of revision 2 at
+      f235b9036aae637d4c193b72eeb04e132fff6518 approved TASK-007 sizing,
+      accepted-policy interfaces, CR-001 through CR-004 coverage, and
+      real-worktree test strategy."
+    revision: 2
   appsec: null
   qa_lead: null
   code_review: null
