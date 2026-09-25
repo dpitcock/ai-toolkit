@@ -11,7 +11,7 @@ const source=path.resolve(import.meta.dirname,'..');
 test('generated workspace config supplies Slack routing without a template descriptor',t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'workspace-config-slack-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
-  for(const item of ['scripts','config']) fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
+  fs.cpSync(path.join(source,'scripts'),path.join(root,'scripts'),{recursive:true});
   fs.mkdirSync(path.join(root,'project'));
   fs.writeFileSync(path.join(root,'package.json'),JSON.stringify({name:'example-repository'}));
   fs.symlinkSync(path.join(source,'node_modules'),path.join(root,'node_modules'),'dir');

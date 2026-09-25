@@ -8,7 +8,7 @@ import YAML from 'yaml';
 const source=path.resolve(import.meta.dirname,'..');
 test('init is idempotent; real epic worktree is isolated and refuses collisions',t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'blueprint-scaffold-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
- for(const item of ['scripts','project','tests','config','package.json','package-lock.json','.gitignore']) fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
+ for(const item of ['scripts','project','tests','package.json','package-lock.json','.gitignore']) fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
  fs.mkdirSync(path.join(root,'epics'));fs.cpSync(path.join(source,'epics','EPIC-XXX'),path.join(root,'epics','EPIC-XXX'),{recursive:true});
  fs.symlinkSync(path.join(source,'node_modules'),path.join(root,'node_modules'),'dir');
  const run=(cmd,args)=>execFileSync(cmd,args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']});
