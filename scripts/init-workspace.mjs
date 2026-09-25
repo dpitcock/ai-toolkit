@@ -256,10 +256,13 @@ function acceptedConfig(root) {
 }
 
 function proposeChange(root,args) {
-  const {config,record}=acceptedConfig(root);
-  const candidate=candidateConfig(root,args['--candidate']);
-  assertCurrentUiPolicy(root,candidate);
-  return {status:'pending-change',digest:workspaceConfigDigest(candidate),base_digest:record.digest,changes:changedFields(config,candidate)};
+  return withWorkspaceHistoryLock(root,()=>{
+    recoverWorkspaceTransaction(root);
+    const {config,record}=acceptedConfig(root);
+    const candidate=candidateConfig(root,args['--candidate']);
+    assertCurrentUiPolicy(root,candidate);
+    return {status:'pending-change',digest:workspaceConfigDigest(candidate),base_digest:record.digest,changes:changedFields(config,candidate)};
+  });
 }
 
 function applyChange(root,args) {
@@ -272,6 +275,7 @@ function applyChange(root,args) {
   const digest=workspaceConfigDigest(candidate);
   if(expected!==digest) throw new Error('Candidate digest differs from the reviewed policy change');
   return withWorkspaceHistoryLock(root,({append})=>{
+    recoverWorkspaceTransaction(root);
     const {file,config,record:current}=acceptedConfig(root);
     if(base!==current.digest) throw new Error('Accepted policy changed after the reviewed base');
     const record={kind:'change',digest,revision:current.revision+1,date:new Date().toISOString().slice(0,10),by,reason,
@@ -347,6 +351,7 @@ function accept(root,args) {
     throw new Error('Acceptance requires --by, --reason, and --digest');
   }
   return withWorkspaceHistoryLock(root,({records,append})=>{
+    recoverWorkspaceTransaction(root);
     const file=configPath(root);
     const config=parseWorkspaceConfig(fs.readFileSync(file,'utf8'));
     const digest=workspaceConfigDigest(config);
@@ -369,12 +374,15 @@ function accept(root,args) {
 }
 
 function status(root) {
-  const coordination=coordinationRoot(root);
-  const {config,sources}=resolveWorkspaceConfig({coordinationRoot:coordination,worktreeRoot:root});
-  let record=assertAcceptedWorkspaceConfig(coordination,existingConfig(coordination));
-  if(root!==coordination) record=assertAcceptedWorkspaceConfig(root,existingConfig(root));
-  assertCurrentUiPolicy(root,config);
-  return {status:'accepted',digest:workspaceConfigDigest(config),revision:record.revision,sources};
+  return withWorkspaceHistoryLock(root,()=>{
+    recoverWorkspaceTransaction(root);
+    const coordination=coordinationRoot(root);
+    const {config,sources}=resolveWorkspaceConfig({coordinationRoot:coordination,worktreeRoot:root});
+    let record=assertAcceptedWorkspaceConfig(coordination,existingConfig(coordination));
+    if(root!==coordination) record=assertAcceptedWorkspaceConfig(root,existingConfig(root));
+    assertCurrentUiPolicy(root,config);
+    return {status:'accepted',digest:workspaceConfigDigest(config),revision:record.revision,sources};
+  });
 }
 
 try {
@@ -390,7 +398,6 @@ try {
   if(!['propose-change','apply-change'].includes(action) && Object.hasOwn(args,'--candidate')) {
     throw new Error('Candidate config is only valid with policy changes');
   }
-  recoverWorkspaceTransaction(root);
   const result=action==='propose' ? propose(root) : action==='accept' ? accept(root,args) : action==='status' ? status(root) :
     action==='propose-change' ? proposeChange(root,args) : applyChange(root,args);
   console.log(JSON.stringify(result));
