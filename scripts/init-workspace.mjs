@@ -306,9 +306,8 @@ function applyChange(root,args) {
   });
 }
 
-function propose(root) {
+function proposeLocked(root,history,append) {
   const file=configPath(root);
-  const history=readWorkspaceHistory(root);
   const legacy=readLegacy(root);
   if(fs.existsSync(file)) {
     const config=parseWorkspaceConfig(fs.readFileSync(file,'utf8'));
@@ -325,7 +324,7 @@ function propose(root) {
     const reasons=latest?.reasons ?? Object.fromEntries(
       ['principal','qa','appsec','accessibility_reviewer','ui_designer'].map(role=>[role,'Existing value requires human review.'])
     );
-    if(!latest) appendWorkspaceHistory(root,{
+    if(!latest) append({
       kind:'proposal',digest,revision:1,date:new Date().toISOString().slice(0,10),config,reasons,
       ...(legacy ? {legacyDigest:legacy.digest} : {}),
     });
@@ -338,11 +337,18 @@ function propose(root) {
   })) : defaults;
   const digest=workspaceConfigDigest(config);
   fs.writeFileSync(file,YAML.stringify(config),{flag:'wx',mode:0o600});
-  appendWorkspaceHistory(root,{
+  append({
     kind:'proposal',digest,revision:1,date:new Date().toISOString().slice(0,10),config,reasons,
     ...(legacy ? {legacyDigest:legacy.digest} : {}),
   });
   return {status:'pending',digest,reasons};
+}
+
+function propose(root) {
+  return withWorkspaceHistoryLock(root,({records,append})=>{
+    recoverWorkspaceTransaction(root);
+    return proposeLocked(root,records,append);
+  });
 }
 
 function accept(root,args) {
