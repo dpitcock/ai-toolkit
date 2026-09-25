@@ -4,7 +4,7 @@
 kind: epic-plan
 id: EPIC-003-PLAN
 owner: "Codex"
-status: awaiting-appsec-signoff
+status: in-progress
 revision: 2
 parent: epic.md
 parent_revision: 1
@@ -59,7 +59,14 @@ approvals:
       accepted-policy interfaces, CR-001 through CR-004 coverage, and
       real-worktree test strategy."
     revision: 2
-  appsec: null
+  appsec:
+    by: "appsec-agent-epic003-r2"
+    date: "2026-09-25"
+    notes: "Independent AppSec review of revision 2 at
+      4a0028016f25ec483d31e92ad84fc0a8bf6133d6 approved TASK-007's
+      SEC-301/302/303 remediation plan and its accepted-root/overlay,
+      history-chain, stale-UI, and legacy-retirement regression coverage."
+    revision: 2
   qa_lead: null
   code_review: null
   appsec_review: null

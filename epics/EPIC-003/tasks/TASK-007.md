@@ -2,7 +2,7 @@
 kind: task
 id: TASK-007
 owner: "Codex"
-status: draft
+status: in-progress
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 2
