@@ -291,6 +291,19 @@ test('status recovers an interrupted policy change to its accepted pair',t=>{
   assert.equal(fs.existsSync(path.join(root,'project/workspace-config-transaction.json')),false);
 });
 
+test('a dead history-lock owner is reclaimed before a policy change',t=>{
+  const root=fixture(t);
+  const proposal=JSON.parse(run(root,'propose'));
+  run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
+  const candidate=path.join(root,'candidate.yaml');
+  const changed=YAML.parse(fs.readFileSync(path.join(root,'config/workspace-config.yaml'),'utf8'));
+  changed.approvals_required.qa=false;fs.writeFileSync(candidate,YAML.stringify(changed));
+  const change=JSON.parse(run(root,'propose-change','--candidate',candidate));
+  fs.writeFileSync(path.join(root,'project/workspace-config-history.jsonl.lock'),JSON.stringify({pid:99999999}));
+  assert.equal(JSON.parse(run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','Recovered lock',
+    '--digest',change.digest,'--base-digest',change.base_digest)).status,'accepted');
+});
+
 test('stale no-UI exemptions and UI policy waivers are refused',t=>{
   const root=fixture(t,'web-app',{react:'19.0.0'});
   const proposal=JSON.parse(run(root,'propose'));

@@ -83,9 +83,24 @@ export function withWorkspaceHistoryLock(root,callback) {
   const lock=`${file}.lock`;
   let descriptor;
   for(let attempt=0;attempt<100;attempt+=1) {
-    try { descriptor=fs.openSync(lock,'wx',0o600);break; }
+    try {
+      descriptor=fs.openSync(lock,'wx',0o600);
+      fs.writeFileSync(descriptor,JSON.stringify({pid:process.pid}),{encoding:'utf8'});
+      break;
+    }
     catch(error) {
       if(error.code!=='EEXIST' || attempt===99) throw error;
+      const stat=fs.lstatSync(lock);
+      if(stat.isSymbolicLink() || !stat.isFile() || stat.size>1024) throw new Error('Workspace history lock must be a regular file');
+      if(stat.size===0) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10);continue; }
+      let owner;
+      try { owner=JSON.parse(fs.readFileSync(lock,'utf8')); } catch { throw new Error('Workspace history lock is malformed'); }
+      if(!Number.isInteger(owner?.pid) || owner.pid<1) throw new Error('Workspace history lock is malformed');
+      try { process.kill(owner.pid,0); }
+      catch(ownerError) {
+        if(ownerError.code==='ESRCH') { fs.unlinkSync(lock);continue; }
+        if(ownerError.code!=='EPERM') throw ownerError;
+      }
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10);
     }
   }
