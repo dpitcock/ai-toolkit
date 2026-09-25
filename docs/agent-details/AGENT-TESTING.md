@@ -31,7 +31,7 @@ See [the workflow runbook](docs/workflow.md) for the full lifecycle and [the gat
 From the repository root, using Node.js 22+:
 
 ```sh
-npm ci --ignore-scripts
+node scripts/install-native-lock.mjs
 npm test
 ```
 

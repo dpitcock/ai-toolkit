@@ -12,8 +12,23 @@ Cline uses an explicit handoff at the same boundaries because its adapter does n
 
 Projects that use an externally deployed Slack control plane can follow the
 [Slack control-plane guide](slack-control-plane.md). It supplies routing and safety
-contracts plus a non-secret workspace descriptor; it does not change local Codex,
+contracts plus the generated, non-secret `config/workspace-config.yaml`; it does not change local Codex,
 Cline, or Claude instructions.
+
+## Native workspace lock dependency
+
+Workspace-policy mutations use the native `fs-ext` advisory-lock dependency so
+concurrent stale-lock recovery cannot delete a live replacement lock. A
+repository-owned install first runs `npm ci --ignore-scripts`, verifies the
+pinned `fs-ext` build hook, then rebuilds only that reviewed package. All three
+steps scope npm's cache and node-gyp SDK download directory to the active
+worktree. Set both the current scoped and legacy node-gyp variables for
+compatible toolchains.
+`--nodedir` is intentionally not used: it selects a pre-existing Node source
+tree rather than the SDK download directory. Do not use or repair a user-level
+npm or node-gyp cache. Native builds require a supported compiler and Python;
+CI runs the reviewed native build on Linux filesystems that support advisory
+locks and checks the actual SDK download directory after a clean install.
 
 ## Start a project
 

@@ -8,7 +8,7 @@ import YAML from 'yaml';
 const source=path.resolve(import.meta.dirname,'..');
 test('init is idempotent; real epic worktree is isolated and refuses collisions',t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'blueprint-scaffold-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
- for(const item of ['scripts','project','tests','config','package.json','package-lock.json','.gitignore']) fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
+ for(const item of ['scripts','project','tests','package.json','package-lock.json','.gitignore']) fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
  fs.mkdirSync(path.join(root,'epics'));fs.cpSync(path.join(source,'epics','EPIC-XXX'),path.join(root,'epics','EPIC-XXX'),{recursive:true});
  fs.symlinkSync(path.join(source,'node_modules'),path.join(root,'node_modules'),'dir');
  const run=(cmd,args)=>execFileSync(cmd,args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']});
@@ -17,7 +17,7 @@ test('init is idempotent; real epic worktree is isolated and refuses collisions'
  run('bash',['scripts/init-project.sh','--offline']);assert.match(fs.readFileSync(plan,'utf8'),/Preserve this user edit/);
  const text=fs.readFileSync(plan,'utf8');const match=text.match(/^---\n([\s\S]*?)\n---\n/);const d=YAML.parse(match[1]);
  d.approvals.accessibility=null;d.approvals.accessibility_review=null;
- d.owner='EM';d.status='approved';d.approvals.principal_engineer={by:'Principal',date:'2026-09-07',notes:'Reviewed baseline',revision:1};
+ d.owner='EM';d.status='approved';d.approvals.principal_engineer={by:'Principal',date:'2026-09-07',notes:'Reviewed baseline',revision:d.revision};
  fs.writeFileSync(plan,'---\n'+YAML.stringify(d)+'---\nProject scope\n');
  run('git',['init']);run('git',['config','user.email','test@example.invalid']);run('git',['config','user.name','Test']);run('git',['add','.']);run('git',['commit','-m','Fixture baseline']);
  const skill=path.join(root,'skills/upstream/superpowers/skills/using-git-worktrees');fs.mkdirSync(skill,{recursive:true});fs.writeFileSync(path.join(skill,'SKILL.md'),'Worktree fixture: actual upstream installation tested separately.');
@@ -27,9 +27,26 @@ test('init is idempotent; real epic worktree is isolated and refuses collisions'
  const env={...process.env,PATH:bin+path.delimiter+process.env.PATH};
  execFileSync('bash',['scripts/new-epic.sh','EPIC-001'],{cwd:root,env,stdio:'pipe'});
  const worktree=path.join(root,'.worktrees/EPIC-001');assert.ok(fs.existsSync(path.join(worktree,'epics/EPIC-001/tasks/TASK-001.md')));assert.ok(!fs.existsSync(path.join(root,'epics/EPIC-001')));
- assert.ok(fs.existsSync(path.join(worktree,'config','slack-workspace.example.yml')));
+ assert.ok(fs.existsSync(path.join(worktree,'config','workspace-config.yaml')));
+ assert.ok(!fs.existsSync(path.join(worktree,'config','slack-workspace.example.yml')));
  assert.equal(execFileSync('git',['branch','--show-current'],{cwd:worktree,encoding:'utf8'}).trim(),'epic/EPIC-001');
- assert.match(fs.readFileSync(path.join(root,'npm-calls'),'utf8'),/ci --ignore-scripts\ntest/);
+ assert.match(fs.readFileSync(path.join(root,'npm-calls'),'utf8'),/ci --ignore-scripts\nrebuild fs-ext --ignore-scripts=false\ntest/);
  assert.throws(()=>execFileSync('bash',['scripts/new-epic.sh','EPIC-001'],{cwd:root,env,stdio:'pipe'}));
  assert.throws(()=>execFileSync('bash',['scripts/new-epic.sh','../escape'],{cwd:root,env,stdio:'pipe'}));
+});
+
+test('native lock install is local and does not run an unexpected lifecycle hook',{timeout:120_000},t=>{
+ assert.doesNotMatch(fs.readFileSync(path.join(source,'.github/workflows/workflow.yml'),'utf8'),/cache:\s*npm/);
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'blueprint-native-lock-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ for(const item of ['scripts','package.json','package-lock.json','.gitignore']) fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
+ const manifest=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
+ manifest.scripts={...manifest.scripts,preinstall:"node -e \"require('node:fs').writeFileSync('unexpected-hook-ran','yes')\""};
+ fs.writeFileSync(path.join(root,'package.json'),JSON.stringify(manifest,null,2)+'\n');
+ const run=(cmd,args)=>execFileSync(cmd,args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']});
+ run('node',['scripts/install-native-lock.mjs']);
+ assert.ok(fs.existsSync(path.join(root,'.npm-cache')));
+ const devdir=path.join(root,'.node-gyp');assert.ok(fs.existsSync(devdir));
+ assert.ok(fs.readdirSync(devdir).some(version=>fs.existsSync(path.join(devdir,version,'include','node','node.h'))));
+ assert.ok(!fs.existsSync(path.join(root,'unexpected-hook-ran')));
+ run('node',['-e',"const fs=require('node:fs');const ext=require('fs-ext');const fd=fs.openSync('policy.lock','w');ext.flockSync(fd,'ex');ext.flockSync(fd,'un');fs.closeSync(fd);"]);
 });

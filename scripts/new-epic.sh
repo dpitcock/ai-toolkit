@@ -15,7 +15,7 @@ git check-ignore -q .worktrees/probe || { echo '.worktrees must be ignored' >&2;
 git worktree add ".worktrees/$id" -b "epic/$id"
 (
  cd ".worktrees/$id"
- npm ci --ignore-scripts
+ node scripts/install-native-lock.mjs
  npm test
  mkdir -p "epics/$id/tasks"
  sed "s/EPIC-XXX/$id/g" epics/EPIC-XXX/epic.md.template > "epics/$id/epic.md"
