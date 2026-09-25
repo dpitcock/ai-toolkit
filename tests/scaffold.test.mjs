@@ -30,7 +30,21 @@ test('init is idempotent; real epic worktree is isolated and refuses collisions'
  assert.ok(fs.existsSync(path.join(worktree,'config','workspace-config.yaml')));
  assert.ok(!fs.existsSync(path.join(worktree,'config','slack-workspace.example.yml')));
  assert.equal(execFileSync('git',['branch','--show-current'],{cwd:worktree,encoding:'utf8'}).trim(),'epic/EPIC-001');
- assert.match(fs.readFileSync(path.join(root,'npm-calls'),'utf8'),/ci --ignore-scripts\ntest/);
+ assert.match(fs.readFileSync(path.join(root,'npm-calls'),'utf8'),/ci --ignore-scripts\nrebuild fs-ext --ignore-scripts=false\ntest/);
  assert.throws(()=>execFileSync('bash',['scripts/new-epic.sh','EPIC-001'],{cwd:root,env,stdio:'pipe'}));
  assert.throws(()=>execFileSync('bash',['scripts/new-epic.sh','../escape'],{cwd:root,env,stdio:'pipe'}));
+});
+
+test('native lock install is local and does not run an unexpected lifecycle hook',{timeout:120_000},t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'blueprint-native-lock-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ for(const item of ['scripts','package.json','package-lock.json','.gitignore']) fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
+ const manifest=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
+ manifest.scripts={...manifest.scripts,preinstall:"node -e \"require('node:fs').writeFileSync('unexpected-hook-ran','yes')\""};
+ fs.writeFileSync(path.join(root,'package.json'),JSON.stringify(manifest,null,2)+'\n');
+ const run=(cmd,args)=>execFileSync(cmd,args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']});
+ run('node',['scripts/install-native-lock.mjs']);
+ assert.ok(fs.existsSync(path.join(root,'.npm-cache')));
+ assert.ok(fs.existsSync(path.join(root,'.node-gyp')));
+ assert.ok(!fs.existsSync(path.join(root,'unexpected-hook-ran')));
+ run('node',['-e',"const fs=require('node:fs');const ext=require('fs-ext');const fd=fs.openSync('policy.lock','w');ext.flockSync(fd,'ex');ext.flockSync(fd,'un');fs.closeSync(fd);"]);
 });

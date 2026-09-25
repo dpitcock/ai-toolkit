@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 case "${1:-}" in ""|--offline) ;; *) echo "Usage: scripts/init-project.sh [--offline]" >&2; exit 1;; esac
 if [ ! -f project/project-plan.md ]; then cp project/project-plan.md.template project/project-plan.md; fi
 if [ "${1:-}" != --offline ]; then
-  npm ci --ignore-scripts
+  node scripts/install-native-lock.mjs
   bash scripts/install-skills.sh
 fi
 node scripts/init-workspace.mjs propose --root .

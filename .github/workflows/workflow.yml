@@ -16,7 +16,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --ignore-scripts
+      - run: node scripts/install-native-lock.mjs
       - run: npm test
       - name: Check changed epic plans
         if: github.event_name == 'pull_request'

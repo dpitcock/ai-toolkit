@@ -1,6 +1,6 @@
 # Verification
 
-Run `npm ci --ignore-scripts && npm test` on Node.js 22+. The suite covers low-risk, sensitive, and UI plans; touched concerns; required QA/Principal/accessibility approvals; stale revisions; self-approval; illegal transitions; YAML parsing; task evidence/dependencies; review order; resolved-comment verification on the final code-review commit; mandatory final AppSec; conditional final accessibility review; reset/rework; and reviewed-code freshness.
+Run `node scripts/install-native-lock.mjs && npm test` on Node.js 22+. The helper installs the locked graph with lifecycle scripts disabled, validates the pinned `fs-ext` hook, and rebuilds only that native dependency. The suite covers low-risk, sensitive, and UI plans; touched concerns; required QA/Principal/accessibility approvals; stale revisions; self-approval; illegal transitions; YAML parsing; task evidence/dependencies; review order; resolved-comment verification on the final code-review commit; mandatory final AppSec; conditional final accessibility review; reset/rework; and reviewed-code freshness.
 
 The scaffold test creates a real temporary Git repository and worktree, verifies branch isolation and collision rejection, checks non-destructive repeated initialization, and confirms that generated non-secret workspace configuration reaches an isolated epic worktree. It substitutes npm in that test to avoid registry access, while asserting setup and baseline-test commands were invoked. This is template/configuration coverage, not evidence of a live Slack integration.
 

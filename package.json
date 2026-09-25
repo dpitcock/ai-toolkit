@@ -11,6 +11,7 @@
     "gate": "node scripts/check-gate.mjs"
   },
   "dependencies": {
+    "fs-ext": "2.1.1",
     "yaml": "2.9.0"
   }
 }
