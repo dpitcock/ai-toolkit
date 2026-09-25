@@ -37,6 +37,14 @@ test('parses non-secret config and hashes equivalent YAML identically',()=>{
   assert.equal(workspaceConfigDigest(parsed),workspaceConfigDigest(commented));
 });
 
+test('an empty exemption list remains valid after normalization and hashing',()=>{
+  const uiConfig=sample.replace('  reason: No user interface in this project\n  exempt: [accessibility_reviewer, ui_designer]',
+    '  exempt: []').replace('  accessibility_reviewer: false','  accessibility_reviewer: true').replace('  ui_designer: false','  ui_designer: true');
+  const parsed=parseWorkspaceConfig(uiConfig);
+  assert.deepEqual(parsed.approvals_overrides,{reason:'',exempt:[]});
+  assert.match(workspaceConfigDigest(parsed),/^[a-f0-9]{64}$/);
+});
+
 test('rejects malformed YAML, roles, exemptions, and secret-shaped fields',()=>{
   assert.throws(()=>parseWorkspaceConfig(`${sample}workspace: {}\n`));
   const aliased=sample.replace('repository: example-repository','repository: &repo example-repository').replace('reason: No user interface in this project','reason: *repo');

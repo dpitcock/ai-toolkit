@@ -7,4 +7,5 @@ if [ "${1:-}" != --offline ]; then
   npm ci --ignore-scripts
   bash scripts/install-skills.sh
 fi
+node scripts/init-workspace.mjs propose --root .
 printf '%s\n' 'Start here: EM fills project/project-plan.md. See docs/workflow.md.'

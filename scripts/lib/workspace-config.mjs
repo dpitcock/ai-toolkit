@@ -70,7 +70,8 @@ function normalize(value,{partial=false}={}) {
     if(!Array.isArray(overrides.exempt) || overrides.exempt.some(role=>!approvalRoles.includes(role)) || new Set(overrides.exempt).size!==overrides.exempt.length) {
       throw new Error('approvals_overrides.exempt must contain unique known roles');
     }
-    const reason=overrides.exempt.length ? nonempty(overrides.reason,'approvals_overrides.reason') : (overrides.reason===undefined ? '' : nonempty(overrides.reason,'approvals_overrides.reason'));
+    const reason=overrides.exempt.length ? nonempty(overrides.reason,'approvals_overrides.reason')
+      : (overrides.reason===undefined || overrides.reason==='' ? '' : nonempty(overrides.reason,'approvals_overrides.reason'));
     result.approvals_overrides={reason,exempt:[...overrides.exempt].sort()};
   } else if(!partial) {
     result.approvals_overrides={reason:'',exempt:[]};
