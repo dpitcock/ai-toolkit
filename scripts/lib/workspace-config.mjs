@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import YAML from 'yaml';
 
 const approvalRoles=['principal','qa','appsec','accessibility_reviewer','ui_designer'];
 const workspaceFields=['repository','environment','provider','slack_channel_name','timezone'];
+const worktreeOverridePaths=['workspace.provider','approvals_overrides',...approvalRoles.map(role=>`approvals_required.${role}`)];
 
 function object(value,label) {
   if(value===null || typeof value!=='object' || Array.isArray(value)) {
@@ -32,7 +34,7 @@ function nonempty(value,label) {
 }
 
 function normalize(value,{partial=false}={}) {
-  const data=fields(value,['workspace','approvals_required','approvals_overrides','daily_summary'],partial?[]:['workspace','approvals_required','daily_summary'],'config');
+  const data=fields(value,['workspace','approvals_required','approvals_overrides','daily_summary','worktree_overrides'],partial?[]:['workspace','approvals_required','daily_summary'],'config');
   const result={};
   if(Object.hasOwn(data,'workspace')) {
     const workspace=fields(data.workspace,workspaceFields,partial?[]:workspaceFields,'workspace');
@@ -87,6 +89,15 @@ function normalize(value,{partial=false}={}) {
     }
     result.daily_summary=normalized;
   }
+  if(Object.hasOwn(data,'worktree_overrides')) {
+    if(!Array.isArray(data.worktree_overrides) || data.worktree_overrides.some(marker=>typeof marker!=='string' || !worktreeOverridePaths.includes(marker))) {
+      throw new Error('worktree_overrides must contain only known override paths');
+    }
+    if(new Set(data.worktree_overrides).size!==data.worktree_overrides.length) {
+      throw new Error('worktree_overrides must not contain duplicate paths');
+    }
+    result.worktree_overrides=[...data.worktree_overrides].sort();
+  }
   if(result.approvals_required && result.approvals_overrides) {
     for(const role of result.approvals_overrides.exempt) {
       if(result.approvals_required[role]===true) throw new Error(`${role} cannot be required and exempt`);
@@ -115,18 +126,44 @@ export function workspaceConfigDigest(config) {
 export function resolveWorkspaceConfig({coordinationRoot,worktreeRoot=coordinationRoot}) {
   if(!coordinationRoot || !worktreeRoot) throw new Error('A repository root is required');
   const root=fs.realpathSync(coordinationRoot);
-  const file=path.join(root,'config','workspace-config.yaml');
-  const actual=fs.realpathSync(file);
-  if(!actual.startsWith(root+path.sep) || !fs.statSync(actual).isFile()) {
-    throw new Error('Workspace config must be a regular file inside the repository');
-  }
-  if(fs.realpathSync(worktreeRoot)!==root) {
-    throw new Error('Linked worktree overrides are implemented in TASK-005');
-  }
-  const config=parseWorkspaceConfig(fs.readFileSync(actual,'utf8'));
+  const readConfig=base=>{
+    const file=path.join(base,'config','workspace-config.yaml');
+    const actual=fs.realpathSync(file);
+    if(!actual.startsWith(base+path.sep) || fs.lstatSync(file).isSymbolicLink() || !fs.statSync(actual).isFile()) {
+      throw new Error('Workspace config must be a regular file inside the repository');
+    }
+    return parseWorkspaceConfig(fs.readFileSync(actual,'utf8'));
+  };
+  const config=readConfig(root);
+  if(Object.hasOwn(config,'worktree_overrides')) throw new Error('Coordination config cannot declare worktree_overrides');
+  const worktree=fs.realpathSync(worktreeRoot);
   const sources={};
   for(const [section,entries] of Object.entries(config)) {
     for(const key of Object.keys(entries)) sources[`${section}.${key}`]='root';
   }
-  return {config,sources};
+  if(worktree===root) return {config,sources};
+  const registered=execFileSync('git',['-C',worktree,'worktree','list','--porcelain'],{encoding:'utf8'})
+    .split('\n').filter(line=>line.startsWith('worktree ')).map(line=>fs.realpathSync(line.slice(9)));
+  if(!registered.includes(root) || !registered.includes(worktree)) {
+    throw new Error('Worktree and coordination root must be linked Git worktrees');
+  }
+  const overlay=readConfig(worktree);
+  const markers=overlay.worktree_overrides;
+  if(!markers) throw new Error('Linked worktree config requires worktree_overrides markers');
+  const effective=structuredClone(config);
+  for(const marker of markers) {
+    if(marker==='workspace.provider') {
+      effective.workspace.provider=overlay.workspace.provider;
+      sources[marker]='worktree';
+    } else if(marker==='approvals_overrides') {
+      effective.approvals_overrides=overlay.approvals_overrides;
+      sources['approvals_overrides.reason']='worktree';
+      sources['approvals_overrides.exempt']='worktree';
+    } else {
+      const role=marker.slice('approvals_required.'.length);
+      effective.approvals_required[role]=overlay.approvals_required[role];
+      sources[marker]='worktree';
+    }
+  }
+  return {config:parseWorkspaceConfig(YAML.stringify(effective)),sources};
 }

@@ -208,3 +208,46 @@ test('legacy symlink and post-proposal drift block migration',t=>{
   assert.equal(fs.existsSync(old),true);
   assert.equal(readWorkspaceHistory(root).at(-1).kind,'proposal');
 });
+
+test('policy changes stay read-only until matching human approval is applied',t=>{
+  const root=fixture(t);
+  const proposal=JSON.parse(run(root,'propose'));
+  run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
+  const current=path.join(root,'config/workspace-config.yaml');
+  const candidate=path.join(root,'candidate.yaml');
+  const changed=YAML.parse(fs.readFileSync(current,'utf8'));
+  changed.approvals_required.qa=false;
+  fs.writeFileSync(candidate,YAML.stringify(changed));
+  const before=fs.readFileSync(current,'utf8');
+  const proposed=JSON.parse(run(root,'propose-change','--candidate',candidate));
+  assert.equal(proposed.status,'pending-change');
+  assert.ok(proposed.changes.includes('approvals_required.qa'));
+  assert.equal(fs.readFileSync(current,'utf8'),before);
+  assert.equal(readWorkspaceHistory(root).length,2);
+  assert.throws(()=>run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','QA policy reviewed','--digest','0'.repeat(64)));
+  assert.equal(fs.readFileSync(current,'utf8'),before);
+  const applied=JSON.parse(run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','QA policy reviewed','--digest',proposed.digest));
+  assert.equal(applied.status,'accepted');
+  assert.equal(applied.revision,2);
+  assert.equal(readWorkspaceHistory(root).at(-1).kind,'change');
+  assert.equal(JSON.parse(run(root,'status')).revision,2);
+});
+
+test('stale no-UI exemptions and UI policy waivers are refused',t=>{
+  const root=fixture(t,'web-app',{react:'19.0.0'});
+  const proposal=JSON.parse(run(root,'propose'));
+  run(root,'accept','--by','Dennis','--reason','Initial UI policy','--digest',proposal.digest);
+  const candidate=path.join(root,'candidate.yaml');
+  const waiver=YAML.parse(fs.readFileSync(path.join(root,'config/workspace-config.yaml'),'utf8'));
+  waiver.approvals_required.accessibility_reviewer=false;
+  waiver.approvals_required.ui_designer=false;
+  waiver.approvals_overrides={reason:'No UI',exempt:['accessibility_reviewer','ui_designer']};
+  fs.writeFileSync(candidate,YAML.stringify(waiver));
+  assert.throws(()=>run(root,'propose-change','--candidate',candidate),/accessibility/);
+  const headless=fixture(t);
+  const headlessProposal=JSON.parse(run(headless,'propose'));
+  run(headless,'accept','--by','Dennis','--reason','Initial headless policy','--digest',headlessProposal.digest);
+  fs.mkdirSync(path.join(headless,'src'));
+  fs.writeFileSync(path.join(headless,'src/App.tsx'),'export default function App() { return null; }\n');
+  assert.throws(()=>run(headless,'status'),/stale|accessibility/i);
+});

@@ -10,7 +10,7 @@ function options(args) {
   const result={};
   for(let index=0;index<args.length;index+=2) {
     const flag=args[index];
-    if(!['--root','--by','--reason','--digest'].includes(flag) || index+1>=args.length || Object.hasOwn(result,flag)) {
+    if(!['--root','--candidate','--by','--reason','--digest'].includes(flag) || index+1>=args.length || Object.hasOwn(result,flag)) {
       throw new Error(`Invalid option ${flag ?? ''}`);
     }
     result[flag]=args[index+1];
@@ -29,6 +29,17 @@ function configPath(root) {
     throw new Error('Workspace config must be a regular file');
   }
   return file;
+}
+
+function candidateConfig(root,candidate) {
+  if(!candidate) throw new Error('Policy change requires --candidate');
+  const requested=path.resolve(root,candidate);
+  const stat=fs.lstatSync(requested);
+  const file=fs.realpathSync(requested);
+  if(!file.startsWith(root+path.sep) || !stat.isFile() || stat.isSymbolicLink() || stat.size>1024*1024) {
+    throw new Error('Candidate config must be a regular file inside the repository under 1 MB');
+  }
+  return parseWorkspaceConfig(fs.readFileSync(file,'utf8'));
 }
 
 function readLegacy(root) {
@@ -160,6 +171,18 @@ function proposalFor(root) {
   return {config:parseWorkspaceConfig(YAML.stringify(config)),reasons};
 }
 
+function assertCurrentUiPolicy(root,config) {
+  const pkg=readPackage(root);
+  const dependencies={...pkg.dependencies,...pkg.devDependencies};
+  const hasUI=['react','next','vue','svelte','@angular/core','astro'].some(name=>Object.hasOwn(dependencies,name)) ||
+    ['index.html','src/App.tsx','app/page.tsx'].some(name=>fs.existsSync(path.join(root,name)));
+  if(!hasUI) return;
+  if(config.approvals_required.accessibility_reviewer!==true || config.approvals_required.ui_designer!==true ||
+    config.approvals_overrides.exempt.includes('accessibility_reviewer') || config.approvals_overrides.exempt.includes('ui_designer')) {
+    throw new Error('UI work requires current accessibility and UI design review; stale exemptions are not effective');
+  }
+}
+
 function changedFields(before,after,prefix='') {
   const keys=new Set([...Object.keys(before ?? {}),...Object.keys(after ?? {})]);
   const changed=[];
@@ -171,6 +194,44 @@ function changedFields(before,after,prefix='') {
     } else if(JSON.stringify(left)!==JSON.stringify(right)) changed.push(name);
   }
   return changed.sort();
+}
+
+function acceptedConfig(root) {
+  const file=configPath(root);
+  const config=parseWorkspaceConfig(fs.readFileSync(file,'utf8'));
+  const record=assertAcceptedWorkspaceConfig(root,config);
+  assertCurrentUiPolicy(root,config);
+  return {file,config,record};
+}
+
+function proposeChange(root,args) {
+  const {config}=acceptedConfig(root);
+  const candidate=candidateConfig(root,args['--candidate']);
+  assertCurrentUiPolicy(root,candidate);
+  return {status:'pending-change',digest:workspaceConfigDigest(candidate),changes:changedFields(config,candidate)};
+}
+
+function applyChange(root,args) {
+  const by=args['--by']?.trim(),reason=args['--reason']?.trim(),expected=args['--digest'];
+  if(!by || !reason || !/^[a-f0-9]{64}$/.test(expected ?? '')) {
+    throw new Error('Policy change requires --by, --reason, and --digest');
+  }
+  const {file,config,record:current}=acceptedConfig(root);
+  const candidate=candidateConfig(root,args['--candidate']);
+  assertCurrentUiPolicy(root,candidate);
+  const digest=workspaceConfigDigest(candidate);
+  if(expected!==digest) throw new Error('Candidate digest differs from the reviewed policy change');
+  const record={kind:'change',digest,revision:current.revision+1,date:new Date().toISOString().slice(0,10),by,reason,
+    changes:changedFields(config,candidate)};
+  const temporary=`${file}.${process.pid}.change`;
+  fs.writeFileSync(temporary,YAML.stringify(candidate),{flag:'wx',mode:0o600});
+  try {
+    appendWorkspaceHistory(root,record);
+    fs.renameSync(temporary,file);
+  } finally {
+    if(fs.existsSync(temporary)) fs.unlinkSync(temporary);
+  }
+  return {status:'accepted',digest,revision:record.revision};
 }
 
 function propose(root) {
@@ -249,6 +310,7 @@ function accept(root,args) {
 function status(root) {
   const {config}=resolveWorkspaceConfig({coordinationRoot:root});
   const record=assertAcceptedWorkspaceConfig(root,config);
+  assertCurrentUiPolicy(root,config);
   return {status:'accepted',digest:record.digest,revision:record.revision};
 }
 
@@ -256,13 +318,17 @@ try {
   const [action,...rest]=process.argv.slice(2);
   const args=options(rest);
   const root=fs.realpathSync(args['--root'] ?? process.cwd());
-  if(!['propose','accept','status'].includes(action)) {
-    throw new Error('Usage: init-workspace.mjs propose|accept|status [options]');
+  if(!['propose','accept','status','propose-change','apply-change'].includes(action)) {
+    throw new Error('Usage: init-workspace.mjs propose|accept|status|propose-change|apply-change [options]');
   }
-  if(action!=='accept' && ['--by','--reason','--digest'].some(key=>Object.hasOwn(args,key))) {
+  if(!['accept','apply-change'].includes(action) && ['--by','--reason','--digest'].some(key=>Object.hasOwn(args,key))) {
     throw new Error('Approval options are only valid with accept');
   }
-  const result=action==='propose' ? propose(root) : action==='accept' ? accept(root,args) : status(root);
+  if(!['propose-change','apply-change'].includes(action) && Object.hasOwn(args,'--candidate')) {
+    throw new Error('Candidate config is only valid with policy changes');
+  }
+  const result=action==='propose' ? propose(root) : action==='accept' ? accept(root,args) : action==='status' ? status(root) :
+    action==='propose-change' ? proposeChange(root,args) : applyChange(root,args);
   console.log(JSON.stringify(result));
 } catch(error) {
   console.error(`GATE BLOCKED: ${error.message}`);

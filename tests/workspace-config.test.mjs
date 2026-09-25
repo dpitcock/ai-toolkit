@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {execFileSync} from 'node:child_process';
+import YAML from 'yaml';
 import {
   parseWorkspaceConfig,
   resolveWorkspaceConfig,
@@ -27,6 +29,25 @@ approvals_overrides:
 daily_summary:
   local_time: "09:00"
 `;
+
+function linkedWorktrees(t) {
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'workspace-config-git-root-'));
+  const linked=path.join(os.tmpdir(),`workspace-config-linked-${path.basename(root)}`);
+  t.after(()=>{fs.rmSync(root,{recursive:true,force:true});fs.rmSync(linked,{recursive:true,force:true});});
+  execFileSync('git',['init','-q'],{cwd:root});
+  execFileSync('git',['config','user.email','qa@example.test'],{cwd:root});
+  execFileSync('git',['config','user.name','QA'],{cwd:root});
+  fs.writeFileSync(path.join(root,'README.md'),'fixture\n');
+  execFileSync('git',['add','README.md'],{cwd:root});
+  execFileSync('git',['commit','-qm','fixture'],{cwd:root});
+  execFileSync('git',['worktree','add','-q','-b','linked-policy',linked],{cwd:root});
+  return {root,linked};
+}
+
+function writeConfig(root,value) {
+  fs.mkdirSync(path.join(root,'config'),{recursive:true});
+  fs.writeFileSync(path.join(root,'config/workspace-config.yaml'),YAML.stringify(value));
+}
 
 test('parses non-secret config and hashes equivalent YAML identically',()=>{
   const parsed=parseWorkspaceConfig(sample,{partial:false});
@@ -74,4 +95,45 @@ test('root resolver reports provenance and refuses missing or escaping config',t
   fs.writeFileSync(escaped,sample);
   fs.symlinkSync(escaped,file);
   assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root}));
+});
+
+test('linked worktree applies only explicit provider, role, and exemption overrides',t=>{
+  const {root,linked}=linkedWorktrees(t);
+  const rootConfig=parseWorkspaceConfig(sample);
+  const worktreeConfig={
+    ...rootConfig,
+    workspace:{...rootConfig.workspace,provider:'claude'},
+    approvals_required:{...rootConfig.approvals_required,qa:false},
+    approvals_overrides:{reason:'Linked worktree has no UI',exempt:['accessibility_reviewer','ui_designer']},
+    worktree_overrides:['workspace.provider','approvals_required.qa','approvals_overrides'],
+  };
+  writeConfig(root,rootConfig);
+  writeConfig(linked,worktreeConfig);
+  const result=resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked});
+  assert.equal(result.config.workspace.provider,'claude');
+  assert.equal(result.config.workspace.repository,'example-repository');
+  assert.equal(result.config.approvals_required.qa,false);
+  assert.equal(result.config.approvals_required.appsec,true);
+  assert.deepEqual(result.config.approvals_overrides,worktreeConfig.approvals_overrides);
+  assert.equal(result.sources['workspace.provider'],'worktree');
+  assert.equal(result.sources['workspace.repository'],'root');
+  assert.equal(result.sources['approvals_required.qa'],'worktree');
+  assert.equal(result.sources['approvals_required.appsec'],'root');
+  assert.equal(result.sources['approvals_overrides.exempt'],'worktree');
+  assert.equal(result.sources['approvals_overrides.reason'],'worktree');
+});
+
+test('linked worktree rejects missing, duplicate, unknown, and incomplete override markers',t=>{
+  const {root,linked}=linkedWorktrees(t);
+  const rootConfig=parseWorkspaceConfig(sample);
+  writeConfig(root,rootConfig);
+  const changed={...rootConfig,workspace:{...rootConfig.workspace,provider:'claude'}};
+  writeConfig(linked,changed);
+  assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}),/worktree_overrides/);
+  writeConfig(linked,{...changed,worktree_overrides:['workspace.provider','workspace.provider']});
+  assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}),/duplicate/);
+  writeConfig(linked,{...changed,worktree_overrides:['workspace.unknown']});
+  assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}),/known override/);
+  writeConfig(linked,{...changed,worktree_overrides:['approvals_overrides.reason']});
+  assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}),/known override/);
 });
