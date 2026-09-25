@@ -351,12 +351,15 @@ function applyChange(root,args) {
     try {
       writeAtomic(file,next);
       entry.phase='config-replaced';writeTransaction(journal,entry);
+      pauseForTest('config-replaced');
       if(process.env.WORKSPACE_INIT_TEST_FAULT==='history-append') throw new Error('Injected history append failure');
       append(record);
       entry.phase='history-appended';writeTransaction(journal,entry);
+      pauseForTest('history-appended');
       assertAcceptedWorkspaceConfig(root,candidate);
       entry.phase='committed';writeTransaction(journal,entry);
       committed=true;
+      pauseForTest('committed');
       if(process.env.WORKSPACE_INIT_TEST_FAULT==='journal-cleanup') throw new Error('Injected journal cleanup failure');
       removeTransaction(journal);
     } catch(error) {
