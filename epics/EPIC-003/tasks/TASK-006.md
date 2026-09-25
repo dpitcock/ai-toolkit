@@ -5,7 +5,7 @@ owner: "Codex"
 status: done
 revision: 1
 parent: ../epic-plan.md
-parent_revision: 1
+parent_revision: 2
 depends_on: [ tasks/TASK-005.md ]
 evidence:
   red: "2026-09-25: node --test tests/workspace-config-slack.test.mjs

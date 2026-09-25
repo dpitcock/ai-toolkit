@@ -4,8 +4,8 @@
 kind: epic-plan
 id: EPIC-003-PLAN
 owner: "Codex"
-status: in-progress
-revision: 1
+status: awaiting-principal-signoff
+revision: 2
 parent: epic.md
 parent_revision: 1
 security:
@@ -29,22 +29,30 @@ tasks:
   - tasks/TASK-004.md
   - tasks/TASK-005.md
   - tasks/TASK-006.md
-review_comments: []
+  - tasks/TASK-007.md
+review_comments:
+  - id: CR-001
+    status: open
+    finding: "Independent review found that linked worktree overrides could resolve
+      without accepted evidence and CLI status could not validate linked
+      policy."
+  - id: CR-002
+    status: open
+    finding: "Independent review found that a stale UI exemption blocked its own
+      corrective policy change."
+  - id: CR-003
+    status: open
+    finding: "Independent review found that orphaned or inconsistent workspace
+      history records could be trusted."
+  - id: CR-004
+    status: open
+    finding: "Independent review found that initial acceptance did not re-check
+      current UI applicability."
 review_commit: null
 pr_url: null
 approvals:
-  principal_engineer:
-    by: "Dennis"
-    date: "2026-09-24"
-    notes: "The requester relayed Dennis's approval of EPIC-003-PLAN revision 1 and
-      its six tasks and interfaces; no separate findings were supplied."
-    revision: 1
-  appsec:
-    by: "Andrei"
-    date: "2026-09-24"
-    notes: "The requester relayed Andrei's approval of EPIC-003-PLAN revision 1 and
-      its SEC-301 through SEC-303 mapping; no separate findings were supplied."
-    revision: 1
+  principal_engineer: null
+  appsec: null
   qa_lead: null
   code_review: null
   appsec_review: null
@@ -146,10 +154,12 @@ mandatory final AppSec review remains a later gate.
    (QA-304/305).
 6. `tasks/TASK-006.md` — Slack descriptor consolidation and scaffold
    regression (QA-303/305).
+7. `tasks/TASK-007.md` — accepted-policy review remediation (QA-302/304/305).
 
 Dependencies are sequential and declared in each task. Checkpoints follow
-TASK-003 (greenfield init) and TASK-006 (legacy, worktree, Slack, and current
-accessibility paths). Each runs `npm test` and reviews the security mapping.
+TASK-003 (greenfield init), TASK-006 (legacy, worktree, Slack, and current
+accessibility paths), and TASK-007 (accepted root/worktree policy and history
+integrity). Each runs `npm test` and reviews the security mapping.
 
 ## Accessibility mapping
 
@@ -164,4 +174,6 @@ Dennis reviews sizing, interfaces, migration order, and resolution semantics.
 Andrei then reviews SEC-301 through SEC-303 against this plan revision. After
 implementation, an independent staff reviewer checks correctness, clarity,
 architecture, security, and performance; a separate final AppSec pass checks
-the exact implementation commit. Record actual findings and fixes here.
+the exact implementation commit. Revision 2 adds TASK-007 to address the
+independent staff review's four policy-integrity findings before any final
+approval. Record actual findings and fixes here.
