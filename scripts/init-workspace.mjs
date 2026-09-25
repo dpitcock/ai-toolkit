@@ -318,12 +318,11 @@ function acceptedConfig(root) {
 
 function proposeChange(root,args) {
   return withWorkspaceHistoryLock(root,()=>{
-    recoverWorkspaceTransaction(root);
     const {config,record}=acceptedConfig(root);
     const candidate=candidateConfig(root,args['--candidate']);
     assertCurrentUiPolicy(root,candidate);
     return {status:'pending-change',digest:workspaceConfigDigest(candidate),base_digest:record.digest,changes:changedFields(config,candidate)};
-  });
+  },{beforeRead:()=>recoverWorkspaceTransaction(root)});
 }
 
 function applyChange(root,args) {
@@ -336,7 +335,6 @@ function applyChange(root,args) {
   const digest=workspaceConfigDigest(candidate);
   if(expected!==digest) throw new Error('Candidate digest differs from the reviewed policy change');
   return withWorkspaceHistoryLock(root,({append})=>{
-    recoverWorkspaceTransaction(root);
     const {file,config,record:current}=acceptedConfig(root);
     if(base!==current.digest) throw new Error('Accepted policy changed after the reviewed base');
     const record={kind:'change',digest,revision:current.revision+1,date:new Date().toISOString().slice(0,10),by,reason,
@@ -372,7 +370,7 @@ function applyChange(root,args) {
       throw error;
     }
     return {status:'accepted',digest,revision:record.revision};
-  });
+  },{beforeRead:()=>recoverWorkspaceTransaction(root)});
 }
 
 function proposeLocked(root,history,append) {
@@ -415,9 +413,8 @@ function proposeLocked(root,history,append) {
 
 function propose(root) {
   return withWorkspaceHistoryLock(root,({records,append})=>{
-    recoverWorkspaceTransaction(root);
     return proposeLocked(root,records,append);
-  });
+  },{beforeRead:()=>recoverWorkspaceTransaction(root)});
 }
 
 function accept(root,args) {
@@ -426,7 +423,6 @@ function accept(root,args) {
     throw new Error('Acceptance requires --by, --reason, and --digest');
   }
   return withWorkspaceHistoryLock(root,({records,append})=>{
-    recoverWorkspaceTransaction(root);
     const file=configPath(root);
     const config=parseWorkspaceConfig(fs.readFileSync(file,'utf8'));
     const digest=workspaceConfigDigest(config);
@@ -445,19 +441,18 @@ function accept(root,args) {
       changes:changedFields(proposal.config,config),...(legacy ? {legacyDigest:legacy.digest} : {})};
     append(record);if(legacy) retireLegacy(root,legacy);
     return {status:'accepted',digest,revision:record.revision};
-  });
+  },{beforeRead:()=>recoverWorkspaceTransaction(root)});
 }
 
 function status(root) {
   return withWorkspaceHistoryLock(root,()=>{
-    recoverWorkspaceTransaction(root);
     const coordination=coordinationRoot(root);
     const {config,sources}=resolveWorkspaceConfig({coordinationRoot:coordination,worktreeRoot:root});
     let record=assertAcceptedWorkspaceConfig(coordination,existingConfig(coordination));
     if(root!==coordination) record=assertAcceptedWorkspaceConfig(root,existingConfig(root));
     assertCurrentUiPolicy(root,config);
     return {status:'accepted',digest:workspaceConfigDigest(config),revision:record.revision,sources};
-  });
+  },{beforeRead:()=>recoverWorkspaceTransaction(root)});
 }
 
 try {

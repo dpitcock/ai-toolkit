@@ -97,39 +97,52 @@ function ownerFor(lock) {
     try { if(!sameFile(fixed,lockStat(lock,2))) return null; } catch(error) { if(error.code==='ENOENT') return null;throw error; }
     throw new Error('Workspace history lock is malformed');
   }
-  let owner;try { owner=JSON.parse(fs.readFileSync(owners[0],'utf8')); } catch { throw new Error('Workspace history lock is malformed'); }
+  let owner;
+  try { owner=JSON.parse(fs.readFileSync(owners[0],'utf8')); }
+  catch(error) { if(error.code==='ENOENT') return null;throw new Error('Workspace history lock is malformed'); }
   if(!Number.isInteger(owner?.pid) || owner.pid<1 || !/^[a-f0-9]{32}$/.test(owner?.nonce ?? '')) throw new Error('Workspace history lock is malformed');
   try {
     if(!sameFile(fixed,lockStat(lock,2)) || !sameFile(fixed,lockStat(owners[0],2))) return null;
   } catch(error) { if(error.code==='ENOENT') return null;throw error; }
-  return {file:owners[0],owner,fixed};
+  let ownerStat;
+  try { ownerStat=lockStat(owners[0],2); } catch(error) { if(error.code==='ENOENT') return null;throw error; }
+  return {file:owners[0],owner,fixed,ownerStat};
 }
-function releaseLock(lock,owner) {
-  const fixed=lockStat(lock,2),owned=lockStat(owner,2);if(!sameFile(fixed,owned)) throw new Error('Workspace history lock changed during cleanup');
+function releaseLock(lock,held) {
+  const fixed=lockStat(lock,2),owned=lockStat(held.file,2);
+  if(!sameFile(fixed,owned) || !sameFile(held.ownerStat,owned)) throw new Error('Workspace history lock changed during cleanup');
   fs.unlinkSync(lock);syncDirectory(path.dirname(lock));
   pauseForTest('lock-fixed-unlinked');
-  lockStat(owner,1);fs.unlinkSync(owner);syncDirectory(path.dirname(lock));
+  const soleOwner=lockStat(held.file,1);
+  if(!sameFile(held.ownerStat,soleOwner)) throw new Error('Workspace history lock changed during cleanup');
+  fs.unlinkSync(held.file);syncDirectory(path.dirname(lock));
 }
 
-export function withWorkspaceHistoryLock(root,callback) {
+export function withWorkspaceHistoryLock(root,callback,{beforeRead}={}) {
   const file=historyPath(root,{createDirectory:true}),lock=`${file}.lock`;
-  let ownerFile;
+  let ownerFile,heldLock;
   for(let attempt=0;attempt<100;attempt+=1) {
     const nonce=randomBytes(16).toString('hex');ownerFile=`${lock}.${process.pid}.${nonce}.owner`;
     try {
       const fd=fs.openSync(ownerFile,'wx',0o600);try { fs.writeFileSync(fd,JSON.stringify({pid:process.pid,nonce}));fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-      fs.linkSync(ownerFile,lock);syncDirectory(path.dirname(lock));break;
+      fs.linkSync(ownerFile,lock);syncDirectory(path.dirname(lock));
+      heldLock=ownerFor(lock);
+      if(!heldLock || heldLock.file!==ownerFile || heldLock.owner.pid!==process.pid || heldLock.owner.nonce!==nonce) {
+        throw new Error('Workspace history lock changed during acquisition');
+      }
+      break;
     } catch(error) {
       if(fs.existsSync(ownerFile) && fs.lstatSync(ownerFile).nlink===1) fs.unlinkSync(ownerFile);
       if(error.code!=='EEXIST' || attempt===99) throw error;
       const held=ownerFor(lock);
       if(!held) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10);continue; }
       try { process.kill(held.owner.pid,0); }
-      catch(ownerError) { if(ownerError.code==='ESRCH') { releaseLock(lock,held.file);continue; } if(ownerError.code!=='EPERM') throw ownerError; }
+      catch(ownerError) { if(ownerError.code==='ESRCH') { releaseLock(lock,held);continue; } if(ownerError.code!=='EPERM') throw ownerError; }
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10);
     }
   }
   try {
+    beforeRead?.();
     const records=readWorkspaceHistory(root);
     return callback({records,append(record){
       validRecord(record);validateHistory([...records,record]);
@@ -141,7 +154,7 @@ export function withWorkspaceHistoryLock(root,callback) {
       records.push(record);
     }});
   } finally {
-    releaseLock(lock,ownerFile);
+    releaseLock(lock,heldLock);
   }
 }
 

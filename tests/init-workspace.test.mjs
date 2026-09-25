@@ -155,6 +155,16 @@ test('normal bootstrap proposes policy after dependency setup',t=>{
   assert.equal(readWorkspaceHistory(root).at(-1).kind,'proposal');
 });
 
+test('concurrent proposal bootstrap creates exactly one initial proposal',async t=>{
+  const root=fixture(t);
+  const calls=await Promise.all(Array.from({length:8},()=>runAsync(root,'propose')));
+  assert.equal(calls.filter(call=>call.code===0).length,8,calls.filter(call=>call.code!==0).map(call=>call.error).join('\n'));
+  const history=readWorkspaceHistory(root);
+  assert.equal(history.length,1);
+  assert.equal(history[0].kind,'proposal');
+  assert.equal(history[0].revision,1);
+});
+
 test('proposal rejects a history symlink outside the repository',t=>{
   const root=fixture(t);
   const outside=fs.mkdtempSync(path.join(os.tmpdir(),'workspace-history-outside-'));
@@ -340,6 +350,30 @@ test('status reclaims a killed prepared transaction owner and restores revision 
   assert.equal(fs.existsSync(path.join(root,'project/workspace-config-history.jsonl.lock')),false);
 });
 
+test('status resolves killed transactions at every post-prepare checkpoint',async t=>{
+  for(const [checkpoint,revision] of [['config-replaced',1],['history-appended',1],['committed',2]]) {
+    const root=fixture(t,`killed-${checkpoint}`);
+    const proposal=JSON.parse(run(root,'propose'));
+    run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
+    const candidate=path.join(root,'candidate.yaml');
+    const changed=YAML.parse(fs.readFileSync(path.join(root,'config/workspace-config.yaml'),'utf8'));
+    changed.approvals_required.qa=false;fs.writeFileSync(candidate,YAML.stringify(changed));
+    const change=JSON.parse(run(root,'propose-change','--candidate',candidate));
+    const journal=path.join(root,'project/workspace-config-transaction.json');
+    const child=spawnWithEnv(root,{WORKSPACE_INIT_TEST_PAUSE_AFTER:checkpoint},'apply-change','--candidate',candidate,
+      '--by','Dennis','--reason',`Interrupted ${checkpoint}`,'--digest',change.digest,'--base-digest',change.base_digest);
+    await waitFor(()=>{
+      try { return JSON.parse(fs.readFileSync(journal,'utf8')).phase===checkpoint; }
+      catch { return false; }
+    },`Timed out waiting for ${checkpoint}`);
+    child.kill('SIGKILL');
+    const exited=await new Promise(resolve=>child.on('close',(code,signal)=>resolve({code,signal})));
+    assert.equal(exited.signal,'SIGKILL');
+    assert.equal(JSON.parse(run(root,'status')).revision,revision);
+    assert.equal(fs.existsSync(journal),false);
+  }
+});
+
 test('concurrent accepts are idempotent and create one acceptance record',async t=>{
   const root=fixture(t);
   const proposal=JSON.parse(run(root,'propose'));
@@ -349,6 +383,25 @@ test('concurrent accepts are idempotent and create one acceptance record',async 
   const history=readWorkspaceHistory(root);
   assert.equal(history.length,2);assert.equal(history[1].kind,'acceptance');
   assert.equal(JSON.parse(run(root,'status')).status,'accepted');
+});
+
+test('an idempotent acceptance cannot interleave an invalid policy change',async t=>{
+  const root=fixture(t);
+  const proposal=JSON.parse(run(root,'propose'));
+  run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
+  const candidate=path.join(root,'candidate.yaml');
+  const changed=YAML.parse(fs.readFileSync(path.join(root,'config/workspace-config.yaml'),'utf8'));
+  changed.approvals_required.qa=false;fs.writeFileSync(candidate,YAML.stringify(changed));
+  const change=JSON.parse(run(root,'propose-change','--candidate',candidate));
+  const [accepted,applied]=await Promise.all([
+    runAsync(root,'accept','--by','Dennis','--reason','Idempotent acceptance','--digest',proposal.digest),
+    runAsync(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','Reviewed change','--digest',change.digest,'--base-digest',change.base_digest),
+  ]);
+  assert.equal(accepted.code,0,accepted.error);
+  assert.equal(applied.code,0,applied.error);
+  const history=readWorkspaceHistory(root);
+  assert.deepEqual(history.map(record=>record.kind),['proposal','acceptance','change']);
+  assert.equal(JSON.parse(run(root,'status')).revision,2);
 });
 
 test('status recovers an interrupted policy change to its accepted pair',t=>{
@@ -398,6 +451,27 @@ test('status resolves every durable transaction phase to its valid pair',t=>{
     assert.equal(fs.readFileSync(historyFile,'utf8'),phase==='committed' ? newHistory : oldHistory);
     assert.equal(fs.existsSync(path.join(root,'project/workspace-config-transaction.json')),false);
   }
+});
+
+test('accept rereads history after recovering an uncommitted appended change',t=>{
+  const root=fixture(t);
+  const proposal=JSON.parse(run(root,'propose'));
+  run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
+  const configFile=path.join(root,'config/workspace-config.yaml');
+  const historyFile=path.join(root,'project/workspace-config-history.jsonl');
+  const oldConfig=fs.readFileSync(configFile,'utf8');
+  const oldHistory=fs.readFileSync(historyFile,'utf8');
+  const candidate=YAML.parse(oldConfig);candidate.approvals_required.qa=false;
+  const newConfig=YAML.stringify(candidate);
+  const record={kind:'change',digest:workspaceConfigDigest(parseWorkspaceConfig(newConfig)),revision:2,date:'2026-09-25',by:'Dennis',reason:'Interrupted change',changes:['approvals_required.qa']};
+  fs.writeFileSync(configFile,newConfig);
+  fs.writeFileSync(historyFile,`${oldHistory}${JSON.stringify(record)}\n`);
+  fs.writeFileSync(path.join(root,'project/workspace-config-transaction.json'),JSON.stringify({
+    phase:'history-appended',oldConfig,oldHistory,oldHistoryLength:Buffer.byteLength(oldHistory),newConfig,newDigest:record.digest,record,
+  }));
+  const accepted=JSON.parse(run(root,'accept','--by','Dennis','--reason','Retry accepted policy','--digest',proposal.digest));
+  assert.equal(accepted.revision,1);
+  assert.equal(readWorkspaceHistory(root).at(-1).revision,1);
 });
 
 test('status rejects a transaction journal without its byte length and new digest',t=>{
