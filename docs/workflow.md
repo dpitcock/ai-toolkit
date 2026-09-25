@@ -12,7 +12,7 @@ Cline uses an explicit handoff at the same boundaries because its adapter does n
 
 Projects that use an externally deployed Slack control plane can follow the
 [Slack control-plane guide](slack-control-plane.md). It supplies routing and safety
-contracts plus a non-secret workspace descriptor; it does not change local Codex,
+contracts plus the generated, non-secret `config/workspace-config.yaml`; it does not change local Codex,
 Cline, or Claude instructions.
 
 ## Start a project

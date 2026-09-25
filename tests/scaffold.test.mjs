@@ -27,7 +27,8 @@ test('init is idempotent; real epic worktree is isolated and refuses collisions'
  const env={...process.env,PATH:bin+path.delimiter+process.env.PATH};
  execFileSync('bash',['scripts/new-epic.sh','EPIC-001'],{cwd:root,env,stdio:'pipe'});
  const worktree=path.join(root,'.worktrees/EPIC-001');assert.ok(fs.existsSync(path.join(worktree,'epics/EPIC-001/tasks/TASK-001.md')));assert.ok(!fs.existsSync(path.join(root,'epics/EPIC-001')));
- assert.ok(fs.existsSync(path.join(worktree,'config','slack-workspace.example.yml')));
+ assert.ok(fs.existsSync(path.join(worktree,'config','workspace-config.yaml')));
+ assert.ok(!fs.existsSync(path.join(worktree,'config','slack-workspace.example.yml')));
  assert.equal(execFileSync('git',['branch','--show-current'],{cwd:worktree,encoding:'utf8'}).trim(),'epic/EPIC-001');
  assert.match(fs.readFileSync(path.join(root,'npm-calls'),'utf8'),/ci --ignore-scripts\ntest/);
  assert.throws(()=>execFileSync('bash',['scripts/new-epic.sh','EPIC-001'],{cwd:root,env,stdio:'pipe'}));

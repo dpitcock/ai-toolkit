@@ -1,23 +1,26 @@
 # Slack control plane
 
 This optional integration lets a shared Slack service route work to configured coding
-tools. This template supplies the contract and a non-secret descriptor; it does not
-deploy a Slack app, accept events, or store credentials/state. Codex is the only
-enabled provider in this version.
+tools. This template supplies the contract and a generated, non-secret workspace
+configuration; it does not deploy a Slack app, accept events, or store
+credentials/state. Codex is the only enabled provider in this version.
 
-## Workspace descriptor
+## Workspace configuration
 
-Copy `config/slack-workspace.example.yml` into the external control-plane deployment
-and replace its example values. One workspace is one repository, environment, and
-provider tuple. Its Slack channel is named `#ws-<repo-name>-<provider>`; the YAML value
-omits only Slack's `#` sigil.
+Run `bash scripts/init-project.sh` to generate a pending
+`config/workspace-config.yaml`, then review and explicitly accept its digest before
+using it for routing. Copy the accepted configuration into the external control-plane
+deployment and replace proposal values only through the documented acceptance flow.
+Local files record supplied identity and rationale; they do not authenticate a person.
+One workspace is one repository, environment, and provider tuple. Its Slack channel is
+named `#ws-<repo-name>-<provider>`; the YAML value omits only Slack's `#` sigil.
 
 | Field | Purpose |
 | --- | --- |
 | `workspace.repository` | Repository identity used for routing and PR association. |
 | `workspace.environment` | Deployment/workspace environment name. |
 | `workspace.provider` | Active tool adapter; initially `codex`. |
-| `workspace.channel_name` | Provider-qualified workspace channel name. |
+| `workspace.slack_channel_name` | Provider-qualified workspace channel name. |
 | `workspace.timezone` | IANA timezone for activity and daily summaries. |
 | `daily_summary.local_time` | Morning delivery time in the workspace timezone. |
 
@@ -25,6 +28,10 @@ Keep Slack channel IDs, signing secrets, OAuth tokens, thread timestamps, provid
 session IDs, and event-delivery records outside Git. The service registry resolves the
 descriptor to those live values and asks the sender to choose a workspace when a mapping
 is missing or ambiguous.
+
+Later policy changes require a reviewed candidate and an explicit acceptance record:
+`propose-change` is read-only, while `apply-change` requires the reviewed digest,
+reviewer identity, and reason. This does not deploy Slack or grant external authority.
 
 ## Session routing and state
 
