@@ -5,13 +5,13 @@ import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import YAML from 'yaml';
 import {parseWorkspaceConfig,resolveWorkspaceConfig,workspaceConfigDigest} from './lib/workspace-config.mjs';
-import {appendWorkspaceHistory,readWorkspaceHistory,assertAcceptedWorkspaceConfig} from './lib/workspace-history.mjs';
+import {appendWorkspaceHistory,readWorkspaceHistory,assertAcceptedWorkspaceConfig,withWorkspaceHistoryLock} from './lib/workspace-history.mjs';
 
 function options(args) {
   const result={};
   for(let index=0;index<args.length;index+=2) {
     const flag=args[index];
-    if(!['--root','--candidate','--by','--reason','--digest'].includes(flag) || index+1>=args.length || Object.hasOwn(result,flag)) {
+    if(!['--root','--candidate','--by','--reason','--digest','--base-digest'].includes(flag) || index+1>=args.length || Object.hasOwn(result,flag)) {
       throw new Error(`Invalid option ${flag ?? ''}`);
     }
     result[flag]=args[index+1];
@@ -219,33 +219,32 @@ function acceptedConfig(root) {
 }
 
 function proposeChange(root,args) {
-  const {config}=acceptedConfig(root);
+  const {config,record}=acceptedConfig(root);
   const candidate=candidateConfig(root,args['--candidate']);
   assertCurrentUiPolicy(root,candidate);
-  return {status:'pending-change',digest:workspaceConfigDigest(candidate),changes:changedFields(config,candidate)};
+  return {status:'pending-change',digest:workspaceConfigDigest(candidate),base_digest:record.digest,changes:changedFields(config,candidate)};
 }
 
 function applyChange(root,args) {
-  const by=args['--by']?.trim(),reason=args['--reason']?.trim(),expected=args['--digest'];
-  if(!by || !reason || !/^[a-f0-9]{64}$/.test(expected ?? '')) {
-    throw new Error('Policy change requires --by, --reason, and --digest');
+  const by=args['--by']?.trim(),reason=args['--reason']?.trim(),expected=args['--digest'],base=args['--base-digest'];
+  if(!by || !reason || !/^[a-f0-9]{64}$/.test(expected ?? '') || !/^[a-f0-9]{64}$/.test(base ?? '')) {
+    throw new Error('Policy change requires --by, --reason, --digest, and --base-digest');
   }
-  const {file,config,record:current}=acceptedConfig(root);
   const candidate=candidateConfig(root,args['--candidate']);
   assertCurrentUiPolicy(root,candidate);
   const digest=workspaceConfigDigest(candidate);
   if(expected!==digest) throw new Error('Candidate digest differs from the reviewed policy change');
-  const record={kind:'change',digest,revision:current.revision+1,date:new Date().toISOString().slice(0,10),by,reason,
-    changes:changedFields(config,candidate)};
-  const temporary=`${file}.${process.pid}.change`;
-  fs.writeFileSync(temporary,YAML.stringify(candidate),{flag:'wx',mode:0o600});
-  try {
-    appendWorkspaceHistory(root,record);
-    fs.renameSync(temporary,file);
-  } finally {
-    if(fs.existsSync(temporary)) fs.unlinkSync(temporary);
-  }
-  return {status:'accepted',digest,revision:record.revision};
+  return withWorkspaceHistoryLock(root,({append})=>{
+    const {file,config,record:current}=acceptedConfig(root);
+    if(base!==current.digest) throw new Error('Accepted policy changed after the reviewed base');
+    const record={kind:'change',digest,revision:current.revision+1,date:new Date().toISOString().slice(0,10),by,reason,
+      changes:changedFields(config,candidate)};
+    const temporary=`${file}.${process.pid}.change`;
+    fs.writeFileSync(temporary,YAML.stringify(candidate),{flag:'wx',mode:0o600});
+    try { append(record);fs.renameSync(temporary,file); }
+    finally { if(fs.existsSync(temporary)) fs.unlinkSync(temporary); }
+    return {status:'accepted',digest,revision:record.revision};
+  });
 }
 
 function propose(root) {
@@ -338,7 +337,7 @@ try {
   if(!['propose','accept','status','propose-change','apply-change'].includes(action)) {
     throw new Error('Usage: init-workspace.mjs propose|accept|status|propose-change|apply-change [options]');
   }
-  if(!['accept','apply-change'].includes(action) && ['--by','--reason','--digest'].some(key=>Object.hasOwn(args,key))) {
+  if(!['accept','apply-change'].includes(action) && ['--by','--reason','--digest','--base-digest'].some(key=>Object.hasOwn(args,key))) {
     throw new Error('Approval options are only valid with accept');
   }
   if(!['propose-change','apply-change'].includes(action) && Object.hasOwn(args,'--candidate')) {

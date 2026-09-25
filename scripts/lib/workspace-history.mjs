@@ -49,6 +49,22 @@ function validRecord(record) {
   return record;
 }
 
+function validateHistory(records) {
+  if(!records.length) return records;
+  const first=records[0];
+  if(first.kind!=='proposal' || first.revision!==1) throw new Error('Workspace history requires an initial proposal at revision 1');
+  if(workspaceConfigDigest(first.config)!==first.digest) throw new Error('Workspace history proposal digest does not match its snapshot');
+  for(let index=1;index<records.length;index+=1) {
+    const previous=records[index-1],record=records[index];
+    if(record.kind==='acceptance') {
+      if(previous.kind!=='proposal' || record.revision!==previous.revision) throw new Error('Workspace history acceptance must match the pending proposal revision');
+    } else if(record.kind==='change') {
+      if(!['acceptance','change'].includes(previous.kind) || record.revision!==previous.revision+1) throw new Error('Workspace history change must follow accepted policy at the next revision');
+    } else throw new Error('Workspace history cannot contain a later proposal');
+  }
+  return records;
+}
+
 export function readWorkspaceHistory(root) {
   const file=historyPath(root);
   if(!file || !fs.existsSync(file)) return [];
@@ -59,36 +75,27 @@ export function readWorkspaceHistory(root) {
     try { return validRecord(JSON.parse(line)); }
     catch(error) { throw new Error(`Workspace history line ${index+1}: ${error.message}`); }
   });
-  const first=records[0];
-  if(first.kind!=='proposal' || first.revision!==1) throw new Error('Workspace history requires an initial proposal at revision 1');
-  if(workspaceConfigDigest(first.config)!==first.digest) throw new Error('Workspace history proposal digest does not match its snapshot');
-  for(let index=1;index<records.length;index+=1) {
-    const previous=records[index-1],record=records[index];
-    if(record.kind==='acceptance') {
-      if(previous.kind!=='proposal' || record.revision!==previous.revision) {
-        throw new Error('Workspace history acceptance must match the pending proposal revision');
-      }
-    } else if(record.kind==='change') {
-      if(!['acceptance','change'].includes(previous.kind) || record.revision!==previous.revision+1) {
-        throw new Error('Workspace history change must follow accepted policy at the next revision');
-      }
-    } else throw new Error('Workspace history cannot contain a later proposal');
-  }
-  return records;
+  return validateHistory(records);
 }
 
-export function appendWorkspaceHistory(root,record) {
-  validRecord(record);
+export function withWorkspaceHistoryLock(root,callback) {
   const file=historyPath(root,{createDirectory:true});
   const lock=`${file}.lock`;
   const descriptor=fs.openSync(lock,'wx',0o600);
   try {
-    readWorkspaceHistory(root);
-    fs.writeFileSync(file,`${JSON.stringify(record)}\n`,{flag:'a',mode:0o600});
+    const records=readWorkspaceHistory(root);
+    return callback({records,append(record){
+      validRecord(record);validateHistory([...records,record]);
+      fs.writeFileSync(file,`${JSON.stringify(record)}\n`,{flag:'a',mode:0o600});records.push(record);
+    }});
   } finally {
     fs.closeSync(descriptor);
     fs.unlinkSync(lock);
   }
+}
+
+export function appendWorkspaceHistory(root,record) {
+  return withWorkspaceHistoryLock(root,({append})=>append(record));
 }
 
 export function assertAcceptedWorkspaceConfig(root,config) {

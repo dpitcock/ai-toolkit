@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {execFileSync} from 'node:child_process';
+import {execFileSync,spawn} from 'node:child_process';
 import YAML from 'yaml';
 import {parseWorkspaceConfig,workspaceConfigDigest} from '../scripts/lib/workspace-config.mjs';
 import {readWorkspaceHistory,assertAcceptedWorkspaceConfig} from '../scripts/lib/workspace-history.mjs';
@@ -31,6 +31,15 @@ function fixture(t,name='headless-tool',dependencies={}) {
 
 function run(root,...args) {
   return execFileSync(process.execPath,[cli,...args,'--root',root],{encoding:'utf8',stdio:['ignore','pipe','pipe']});
+}
+
+function runAsync(root,...args) {
+  return new Promise(resolve=>{
+    const child=spawn(process.execPath,[cli,...args,'--root',root],{stdio:['ignore','pipe','pipe']});
+    let output='',error='';
+    child.stdout.on('data',chunk=>{output+=chunk;});child.stderr.on('data',chunk=>{error+=chunk;});
+    child.on('close',code=>resolve({code,output,error}));
+  });
 }
 
 test('headless proposal explains roles and stays pending on repeat',t=>{
@@ -221,16 +230,34 @@ test('policy changes stay read-only until matching human approval is applied',t=
   const before=fs.readFileSync(current,'utf8');
   const proposed=JSON.parse(run(root,'propose-change','--candidate',candidate));
   assert.equal(proposed.status,'pending-change');
+  assert.match(proposed.base_digest,/^[a-f0-9]{64}$/);
   assert.ok(proposed.changes.includes('approvals_required.qa'));
   assert.equal(fs.readFileSync(current,'utf8'),before);
   assert.equal(readWorkspaceHistory(root).length,2);
-  assert.throws(()=>run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','QA policy reviewed','--digest','0'.repeat(64)));
+  assert.throws(()=>run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','QA policy reviewed','--digest','0'.repeat(64),'--base-digest',proposed.base_digest));
   assert.equal(fs.readFileSync(current,'utf8'),before);
-  const applied=JSON.parse(run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','QA policy reviewed','--digest',proposed.digest));
+  assert.throws(()=>run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','QA policy reviewed','--digest',proposed.digest));
+  const applied=JSON.parse(run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','QA policy reviewed','--digest',proposed.digest,'--base-digest',proposed.base_digest));
   assert.equal(applied.status,'accepted');
   assert.equal(applied.revision,2);
   assert.equal(readWorkspaceHistory(root).at(-1).kind,'change');
   assert.equal(JSON.parse(run(root,'status')).revision,2);
+});
+
+test('concurrent policy changes from one reviewed base leave one accepted revision',async t=>{
+  const root=fixture(t);
+  const proposal=JSON.parse(run(root,'propose'));
+  run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
+  const candidate=path.join(root,'candidate.yaml');
+  const changed=YAML.parse(fs.readFileSync(path.join(root,'config/workspace-config.yaml'),'utf8'));
+  changed.approvals_required.qa=false;fs.writeFileSync(candidate,YAML.stringify(changed));
+  const change=JSON.parse(run(root,'propose-change','--candidate',candidate));
+  const calls=await Promise.all(Array.from({length:12},(_,index)=>runAsync(root,'apply-change','--candidate',candidate,
+    '--by',`Reviewer-${index}`,'--reason','Concurrent review','--digest',change.digest,'--base-digest',change.base_digest)));
+  assert.equal(calls.filter(call=>call.code===0).length,1);
+  const history=readWorkspaceHistory(root);
+  assert.equal(history.length,3);assert.equal(history.at(-1).revision,2);
+  assert.equal(JSON.parse(run(root,'status')).status,'accepted');
 });
 
 test('stale no-UI exemptions and UI policy waivers are refused',t=>{
@@ -265,7 +292,7 @@ test('a stale accepted policy can be corrected but cannot be newly accepted for 
   corrected.approvals_overrides={exempt:[]};
   fs.writeFileSync(candidate,YAML.stringify(corrected));
   const change=JSON.parse(run(root,'propose-change','--candidate',candidate));
-  assert.equal(JSON.parse(run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','UI policy restored','--digest',change.digest)).status,'accepted');
+  assert.equal(JSON.parse(run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','UI policy restored','--digest',change.digest,'--base-digest',change.base_digest)).status,'accepted');
   assert.equal(JSON.parse(run(root,'status')).status,'accepted');
   const pending=fixture(t);
   const pendingProposal=JSON.parse(run(pending,'propose'));
