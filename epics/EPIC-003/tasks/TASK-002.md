@@ -2,16 +2,19 @@
 kind: task
 id: TASK-002
 owner: "Codex"
-status: draft
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: [ tasks/TASK-001.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-25: node --test tests/workspace-config.test.mjs failed with
+    ERR_MODULE_NOT_FOUND for scripts/lib/workspace-config.mjs."
+  green: "2026-09-25: focused parser and resolver tests passed 3/3 after
+    implementation."
+  qa: "2026-09-25: npm test passed 20/20; git diff --check and git diff --cached
+    --check were clean."
+  commit: 345549fbfee68bc39807e9487832fcb3375d9abb
 approvals:
   principal_engineer: null
   appsec: null
