@@ -2,16 +2,26 @@
 kind: task
 id: TASK-010
 owner: "Codex"
-status: draft
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 13
 depends_on: [ tasks/TASK-009.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-25: node --test tests/init-workspace.test.mjs failed the two new
+    adversarial cases under pathname locks: concurrent waiters behind a killed
+    lock holder could not recover, and linked status returned while the
+    coordination-root transaction was paused at history-appended."
+  green: "2026-09-25: node --test tests/init-workspace.test.mjs passed 30/30 after
+    descriptor-held fs-ext advisory locks and canonical root/overlay status
+    locking were implemented. The adversarial holder and paused-root regressions
+    both recovered revision 1 without reporting the candidate."
+  qa: "2026-09-25: npm test passed 55/55; npm audit --audit-level=high --omit=dev
+    reported 0 vulnerabilities; git diff --check and staged diff checks were
+    clean. Persistent verified lock files are never stale-reclaimed by pathname;
+    locks release with their descriptors, and linked status locks both roots
+    before transaction recovery and policy reads."
+  commit: "2edca78"
 approvals:
   principal_engineer: null
   appsec: null
