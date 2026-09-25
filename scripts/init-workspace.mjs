@@ -240,9 +240,21 @@ function applyChange(root,args) {
     const record={kind:'change',digest,revision:current.revision+1,date:new Date().toISOString().slice(0,10),by,reason,
       changes:changedFields(config,candidate)};
     const temporary=`${file}.${process.pid}.change`;
+    const rollback=`${file}.${process.pid}.rollback`;
+    const previous=fs.readFileSync(file,'utf8');
     fs.writeFileSync(temporary,YAML.stringify(candidate),{flag:'wx',mode:0o600});
-    try { append(record);fs.renameSync(temporary,file); }
-    finally { if(fs.existsSync(temporary)) fs.unlinkSync(temporary); }
+    try {
+      fs.renameSync(temporary,file);
+      try { append(record); }
+      catch(error) {
+        fs.writeFileSync(rollback,previous,{flag:'wx',mode:0o600});
+        fs.renameSync(rollback,file);
+        throw error;
+      }
+    } finally {
+      if(fs.existsSync(temporary)) fs.unlinkSync(temporary);
+      if(fs.existsSync(rollback)) fs.unlinkSync(rollback);
+    }
     return {status:'accepted',digest,revision:record.revision};
   });
 }
