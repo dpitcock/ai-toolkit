@@ -15,7 +15,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       - run: node scripts/install-native-lock.mjs
       - run: npm test
       - name: Check changed epic plans

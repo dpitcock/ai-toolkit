@@ -36,6 +36,7 @@ test('init is idempotent; real epic worktree is isolated and refuses collisions'
 });
 
 test('native lock install is local and does not run an unexpected lifecycle hook',{timeout:120_000},t=>{
+ assert.doesNotMatch(fs.readFileSync(path.join(source,'.github/workflows/workflow.yml'),'utf8'),/cache:\s*npm/);
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'blueprint-native-lock-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  for(const item of ['scripts','package.json','package-lock.json','.gitignore']) fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
  const manifest=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
@@ -44,7 +45,8 @@ test('native lock install is local and does not run an unexpected lifecycle hook
  const run=(cmd,args)=>execFileSync(cmd,args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']});
  run('node',['scripts/install-native-lock.mjs']);
  assert.ok(fs.existsSync(path.join(root,'.npm-cache')));
- assert.ok(fs.existsSync(path.join(root,'.node-gyp')));
+ const devdir=path.join(root,'.node-gyp');assert.ok(fs.existsSync(devdir));
+ assert.ok(fs.readdirSync(devdir).some(version=>fs.existsSync(path.join(devdir,version,'include','node','node.h'))));
  assert.ok(!fs.existsSync(path.join(root,'unexpected-hook-ran')));
  run('node',['-e',"const fs=require('node:fs');const ext=require('fs-ext');const fd=fs.openSync('policy.lock','w');ext.flockSync(fd,'ex');ext.flockSync(fd,'un');fs.closeSync(fd);"]);
 });
