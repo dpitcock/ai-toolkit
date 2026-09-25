@@ -4,7 +4,7 @@
 kind: epic-plan
 id: EPIC-003-PLAN
 owner: "Codex"
-status: in-progress
+status: ready-for-pr
 revision: 13
 parent: epic.md
 parent_revision: 1
@@ -42,7 +42,7 @@ review_comments:
     resolution_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
     verified_by: "staff-agent-task008-final-rereview"
     verified_date: "2026-09-25"
-    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
+    verified_commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
   - id: CR-002
     status: resolved
     finding: "Independent review found that a stale UI exemption blocked its own
@@ -50,7 +50,7 @@ review_comments:
     resolution_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
     verified_by: "staff-agent-task008-final-rereview"
     verified_date: "2026-09-25"
-    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
+    verified_commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
   - id: CR-003
     status: resolved
     finding: "Independent review found that orphaned or inconsistent workspace
@@ -58,7 +58,7 @@ review_comments:
     resolution_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
     verified_by: "staff-agent-task008-final-rereview"
     verified_date: "2026-09-25"
-    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
+    verified_commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
   - id: CR-004
     status: resolved
     finding: "Independent review found that initial acceptance did not re-check
@@ -66,7 +66,7 @@ review_comments:
     resolution_commit: "e514cd9dbb003d6013e2b9b04ccc4fc5f5126aed"
     verified_by: "staff-agent-task008-final-rereview"
     verified_date: "2026-09-25"
-    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
+    verified_commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
   - id: CR-005
     status: resolved
     finding: "Independent PR review reproduced concurrent apply-change calls
@@ -76,7 +76,7 @@ review_comments:
     resolution_commit: "e4c8804062c36ce22f1f6981986e7c97276d2d67"
     verified_by: "staff-agent-task008-final-rereview"
     verified_date: "2026-09-25"
-    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
+    verified_commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
   - id: CR-006
     status: resolved
     finding: "Independent AppSec plan review found that an unspecified
@@ -85,7 +85,7 @@ review_comments:
     resolution_commit: "e4c8804062c36ce22f1f6981986e7c97276d2d67"
     verified_by: "staff-agent-task008-final-rereview"
     verified_date: "2026-09-25"
-    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
+    verified_commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
   - id: CR-007
     status: resolved
     finding: "Independent Principal plan review found that a plain exclusive lock
@@ -94,7 +94,7 @@ review_comments:
     resolution_commit: "e4c8804062c36ce22f1f6981986e7c97276d2d67"
     verified_by: "staff-agent-task008-final-rereview"
     verified_date: "2026-09-25"
-    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
+    verified_commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
   - id: CR-008
     status: resolved
     finding: "Independent Principal plan review found that lock cleanup and journal
@@ -103,7 +103,7 @@ review_comments:
     resolution_commit: "e4c8804062c36ce22f1f6981986e7c97276d2d67"
     verified_by: "staff-agent-task008-final-rereview"
     verified_date: "2026-09-25"
-    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
+    verified_commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
   - id: CR-009
     status: resolved
     finding: "Independent Principal plan review found that lock cleanup and stale
@@ -112,7 +112,7 @@ review_comments:
     resolution_commit: "e4c8804062c36ce22f1f6981986e7c97276d2d67"
     verified_by: "staff-agent-task008-final-rereview"
     verified_date: "2026-09-25"
-    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
+    verified_commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
   - id: CR-010
     status: resolved
     finding: "Independent AppSec plan review found that locking only apply-change
@@ -121,18 +121,43 @@ review_comments:
     resolution_commit: "e4c8804062c36ce22f1f6981986e7c97276d2d67"
     verified_by: "staff-agent-task008-final-rereview"
     verified_date: "2026-09-25"
-    verified_commit: "dc2994c931cf2ddeef93e545c50a233ffde5aa39"
+    verified_commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
   - id: CR-011
-    status: open
+    status: resolved
     finding: "Final AppSec review reproduced two stale-lock reclaimers deleting a
       live replacement fixed lock after independently validating the same dead
       owner."
+    resolution_commit: "2edca78a7e68deda27e0a33f38f8ad166e013553"
+    verified_by: "staff-agent-task008-final-rereview"
+    verified_date: "2026-09-25"
+    verified_commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
   - id: CR-012
-    status: open
+    status: resolved
     finding: "Final AppSec review reproduced linked status reporting an uncommitted
       coordination-root policy while its transaction remained at
       history-appended."
-review_commit: null
+    resolution_commit: "2edca78a7e68deda27e0a33f38f8ad166e013553"
+    verified_by: "staff-agent-task008-final-rereview"
+    verified_date: "2026-09-25"
+    verified_commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
+  - id: CR-013
+    status: resolved
+    finding: "Independent final review found CI actions/setup-node cache:npm could
+      write npm state outside the worktree-local cache policy."
+    resolution_commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
+    verified_by: "staff-agent-task008-final-rereview"
+    verified_date: "2026-09-25"
+    verified_commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
+  - id: CR-014
+    status: resolved
+    finding: "Independent final review found the native-install regression only
+      checked that .node-gyp existed, not that downloaded SDK headers stayed
+      inside it."
+    resolution_commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
+    verified_by: "staff-agent-task008-final-rereview"
+    verified_date: "2026-09-25"
+    verified_commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
+review_commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
 pr_url: "https://github.com/dpitcock/ai-toolkit/pull/5"
 approvals:
   principal_engineer:
@@ -156,8 +181,26 @@ approvals:
       CR-011/012 while retaining SEC-301/302/303 controls."
     revision: 13
   qa_lead: null
-  code_review: null
-  appsec_review: null
+  code_review:
+    by: "staff-agent-task008-final-rereview"
+    date: "2026-09-25"
+    notes: "Independent five-axis review approved the exact review commit after
+      verifying CR-013/014 resolutions. The reviewer checked focused scaffold
+      2/2, npm test 55/55, npm audit --audit-level=high --omit=dev, base/current
+      diff checks, and advisory-lock/link-root regressions."
+    revision: 13
+    commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
+  appsec_review:
+    by: "appsec-final-agent-epic003-r13"
+    date: "2026-09-25"
+    notes: "Independent final AppSec review approved the exact implementation commit
+      after verifying SEC-301/302/303 and CR-011 through CR-014: descriptor
+      advisory locks, canonical dual-root recovery, fail-closed fs-ext lifecycle
+      execution, local cache/SDK paths, journal recovery, and legacy/UI
+      protections. Verified npm test 55/55, audit with zero high
+      vulnerabilities, and clean base/current diffs."
+    revision: 13
+    commit: "63c528c0ff468d15218a22185bd6fbde1e51faed"
   accessibility: null
   accessibility_review: null
 ---
