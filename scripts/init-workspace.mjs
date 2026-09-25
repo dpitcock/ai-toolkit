@@ -46,6 +46,24 @@ function transactionPath(root) {
   return file;
 }
 
+function syncDirectory(directory) {
+  const descriptor=fs.openSync(directory,'r');
+  try { fs.fsyncSync(descriptor); } finally { fs.closeSync(descriptor); }
+}
+
+function writeAtomic(file,contents) {
+  const temporary=`${file}.${process.pid}.${Date.now()}.tmp`;
+  const descriptor=fs.openSync(temporary,'wx',0o600);
+  try { fs.writeFileSync(descriptor,contents,'utf8');fs.fsyncSync(descriptor); }
+  finally { fs.closeSync(descriptor); }
+  try { fs.renameSync(temporary,file);syncDirectory(path.dirname(file)); }
+  finally { if(fs.existsSync(temporary)) fs.unlinkSync(temporary); }
+}
+
+function writeTransaction(journal,entry) {
+  writeAtomic(journal,JSON.stringify(entry));
+}
+
 function recoverWorkspaceTransaction(root) {
   const journal=transactionPath(root);
   if(!fs.existsSync(journal)) return;
@@ -57,16 +75,22 @@ function recoverWorkspaceTransaction(root) {
     throw new Error('Workspace transaction is malformed');
   }
   const config=configPath(root),history=path.join(root,'project','workspace-config-history.jsonl');
+  if(fs.lstatSync(history).isSymbolicLink() || !fs.statSync(history).isFile()) throw new Error('Workspace history must be a regular file');
+  const currentConfig=fs.readFileSync(config,'utf8'),currentHistory=fs.readFileSync(history,'utf8');
+  const configKnown=[entry.oldConfig,entry.newConfig].includes(currentConfig);
+  const historyKnown=[entry.oldHistory,`${entry.oldHistory}${JSON.stringify(entry.record)}\n`].includes(currentHistory);
+  if(!configKnown || !historyKnown) throw new Error('Workspace transaction state is inconsistent');
   if(entry.phase==='committed') {
-    const current=parseWorkspaceConfig(fs.readFileSync(config,'utf8'));
+    const current=parseWorkspaceConfig(currentConfig);
     const latest=readWorkspaceHistory(root).at(-1);
-    if(workspaceConfigDigest(current)!==workspaceConfigDigest(parseWorkspaceConfig(entry.newConfig)) ||
+    if(currentConfig!==entry.newConfig || currentHistory!==`${entry.oldHistory}${JSON.stringify(entry.record)}\n` ||
+      workspaceConfigDigest(current)!==workspaceConfigDigest(parseWorkspaceConfig(entry.newConfig)) ||
       JSON.stringify(latest)!==JSON.stringify(entry.record)) throw new Error('Workspace transaction committed state is inconsistent');
   } else {
-    fs.writeFileSync(config,entry.oldConfig,{mode:0o600});
-    fs.writeFileSync(history,entry.oldHistory,{mode:0o600});
+    writeAtomic(config,entry.oldConfig);
+    writeAtomic(history,entry.oldHistory);
   }
-  fs.unlinkSync(journal);
+  fs.unlinkSync(journal);syncDirectory(path.dirname(journal));
 }
 
 function coordinationRoot(root) {
@@ -286,12 +310,12 @@ function applyChange(root,args) {
     const historyFile=path.join(root,'project','workspace-config-history.jsonl');
     const journal=transactionPath(root);
     const entry={phase:'prepared',oldConfig:previous,oldHistory:fs.readFileSync(historyFile,'utf8'),newConfig:YAML.stringify(candidate),record};
-    fs.writeFileSync(journal,JSON.stringify(entry),{flag:'wx',mode:0o600});
+    writeTransaction(journal,entry);
     fs.writeFileSync(temporary,YAML.stringify(candidate),{flag:'wx',mode:0o600});
     try {
       fs.renameSync(temporary,file);
-      entry.phase='config-replaced';fs.writeFileSync(journal,JSON.stringify(entry),{mode:0o600});
-      try { append(record);entry.phase='committed';fs.writeFileSync(journal,JSON.stringify(entry),{mode:0o600});fs.unlinkSync(journal); }
+      entry.phase='config-replaced';writeTransaction(journal,entry);
+      try { append(record);entry.phase='history-appended';writeTransaction(journal,entry);entry.phase='committed';writeTransaction(journal,entry);fs.unlinkSync(journal);syncDirectory(path.dirname(journal)); }
       catch(error) {
         fs.writeFileSync(rollback,previous,{flag:'wx',mode:0o600});
         fs.renameSync(rollback,file);
