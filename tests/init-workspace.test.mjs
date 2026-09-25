@@ -10,6 +10,15 @@ import {readWorkspaceHistory,assertAcceptedWorkspaceConfig} from '../scripts/lib
 
 const source=path.resolve(import.meta.dirname,'..');
 const cli=path.join(source,'scripts/init-workspace.mjs');
+const legacy=`workspace:
+  repository: legacy-repo
+  environment: staging
+  provider: codex
+  channel_name: ws-legacy-repo-codex
+  timezone: UTC
+daily_summary:
+  local_time: "10:30"
+`;
 
 function fixture(t,name='headless-tool',dependencies={}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'workspace-init-'));
@@ -119,4 +128,83 @@ test('proposal rejects a history symlink outside the repository',t=>{
   fs.symlinkSync(target,path.join(root,'project/workspace-config-history.jsonl'));
   assert.throws(()=>run(root,'propose'));
   assert.equal(fs.existsSync(target),false);
+});
+
+test('legacy Slack values survive proposal and descriptor retires after acceptance',t=>{
+  const root=fixture(t,'different-package-name');
+  const old=path.join(root,'config/slack-workspace.example.yml');
+  const unrelated=path.join(root,'project/existing-notes.md');
+  fs.writeFileSync(old,legacy);
+  fs.writeFileSync(unrelated,'Keep this user text.\n');
+  const proposal=JSON.parse(run(root,'propose'));
+  const config=parseWorkspaceConfig(fs.readFileSync(path.join(root,'config/workspace-config.yaml'),'utf8'));
+  assert.equal(config.workspace.repository,'legacy-repo');
+  assert.equal(config.workspace.environment,'staging');
+  assert.equal(config.workspace.slack_channel_name,'ws-legacy-repo-codex');
+  assert.equal(config.workspace.timezone,'UTC');
+  assert.equal(config.daily_summary.local_time,'10:30');
+  assert.equal(fs.readFileSync(old,'utf8'),legacy);
+  assert.equal(fs.readFileSync(unrelated,'utf8'),'Keep this user text.\n');
+  assert.equal(JSON.parse(run(root,'accept','--by','Dennis','--reason','Approved migration','--digest',proposal.digest)).status,'accepted');
+  assert.equal(fs.existsSync(old),false);
+  assert.equal(fs.readFileSync(unrelated,'utf8'),'Keep this user text.\n');
+  assert.equal(JSON.parse(run(root,'propose')).status,'accepted');
+  assert.equal(JSON.parse(run(root,'accept','--by','Dennis','--reason','Retry','--digest',proposal.digest)).status,'accepted');
+  assert.equal(readWorkspaceHistory(root).length,2);
+});
+
+test('matching unified and legacy values do not overwrite either file',t=>{
+  const root=fixture(t);
+  const old=path.join(root,'config/slack-workspace.example.yml');
+  fs.writeFileSync(old,legacy);
+  const config={
+    workspace:{repository:'legacy-repo',environment:'staging',provider:'codex',slack_channel_name:'ws-legacy-repo-codex',timezone:'UTC'},
+    approvals_required:{principal:true,qa:true,appsec:true,accessibility_reviewer:false,ui_designer:false},
+    approvals_overrides:{reason:'Headless project',exempt:['accessibility_reviewer','ui_designer']},
+    daily_summary:{local_time:'10:30'},
+  };
+  const file=path.join(root,'config/workspace-config.yaml');
+  fs.writeFileSync(file,YAML.stringify(config));
+  const before=fs.readFileSync(file,'utf8');
+  const proposal=JSON.parse(run(root,'propose'));
+  assert.equal(proposal.status,'pending');
+  assert.equal(fs.readFileSync(file,'utf8'),before);
+  assert.equal(fs.readFileSync(old,'utf8'),legacy);
+  assert.equal(readWorkspaceHistory(root).at(-1).legacyDigest.length,64);
+});
+
+test('legacy conflicts and secret fields fail before changing sources',t=>{
+  const root=fixture(t,'new-repo');
+  run(root,'propose');
+  const current=path.join(root,'config/workspace-config.yaml');
+  const before=fs.readFileSync(current,'utf8');
+  const old=path.join(root,'config/slack-workspace.example.yml');
+  fs.writeFileSync(old,legacy);
+  assert.throws(()=>run(root,'propose'));
+  assert.equal(fs.readFileSync(current,'utf8'),before);
+  assert.equal(fs.readFileSync(old,'utf8'),legacy);
+  assert.equal(readWorkspaceHistory(root).length,1);
+  fs.unlinkSync(old);
+  fs.writeFileSync(old,legacy.replace('  timezone: UTC','  timezone: UTC\n  token: secret'));
+  assert.throws(()=>run(root,'propose'));
+  assert.equal(fs.readFileSync(current,'utf8'),before);
+});
+
+test('legacy symlink and post-proposal drift block migration',t=>{
+  const root=fixture(t);
+  const outside=fs.mkdtempSync(path.join(os.tmpdir(),'workspace-legacy-outside-'));
+  t.after(()=>fs.rmSync(outside,{recursive:true,force:true}));
+  const target=path.join(outside,'descriptor.yml');
+  fs.writeFileSync(target,legacy);
+  const old=path.join(root,'config/slack-workspace.example.yml');
+  fs.symlinkSync(target,old);
+  assert.throws(()=>run(root,'propose'));
+  assert.equal(fs.existsSync(path.join(root,'config/workspace-config.yaml')),false);
+  fs.unlinkSync(old);
+  fs.writeFileSync(old,legacy);
+  const proposal=JSON.parse(run(root,'propose'));
+  fs.writeFileSync(old,legacy.replace('staging','production'));
+  assert.throws(()=>run(root,'accept','--by','Dennis','--reason','Approved migration','--digest',proposal.digest));
+  assert.equal(fs.existsSync(old),true);
+  assert.equal(readWorkspaceHistory(root).at(-1).kind,'proposal');
 });

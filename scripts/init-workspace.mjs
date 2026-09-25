@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import {createHash} from 'node:crypto';
 import YAML from 'yaml';
 import {parseWorkspaceConfig,resolveWorkspaceConfig,workspaceConfigDigest} from './lib/workspace-config.mjs';
 import {appendWorkspaceHistory,readWorkspaceHistory,assertAcceptedWorkspaceConfig} from './lib/workspace-history.mjs';
@@ -28,6 +29,83 @@ function configPath(root) {
     throw new Error('Workspace config must be a regular file');
   }
   return file;
+}
+
+function readLegacy(root) {
+  const file=path.join(root,'config','slack-workspace.example.yml');
+  let stat;
+  try { stat=fs.lstatSync(file); }
+  catch(error) {
+    if(error.code==='ENOENT') return null;
+    throw error;
+  }
+  if(!stat.isFile() || stat.isSymbolicLink() || stat.size>1024*1024 || fs.realpathSync(file)!==file) {
+    throw new Error('Legacy Slack descriptor must be a regular file inside config under 1 MB');
+  }
+  const descriptor=fs.openSync(file,fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  let raw,opened;
+  try {
+    opened=fs.fstatSync(descriptor);
+    if(!opened.isFile() || opened.size>1024*1024) {
+      throw new Error('Legacy Slack descriptor must be a regular file under 1 MB');
+    }
+    raw=fs.readFileSync(descriptor,'utf8');
+  } finally { fs.closeSync(descriptor); }
+  if(Buffer.byteLength(raw,'utf8')>1024*1024) {
+    throw new Error('Legacy Slack descriptor must be under 1 MB');
+  }
+  const current=fs.lstatSync(file);
+  if(!current.isFile() || current.dev!==opened.dev || current.ino!==opened.ino) {
+    throw new Error('Legacy Slack descriptor changed while reading');
+  }
+  const document=YAML.parseDocument(raw,{uniqueKeys:true});
+  if(document.errors.length) {
+    throw new Error(`Invalid legacy Slack YAML: ${document.errors.map(error=>error.message).join('; ')}`);
+  }
+  let value;
+  try { value=document.toJS({maxAliasCount:0}); }
+  catch(error) { throw new Error(`Invalid legacy Slack YAML: ${error.message}`); }
+  const allowed=(object,keys,required,label)=>{
+    if(!object || typeof object!=='object' || Array.isArray(object)) throw new Error(`${label} must be a mapping`);
+    for(const key of Object.keys(object)) if(!keys.includes(key)) throw new Error(`${label}.${key} is not allowed`);
+    for(const key of required) if(!Object.hasOwn(object,key)) throw new Error(`${label}.${key} is required`);
+    return object;
+  };
+  const sections=allowed(value,['workspace','daily_summary'],['workspace','daily_summary'],'legacy');
+  const names=['repository','environment','provider','channel_name','timezone'];
+  const workspace=allowed(sections.workspace,names,names,'legacy.workspace');
+  const summary=allowed(sections.daily_summary,['local_time'],['local_time'],'legacy.daily_summary');
+  const values={
+    workspace:{
+      repository:workspace.repository,environment:workspace.environment,provider:workspace.provider,
+      slack_channel_name:workspace.channel_name,timezone:workspace.timezone,
+    },
+    daily_summary:{local_time:summary.local_time},
+  };
+  return {file,digest:createHash('sha256').update(raw).digest('hex'),values,device:opened.dev,inode:opened.ino};
+}
+
+function assertLegacyMatches(config,legacy) {
+  for(const [section,entries] of Object.entries(legacy.values)) {
+    for(const [key,value] of Object.entries(entries)) {
+      if(config[section]?.[key]!==value) throw new Error(`Legacy Slack conflict at ${section}.${key}`);
+    }
+  }
+}
+
+function assertLegacySource(record,legacy,config) {
+  if(record.legacyDigest && !legacy) throw new Error('Legacy Slack descriptor disappeared after proposal');
+  if(legacy && !record.legacyDigest) throw new Error('Legacy Slack descriptor appeared after proposal');
+  if(legacy && record.legacyDigest!==legacy.digest) throw new Error('Legacy Slack descriptor changed after proposal');
+  if(legacy) assertLegacyMatches(config,legacy);
+}
+
+function retireLegacy(root,reviewed) {
+  const current=readLegacy(root);
+  if(!current || current.digest!==reviewed.digest || current.device!==reviewed.device || current.inode!==reviewed.inode) {
+    throw new Error('Legacy Slack descriptor changed before retirement');
+  }
+  fs.unlinkSync(reviewed.file);
 }
 
 function readPackage(root) {
@@ -98,26 +176,39 @@ function changedFields(before,after,prefix='') {
 function propose(root) {
   const file=configPath(root);
   const history=readWorkspaceHistory(root);
+  const legacy=readLegacy(root);
   if(fs.existsSync(file)) {
     const config=parseWorkspaceConfig(fs.readFileSync(file,'utf8'));
     const digest=workspaceConfigDigest(config);
     const latest=history.at(-1);
+    if(legacy) assertLegacyMatches(config,legacy);
     if(latest && ['acceptance','change'].includes(latest.kind)) {
       assertAcceptedWorkspaceConfig(root,config);
+      if(legacy) throw new Error('Legacy Slack descriptor remains after acceptance; retry accept to retire it');
       return {status:'accepted',digest,revision:latest.revision};
     }
     if(latest && latest.kind!=='proposal') throw new Error('Unknown workspace history state');
+    if(latest) assertLegacySource(latest,legacy,config);
     const reasons=latest?.reasons ?? Object.fromEntries(
       ['principal','qa','appsec','accessibility_reviewer','ui_designer'].map(role=>[role,'Existing value requires human review.'])
     );
-    if(!latest) appendWorkspaceHistory(root,{kind:'proposal',digest,revision:1,date:new Date().toISOString().slice(0,10),config,reasons});
+    if(!latest) appendWorkspaceHistory(root,{
+      kind:'proposal',digest,revision:1,date:new Date().toISOString().slice(0,10),config,reasons,
+      ...(legacy ? {legacyDigest:legacy.digest} : {}),
+    });
     return {status:'pending',digest,reasons};
   }
   if(history.length) throw new Error('Workspace config is missing but history exists');
-  const {config,reasons}=proposalFor(root);
+  const {config:defaults,reasons}=proposalFor(root);
+  const config=legacy ? parseWorkspaceConfig(YAML.stringify({
+    ...defaults,workspace:legacy.values.workspace,daily_summary:legacy.values.daily_summary,
+  })) : defaults;
   const digest=workspaceConfigDigest(config);
   fs.writeFileSync(file,YAML.stringify(config),{flag:'wx',mode:0o600});
-  appendWorkspaceHistory(root,{kind:'proposal',digest,revision:1,date:new Date().toISOString().slice(0,10),config,reasons});
+  appendWorkspaceHistory(root,{
+    kind:'proposal',digest,revision:1,date:new Date().toISOString().slice(0,10),config,reasons,
+    ...(legacy ? {legacyDigest:legacy.digest} : {}),
+  });
   return {status:'pending',digest,reasons};
 }
 
@@ -131,15 +222,27 @@ function accept(root,args) {
   const digest=workspaceConfigDigest(config);
   if(expected!==digest) throw new Error('Config digest differs from the reviewed proposal');
   const proposal=readWorkspaceHistory(root).at(-1);
+  const legacy=readLegacy(root);
+  if(proposal && ['acceptance','change'].includes(proposal.kind)) {
+    assertAcceptedWorkspaceConfig(root,config);
+    if(legacy) {
+      assertLegacySource(proposal,legacy,config);
+      retireLegacy(root,legacy);
+    }
+    return {status:'accepted',digest,revision:proposal.revision};
+  }
   if(!proposal || proposal.kind!=='proposal') {
     throw new Error('A pending proposal is required before acceptance');
   }
+  assertLegacySource(proposal,legacy,config);
   const record={
     kind:'acceptance',digest,revision:proposal.revision,
     date:new Date().toISOString().slice(0,10),by,reason,
     changes:changedFields(proposal.config,config),
+    ...(legacy ? {legacyDigest:legacy.digest} : {}),
   };
   appendWorkspaceHistory(root,record);
+  if(legacy) retireLegacy(root,legacy);
   return {status:'accepted',digest,revision:record.revision};
 }
 
