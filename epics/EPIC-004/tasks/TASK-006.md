@@ -2,7 +2,7 @@
 kind: task
 id: TASK-006
 owner: "Codex"
-status: draft
+status: done
 revision: 2
 parent: ../epic-plan.md
 parent_revision: 2
@@ -10,18 +10,36 @@ depends_on:
   - tasks/TASK-004.md
   - tasks/TASK-005.md
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "node --test tests/scaffold.test.mjs: generated-adopter case first failed
+    because AGENTS.md lacked the Tier 1 UI exclusion marker (2 passed, 1
+    failed); after review, a new policy assertion failed because docs did not
+    explain the generic checker's template-rule limit (2 passed, 1 failed). The
+    fixture stdin wiring error from the earliest run was corrected before valid
+    RED evidence."
+  green: "node --test tests/scaffold.test.mjs: 3/3 passed after clarifying that
+    check-tier1.mjs may report eligibility without enforcing the template
+    PR-only rule; generated adopter exercised accepted initialization, Tier 1
+    and Tier 2 checks, and check-pr with valid evidence."
+  qa: "QA-004-SCAFFOLD, QA-004-CLASSIFICATION, QA-004-TIER1, QA-004-TIER2: npm
+    test 114/114 passed; git diff --check and git diff --cached --check clean
+    (exit 0)."
+  commit: 2391328261e3eec76ce6c8d2466251255c557517
 approvals:
   principal_engineer: null
   appsec: null
   qa_lead: null
-  code_review: null
+  code_review:
+    by: /root/task006_review
+    date: "2026-09-25"
+    notes: "Approved exact diff
+      ce9578467da8b7720bc84314705b03f35dafbb15..2391328261e3eec76ce6c8d24662512\
+      55c557517 after clarifying that generic Tier 1 eligibility does not
+      enforce the template PR-only policy; no findings remain."
+    revision: 2
   appsec_review: null
   accessibility: null
   accessibility_review: null
+review_commit: null
 ---
 
 # TASK-006
