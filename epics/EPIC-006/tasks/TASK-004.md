@@ -2,16 +2,25 @@
 kind: task
 id: TASK-004
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: [ tasks/TASK-014.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-26: node --test tests/workspace-config.test.mjs
+    tests/init-workspace.test.mjs failed as expected before implementation: 5
+    new autopilot regressions failed because config.workflow was not allowed and
+    new proposals omitted workflow evidence."
+  green: "2026-09-26: node --test tests/workspace-config.test.mjs
+    tests/init-workspace.test.mjs passed: 49 tests, 0 failed."
+  qa: "QA-GOV-004 policy portion verified: explicit true and false remain distinct
+    from legacy omission, root/worktree sources expose workflow.autopilot
+    provenance, and a policy candidate cannot carry self-declared delegated
+    owner acceptance. The existing accepted-policy transaction records root and
+    worktree changes; trusted actor authentication remains the TASK-006/011
+    harness boundary."
+  commit: 2436c58b4233ea27fb89abc589dc0a53da624e0c
 approvals:
   principal_engineer: null
   appsec: null
