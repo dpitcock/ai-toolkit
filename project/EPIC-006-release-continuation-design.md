@@ -46,8 +46,20 @@ Observed immutable history:
 - Starting head S: `a91beb92f858c4be00e09f23de39de3ccee3c17f`; materializes
   approved plan/tasks and adds only the empty worktree override marker to policy,
   with an appended revision-2 change record naming that field.
-- First assessment A: the original sole-path direct child of S adding
-  `project/task-assessments/governance-activation.yaml`.
+- First assessment A: `2a51c8fe0a35ebe224840d702ef5ae30f271407e`, the original
+  sole-path direct child of S adding
+  `project/task-assessments/governance-activation.yaml` (initial Git blob
+  `d4c633fc8387df67422861cb87508fa7c2af75b4`).
+
+This recognizer is confined to `dpitcock/ai-toolkit`, `epic/EPIC-006`, canonical
+`EPIC-006-PLAN` revision 1, and the exact B/P/S/A and assessment path/blob above.
+Its production entrypoints must match these identities before applying any
+exception. Shape-compatible history in another repository, epic, branch or new
+assessment is not eligible. Do not expose an event, environment, CLI or candidate
+config option that replaces these pinned identities. The historical predicates
+remain mandatory after the identity check; pinned SHAs alone are not proof that
+all subsequent constraints hold. Tests may use isolated clones retaining these
+actual objects; generic fixtures must not enable a production allowlist escape.
 
 Implement one pure committed-history recognizer shared by the before-preflight
 check and CI accepted-policy reconstruction. Its success returns the proven
@@ -134,6 +146,49 @@ An immutable original assessment authorizes the original scoped migration work;
 it is not relabeled as an assessment made under the new policy. The new gate
 validates the migration as a bounded output of that work, under old authority.
 It does not call the ordinary current-policy checker and suppress its failure.
+
+## Separate validation boundaries; no CI review dependency cycle
+
+The adoption design has three distinct entrypoints. Shared pure predicates are
+reused, but evidence sources and authority are deliberately different:
+
+1. **Committed-provenance CI validation:** `check-pr.mjs` calls the pure adoption
+   snapshot/history/assessment predicate for F..H1. It obtains original PR and
+   finalization identities from unchanged committed canonical markers and, when
+   needed, authenticated read-only host observation, then verifies their actual
+   Git objects and relations. It neither reads nor recreates the developer's
+   Git-common release store. It does not require PR1's own `gates` result, PR1
+   reviews or local prepublication review receipts to produce its first result.
+   Its success means only that the committed candidate meets the restricted
+   provenance contract; it grants neither publication nor merge permission.
+2. **Local prepublication gate:** `check-gate.mjs PLAN policy-adoption-pr` is the
+   controller boundary before any draft/public PR1. It requires the same pure
+   candidate proof plus actual owner authority and Staff-then-AppSec H1 review
+   receipts recorded by observed independent harness sessions in the locked
+   runtime store. The trusted controller must supply observed identities and
+   authority separately from document/event JSON. A standalone invocation without
+   that context fails closed. Missing runtime state requires explicit recovery
+   and review/authority reacquisition, never a fresh-clone exception. It does not
+   require PR1 to exist or require a status that only PR1's CI can create.
+3. **Trusted hosted merge gate:** after PR1 exists, base F's trusted enforcement
+   rechecks the pure candidate contract, current open PR identity/head/base and
+   old governing role policy, then fetches native current-H1 independent reviews
+   and required checks (including the completed CI `gates` result). Recheck main
+   F and head H1 immediately before merging. Candidate code/policy cannot supply
+   its own role mappings or green snapshots. Local bootstrap coordination also
+   retains its H1 prepublication evidence; published head changes invalidate it.
+
+CI cannot authenticate that earlier local dispatch occurred, and must not claim
+to do so. Authenticated CI host reads establish only observed host facts, not
+missing local reviewer identity or owner authority. Caller JSON, a committed
+review receipt or a source label never substitutes for either boundary. The
+mandatory trusted controller enforces prepublication; native current-head host
+reviews/checks and protected PR merge enforce the remote boundary. Cooperative
+files alone cannot enforce an out-of-band administrator action.
+
+Runtime lifecycle requirements below apply to the controller and completion,
+not to pure CI validation. This distinction removes the fresh-checkout problem
+without making missing local approvals eligible for publication or completion.
 
 ## Canonical root and clean linked representation
 
@@ -264,7 +319,9 @@ Expected implementation interfaces (serial ownership; no CR-002/003 overlap):
 For CR-001, independently falsify each of predicates 1-8, including partial base
 presence, altered/forged acceptance, nonempty marker, wrong digest/revision,
 history truncation, later edit/revert, another preflight source change, changed
-assessment and non-sole assessment commit. Preserve existing-policy regressions.
+assessment and non-sole assessment commit. Reject identical-shaped history with
+different repository/epic/branch/B/P/S/A/assessment identities. Preserve ordinary
+existing-policy regressions; no broader bootstrap recognition is authorized.
 
 For mirrors, test clean identical root/linked acceptance success; deny different
 config bytes, different history/acceptor, stale definition, unregistered checkout,
@@ -279,6 +336,10 @@ second adoption, root-write authority absent, stale local review, wrong actor,
 dismissed/wrong-head host review, pending/untrusted checks and main/head races.
 Do not allow PR0 reviews to approve PR1. Existing finalization must still reject
 policy changes, and ordinary assessment validation must still reject migration.
+Run CI successfully in an isolated checkout with no release runtime store and
+no existing PR1 check/review results, while proving local prepublication fails
+without observed authority or runtime reviews and hosted merge fails until
+current-H1 required checks/reviews exist. CI success cannot satisfy those gates.
 
 One generated end-to-end test must run the real entrypoints in the order
 B/P/S/A -> implementation PR -> M -> marker PR -> F -> policy PR -> I ->
