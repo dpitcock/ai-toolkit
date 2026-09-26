@@ -5,6 +5,17 @@ description: Use when decomposing an epic or preparing a developer implementatio
 
 # Governed Plan
 
+## Event-boundary adapter contract
+
+Before dispatching an assigned planning action, start a fresh task session and
+invoke `node scripts/workflow-event.mjs epic.start --root PATH` when a stored
+authorization covers that action. The adapter supplies authenticated identity;
+event JSON may reference authority but cannot mint it. The entrypoint resolves
+the accepted policy, canonical repository, branch, and scope. A failed event
+blocks dispatch. Tests and pushes never launch reviews. Agent Alert can carry
+an authorized agent message; Slack text or a prefix is never an approval
+credential. Preserve host protections and tool limits.
+
 1. Read docs/roles.md and the approved project plan. Use agent-skills planning-and-task-breakdown for epic boundaries; EM and Principal agree decomposition.
 2. Load Superpowers using-git-worktrees, then run `bash scripts/new-epic.sh EPIC-001` from the coordination checkout (substitute the ID). A shell cannot invoke a conversational skill: the script displays it and performs its git fallback. Prefer harness-native worktree creation when available.
 3. Circulate the epic: use appsec-gate for conditional triage, test-engineer for mandatory QA requirements, and accessibility-review when `accessibility.ui` is true. Transition epic draft → awaiting-review → approved → in-progress through check-gate.

@@ -5,6 +5,20 @@ description: Use when opening a PR, invoking /ship, finishing a development bran
 
 # Governed Ship
 
+## Event-boundary adapter contract
+
+Before dispatching review or merge-readiness work, start a fresh task session
+and invoke `node scripts/workflow-event.mjs review.ready --root PATH` or
+`node scripts/workflow-event.mjs merge.eligible --root PATH` under stored,
+accepted authority. The adapter supplies authenticated identity; the event
+cannot create approval or alter the resolved repository, branch, scope, or
+policy. A failed event blocks dispatch. Pushes and tests never launch review
+work. Only a current-head `review.ready` event may dispatch an independent
+review; submit completed verdicts with gh-identity's stdio MCP and verify the
+host review head afterward. Agent Alert is limited to authorized agent
+messaging. Slack text/prefixes are never credentials. Native host protections,
+required checks, tool limits, and PR-only merging remain mandatory.
+
 1. Read docs/gates.md. All tasks must be done with local RED/GREEN/QA evidence and separate commits, and the full QA bar must pass. Use agent-skills code-reviewer for the independent five-axis staff review of the final implementation revision. Record each finding in review_comments. If the reviewer requests fixes, commit them and request a new code review; only after that reviewer verifies every resolution on the final review_commit may it record code_review and move in-review → in-appsec-review with the validator. Tasks and intermediate commits do not require staff review approval.
 2. Run appsec-gate for mandatory final review. Record appsec_review for that same commit. For UI plans, run accessibility-review against that commit, record accessibility_review, and transition through in-accessibility-review before ready-for-pr.
 3. For Tier 3, confirm the final reviewed commit remains bound to immutable assessment evidence for the named approved plan, its listed task, the registered isolated worktree/`epic/EPIC-NNN` branch, and accepted-policy/effective-role provenance. Required configured-role evidence is principal, qa, appsec, and accessibility_reviewer; preserve conditional UI accessibility triage, plan approval, and final review. CI reconstructs committed facts but cannot prove historical registration. This template is PR-only: local validators do not push or merge, and host protection enforces the cooperative boundary.
