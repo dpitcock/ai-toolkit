@@ -330,6 +330,12 @@ export function validateTier2Assessment({assessmentPath,repoRoot:rootValue,baseS
       route:'Tier 3 governed epic/task workflow'};
   }
   if(tier===1) {
+    const finalCheck=record.finalChecks?.at(-1);
+    if(!finalCheck || typeof finalCheck!=='object' || Array.isArray(finalCheck)
+      || finalCheck.status!=='passed' || finalCheck.tier!==1) fail('Tier 1 final check evidence is missing or does not pass');
+    const checkedHead=canonicalCommit(root,finalCheck.checkedHead,'Tier 1 final check checkedHead');
+    assertImplementationFollowsPreflight(root,base,baseline,checkedHead);
+    assertReviewWindow(root,checkedHead,head);
     return {assessmentPath:relative,tier:1,status:'passed',actualFiles,initialEvidenceCommit:baseline.commit,
       route:'Tier 1 route; template PR-only rules still apply'};
   }

@@ -9,7 +9,8 @@ const ids=new Set(changed.map(f=>f.match(/^epics\/(EPIC-\d+)\//)?.[1]).filter(Bo
 const branch=process.env.HEAD_REF || execFileSync('git',['branch','--show-current'],{encoding:'utf8'}).trim();
 const branchId=branch.match(/^epic\/(EPIC-\d+)$/)?.[1]; if(branchId) ids.add(branchId);
 const templateFile=/^(?:docs\/|project\/|scripts\/|tests\/|skills\/|\.github\/|\.clinerules\/|epics\/EPIC-XXX\/|project\/project-plan\.md\.template$|(?:README\.md|AGENTS\.md|CLAUDE\.md|package(?:-lock)?\.json|skills-lock\.json|\.gitignore)$)/;
-if(ids.size===0 && changed.some(f=>!templateFile.test(f))) throw new Error('Application changes require an epic branch or changed epic plan');
+const assessmentPaths=changed.filter(file=>/^project\/task-assessments\/.+\.yaml$/.test(file));
+if(ids.size===0 && assessmentPaths.length===0 && changed.some(f=>!templateFile.test(f))) throw new Error('Application changes require an epic branch, changed epic plan, or task assessment');
 let validatedEpicPlans=0;
 for(const id of ids) {
  const file=`epics/${id}/epic-plan.md`;
@@ -22,7 +23,7 @@ for(const id of ids) {
  validatedEpicPlans++;
 }
 const headSha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
-for(const assessmentPath of changed.filter(file=>/^project\/task-assessments\/.+\.yaml$/.test(file))) {
+for(const assessmentPath of assessmentPaths) {
  const result=validateTier2Assessment({assessmentPath,repoRoot:process.cwd(),baseSha:base,headSha,headRef:process.env.HEAD_REF});
  if(result.tier===3 && validatedEpicPlans===0) throw new Error('Tier 3 assessment requires a successfully validated epic plan and the governed Tier 3 review route');
  console.log(`${result.assessmentPath}: Tier ${result.tier} ${result.status}${result.route?` (${result.route})`:''}`);

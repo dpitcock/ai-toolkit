@@ -190,6 +190,19 @@ test('accepts a valid Tier 2 PR with exact reviewed commit and required role evi
   assert.deepEqual(result.actualFiles,['src/format.js','src/notify.js']);
 });
 
+test('check-pr accepts a valid Tier 2 assessment for ordinary application paths',t=>{
+  const state=fixture(t);
+  const result=runCheckPr(state);
+  assert.equal(result.status,0,result.stderr);
+  assert.match(result.stdout,/tier2-change\.yaml: Tier 2 passed/);
+});
+
+test('rejects a Tier 1 PR assessment without committed final-check evidence',t=>{
+  const input={...answers,scope:'single-file',claimedTier:1,intendedFiles:['src/notify.js']};
+  const state=fixture(t,{input});
+  assert.throws(()=>validate(state),/Tier 1 final check/);
+});
+
 test('accepts a self-check written by the developer while keeping role approvals independent',t=>{
   const state=fixture(t,{review:{mode:'self-check',by:' IMPLEMENTER-SESSION '}});
   assert.equal(validate(state).status,'passed');
