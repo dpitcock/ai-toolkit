@@ -42,15 +42,40 @@ function trustedApi() {
     checks:(repository,head)=>{
       const pages=json(gh([`repos/${repository}/commits/${head}/check-runs?per_page=100`],{paginated:true}),'check runs');
       if(!Array.isArray(pages) || pages.some(page=>!Array.isArray(page?.check_runs))) fail('check runs did not return paginated data');
-      return pages.flatMap(page=>page.check_runs);
+      const checks=pages.flatMap(page=>page.check_runs);
+      for(const check of checks.filter(check=>check.name==='gates').sort((a,b)=>a.id-b.id).slice(-1)) {
+        const suite=check.check_suite?.id;
+        if(!Number.isSafeInteger(suite) || suite<1) fail('check suite provenance is missing');
+        const runs=json(gh([`repos/${repository}/actions/runs?check_suite_id=${suite}&per_page=100`],{paginated:true}),'workflow runs');
+        if(!Array.isArray(runs) || runs.some(page=>!Array.isArray(page.workflow_runs))) fail('workflow runs are malformed');
+        const matches=runs.flatMap(page=>page.workflow_runs).filter(run=>run.check_suite_id===suite);
+        if(matches.length!==1) fail('check suite workflow provenance is ambiguous');
+        const run=matches[0];
+        if(run.path!=='.github/workflows/workflow.yml' || run.repository?.full_name!==repository
+          || !['push','pull_request'].includes(run.event) || run.status!=='completed' || run.conclusion!=='success') {
+          fail('required check has untrusted or incomplete workflow provenance');
+        }
+        assertSameHead(run.head_sha,head);
+      }
+      return checks;
     },
   };
 }
 
-function requiredCheckReceipts(receipts,names) {
-  const actual=new Set(receipts.map(receipt=>receipt.name));
-  for(const name of names) if(!actual.has(name)) fail(`required check is missing: ${name}`);
-  return receipts;
+function requiredCheckReceipts(checks,names,head) {
+  const selected=names.map(name=>{
+    const matches=checks.filter(check=>check.name===name);
+    if(!matches.length) fail(`required check is missing: ${name}`);
+    for(const check of matches) {
+      assertSameHead(check.head_sha,head);
+      if(check.app?.id!==15368 || check.app?.slug!=='github-actions') fail(`check ${name} has untrusted app provenance`);
+      if(!Number.isSafeInteger(check.id) || check.id<1) fail('check ID is malformed');
+    }
+    const latest=matches.sort((a,b)=>a.id-b.id).at(-1);
+    if(latest.conclusion!=='success') fail(`check ${name} is pending or did not pass`);
+    return latest;
+  });
+  return evaluateChecks({head,checks:selected});
 }
 
 /**
@@ -66,7 +91,7 @@ export function evaluateHostReviewGate({repository,pr,head,stage,requiredRoles,i
   // A review event does not carry authority. Each delivery is re-evaluated
   // against the same explicit SHA before and after all remote reads.
   assertSameHead(api.pull(repository,pr),head);
-  const checks=requiredCheckReceipts(evaluateChecks({head,checks:api.checks(repository,head)}),checksRequired);
+  const checks=requiredCheckReceipts(api.checks(repository,head),checksRequired,head);
   assertSameHead(api.pull(repository,pr),head);
   const result=evaluateReviews({stage,head,requiredRoles,identities,reviews:api.reviews(repository,pr),plan});
   assertSameHead(api.pull(repository,pr),head);
@@ -76,6 +101,9 @@ export function evaluateHostReviewGate({repository,pr,head,stage,requiredRoles,i
 export function runHostReviewGate(args=process.argv.slice(2)) {
   if(args.length===0) fail('arguments are required');
   const repository=argument('--repository',args);
+  if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) fail('repository must be owner/name');
+  if(!process.env.GH_TOKEN) fail('GH_TOKEN is required');
+  if(args.includes('--publish')) return publishGate(repository,args);
   const pr=argument('--pr',args);
   if(!/^\d+$/.test(pr) || Number(pr)<1) fail('--pr must be a positive integer');
   const stage=argument('--stage',args);
@@ -87,6 +115,50 @@ export function runHostReviewGate(args=process.argv.slice(2)) {
   });
   process.stdout.write(`${JSON.stringify(result)}\n`);
   return result;
+}
+
+// The workflow invokes this from trusted default-branch code only. An event
+// is merely a wakeup: enumerate live PRs so fork workflow payload omissions,
+// duplicate deliveries, and stale event heads cannot select stale evidence.
+function publishGate(repository,args) {
+  const prs=args.includes('--pr')?[Number(argument('--pr',args))]:paginated(
+    gh([`repos/${repository}/pulls?state=open&base=main&per_page=100`],{paginated:true}),'pull requests').map(pr=>pr.number);
+  const errors=[];
+  for(const pr of prs) {
+    if(!Number.isSafeInteger(pr) || pr<1) fail('PR must be a positive integer');
+    let head;
+    const publish=state=>gh([`repos/${repository}/statuses/${head}`,'--method','POST','-f',`state=${state}`,
+      '-f','context=host-review-gate','-f',`description=Current-head host review gate: ${state}`]);
+    try {
+      const current=json(gh([`repos/${repository}/pulls/${pr}`]),'pull request');
+      if(current.state!=='open' || current.base?.ref!=='main' || current.base?.repo?.full_name!==repository) fail('PR is outside the trusted main gate');
+      head=current.head?.sha;
+      assertSameHead(head,head);
+      publish('pending');
+      const roles=jsonArgument('--required-roles',args);
+      if(!Array.isArray(roles) || !roles.includes('code_reviewer') || !roles.includes('appsec')) fail('final code reviewer and AppSec are mandatory');
+      // Owner-managed role maps cannot remove these final-review floors.
+      // Compare CI definitions to trusted main. Workflow changes require the
+      // existing independent bootstrap/maintenance path, never self-validation.
+      const defaultBranch=json(gh([`repos/${repository}`]),'repository').default_branch;
+      if(defaultBranch!=='main') fail('trusted default branch must be main');
+      for(const file of ['workflow.yml','review-gates.yml']) {
+        const blob=ref=>json(gh([`repos/${repository}/contents/.github/workflows/${file}?ref=${ref}`]),'workflow').sha;
+        const trusted=blob(defaultBranch);
+        if(typeof trusted!=='string' || trusted!==blob(head)) fail('candidate workflow differs from trusted default branch');
+      }
+      const result=evaluateHostReviewGate({repository,pr,head,stage:'final',requiredRoles:roles,
+        identities:jsonArgument('--identities',args),requiredChecks:['gates'],api:trustedApi()});
+      publish('success');
+      // Close a head change during publication by revoking this snapshot.
+      assertSameHead(pull(repository,pr),head);
+      process.stdout.write(`${JSON.stringify(result)}\n`);
+    } catch(error) {
+      if(typeof head==='string' && /^[a-f0-9]{40}$/i.test(head)) publish('failure');
+      errors.push(`PR ${pr}: ${error.message}`);
+    }
+  }
+  if(errors.length) fail(errors.join('; '));
 }
 
 if(import.meta.url===new URL(`file://${process.argv[1]}`).href) {

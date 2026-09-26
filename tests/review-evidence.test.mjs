@@ -52,6 +52,15 @@ test('one actor cannot satisfy distinct roles without explicit role evidence',()
   })),/reused.*role evidence/i);
 });
 
+test('explicit bot mappings require the exact mapped login and Bot host type',()=>{
+  const botIdentity={...identity('staff-bot[bot]'),kind:'bot'};
+  const botReview={...review(1,'staff-bot[bot]'),user:{login:'staff-bot[bot]',type:'Bot'}};
+  const value=input({identities:{code_reviewer:botIdentity,appsec:identity('security')},reviews:[botReview,review(2,'security')]});
+  assert.equal(evaluateReviews(value).approved,true);
+  assert.throws(()=>evaluateReviews({...value,reviews:[{...botReview,user:{...botReview.user,type:'User'}},review(2,'security')]}),/bot/i);
+  assert.throws(()=>evaluateReviews({...value,reviews:[{...botReview,user:{...botReview.user,login:'other[bot]'}},review(2,'security')]}),/approval/i);
+});
+
 test('stage order and plan receipts fail closed on invalid scope or unresolved requests',()=>{
   assert.throws(()=>evaluateReviews(input({stage:'plan',requiredRoles:['appsec','principal'],identities:{principal:identity('principal'),appsec:identity('security')},reviews:[review(1,'principal'),review(2,'security')]})),/order/i);
   assert.throws(()=>evaluateReviews(input({stage:'plan',requiredRoles:['principal','appsec'],identities:{principal:identity('principal'),appsec:identity('security')},reviews:[review(1,'principal'),review(2,'security')],plan:{id:'P',revision:1,reviewedSha:head,unresolvedRequests:['review-1']}})),/unresolved/i);

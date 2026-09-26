@@ -31,10 +31,10 @@ function identitiesFor(requiredRoles,identities) {
   for(const role of requiredRoles) {
     const mapping=identities[role];
     if(!object(mapping) || Object.keys(mapping).some(key=>!['actor','kind','provenance','roleEvidence'].includes(key))) fail(`${role} identity mapping is malformed`);
-    if(mapping.kind!=='human') fail(`${role} must map to a human identity`);
+    if(!['human','bot'].includes(mapping.kind)) fail(`${role} must map explicitly to a human or bot identity`);
     if(!object(mapping.provenance) || typeof mapping.provenance.source!=='string' || !mapping.provenance.source.trim()
       || typeof mapping.provenance.id!=='string' || !mapping.provenance.id.trim()) fail(`${role} identity provenance is required`);
-    result[role]={actor:canonicalActor(mapping.actor),provenance:{source:mapping.provenance.source.trim(),id:mapping.provenance.id.trim()},roleEvidence:mapping.roleEvidence===true};
+    result[role]={actor:canonicalActor(mapping.actor),kind:mapping.kind,provenance:{source:mapping.provenance.source.trim(),id:mapping.provenance.id.trim()},roleEvidence:mapping.roleEvidence===true};
   }
   for(let index=0;index<requiredRoles.length;index+=1) {
     for(let other=index+1;other<requiredRoles.length;other+=1) {
@@ -102,7 +102,7 @@ export function evaluateReviews({stage,head,requiredRoles,identities,reviews,pla
   for(const role of requiredRoles) {
     const mapping=mappings[role],verdict=latestEffective(normalized,mapping.actor,currentHead);
     if(!verdict) fail(`${role} has no effective approval on the current head`);
-    if(verdict.actorType.toLowerCase()!=='user') fail(`${role} approval must be from the mapped human actor`);
+    if(verdict.actorType!==(mapping.kind==='human'?'User':'Bot')) fail(`${role} approval must be from the mapped ${mapping.kind} actor`);
     if(verdict.state==='CHANGES_REQUESTED') fail(`${role} has unresolved changes requested`);
     if(verdict.state==='DISMISSED') fail(`${role} approval is dismissed`);
     if(verdict.state!=='APPROVED') fail(`${role} has no approving verdict`);

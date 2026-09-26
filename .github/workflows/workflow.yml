@@ -2,11 +2,19 @@ name: workflow
 on:
   push:
   pull_request:
+  pull_request_review:
+    types: [submitted, edited, dismissed]
 permissions:
   contents: read
 jobs:
+  review-relay:
+    if: github.event_name == 'pull_request_review'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Review event received; trusted workflow_run revalidates live state.'
   gates:
-    name: gates
+    name: ${{ github.event_name == 'pull_request_review' && 'review-relay-placeholder' || 'gates' }}
+    if: github.event_name != 'pull_request_review'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
