@@ -79,3 +79,12 @@ write, runtime authorization, adoption gate, rollout, completion or activation
 was performed. The remaining CR-006-004 release continuation is outside this
 implementation. Final independent Staff and AppSec review on the eventual full
 implementation revision remains required.
+
+## Independent controller verification
+
+On 2026-09-26 `/root` independently reran the six-file regression command
+above against source `610b025`: 174 passed, zero failed/cancelled/skipped/todo,
+120322.53625 ms. Log: `/tmp/epic006-mirror-independent.log`. Inspected actual
+Git-common root derivation, Buffer-based snapshot comparison, and shared
+history validation boundaries. This verifies the bounded correction, not
+release adoption, live activation, Staff finding resolution or final approval.
