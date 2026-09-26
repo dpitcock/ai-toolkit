@@ -8,6 +8,12 @@ on:
   workflow_run:
     workflows: [workflow]
     types: [completed]
+  workflow_dispatch:
+    inputs:
+      bootstrap_pr:
+        description: Merged bootstrap PR to verify (diagnostic only)
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -23,8 +29,11 @@ concurrency:
 
 jobs:
   host-review-gate:
-    name: host-review-gate
-    if: github.event_name == 'workflow_run' || github.event.pull_request.base.ref == 'main'
+    name: Publish host review status
+    if: >-
+      github.event_name == 'workflow_run' ||
+      (github.event_name == 'pull_request_target' && github.event.pull_request.base.ref == 'main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,14 +50,21 @@ jobs:
         env:
           REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          BOOTSTRAP_PR: ${{ inputs.bootstrap_pr }}
           # Repository variables are owner-managed role mappings, never data
           # accepted from a PR event or checkout.
           REQUIRED_ROLES: ${{ vars.GOVERNANCE_REQUIRED_REVIEW_ROLES }}
           REVIEW_IDENTITIES: ${{ vars.GOVERNANCE_REVIEW_IDENTITIES }}
-        run: >-
-          node scripts/check-host-reviews.mjs
-          --repository "$REPOSITORY"
-          --stage final
-          --required-roles "$REQUIRED_ROLES"
-          --identities "$REVIEW_IDENTITIES"
-          --publish
+        run: |
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            mode=(--verify-merged --pr "$BOOTSTRAP_PR")
+          else
+            mode=(--publish)
+          fi
+          node scripts/check-host-reviews.mjs \
+            --repository "$REPOSITORY" \
+            --stage final \
+            --required-roles "$REQUIRED_ROLES" \
+            --identities "$REVIEW_IDENTITIES" \
+            "${mode[@]}"

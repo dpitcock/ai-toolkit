@@ -102,7 +102,12 @@ export function runHostReviewGate(args=process.argv.slice(2)) {
   if(args.length===0) fail('arguments are required');
   const repository=argument('--repository',args);
   if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) fail('repository must be owner/name');
-  if(!process.env.GH_TOKEN) fail('GH_TOKEN is required');
+  // gh resolves local credential-store authentication itself. CI supplies its
+  // scoped GH_TOKEN; never retrieve or print either credential source here.
+  if(args.includes('--verify-merged')) {
+    if(args.includes('--publish')) fail('choose one publishing mode');
+    return publishGate(repository,args,{verifyMerged:true});
+  }
   if(args.includes('--publish')) return publishGate(repository,args);
   const pr=argument('--pr',args);
   if(!/^\d+$/.test(pr) || Number(pr)<1) fail('--pr must be a positive integer');
@@ -120,18 +125,25 @@ export function runHostReviewGate(args=process.argv.slice(2)) {
 // The workflow invokes this from trusted default-branch code only. An event
 // is merely a wakeup: enumerate live PRs so fork workflow payload omissions,
 // duplicate deliveries, and stale event heads cannot select stale evidence.
-function publishGate(repository,args) {
-  const prs=args.includes('--pr')?[Number(argument('--pr',args))]:paginated(
+function publishGate(repository,args,{verifyMerged=false}={}) {
+  let explicitPr;
+  if(verifyMerged || args.includes('--pr')) {
+    const value=argument('--pr',args);
+    if(!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(Number(value))) fail('PR must be a positive integer');
+    explicitPr=Number(value);
+  }
+  const prs=explicitPr?[explicitPr]:paginated(
     gh([`repos/${repository}/pulls?state=open&base=main&per_page=100`],{paginated:true}),'pull requests').map(pr=>pr.number);
   const errors=[];
   for(const pr of prs) {
     if(!Number.isSafeInteger(pr) || pr<1) fail('PR must be a positive integer');
     let head;
     const publish=state=>gh([`repos/${repository}/statuses/${head}`,'--method','POST','-f',`state=${state}`,
-      '-f','context=host-review-gate','-f',`description=Current-head host review gate: ${state}`]);
+      '-f','context=host-review-gate','-f',`description=${verifyMerged?'Integrated publisher verification (diagnostic)':'Current-head host review gate'}: ${state}`]);
     try {
       const current=json(gh([`repos/${repository}/pulls/${pr}`]),'pull request');
-      if(current.state!=='open' || current.base?.ref!=='main' || current.base?.repo?.full_name!==repository) fail('PR is outside the trusted main gate');
+      if(current.base?.ref!=='main' || current.base?.repo?.full_name!==repository) fail('PR is outside the trusted main gate');
+      if(verifyMerged ? current.state!=='closed' || current.merged!==true : current.state!=='open') fail('PR is outside the selected open/merged gate');
       head=current.head?.sha;
       assertSameHead(head,head);
       publish('pending');
@@ -142,23 +154,54 @@ function publishGate(repository,args) {
       // existing independent bootstrap/maintenance path, never self-validation.
       const defaultBranch=json(gh([`repos/${repository}`]),'repository').default_branch;
       if(defaultBranch!=='main') fail('trusted default branch must be main');
+      const integration=verifyMerged?integratedSnapshot(repository,current):null;
       for(const file of ['workflow.yml','review-gates.yml']) {
         const blob=ref=>json(gh([`repos/${repository}/contents/.github/workflows/${file}?ref=${ref}`]),'workflow').sha;
-        const trusted=blob(defaultBranch);
+        const trusted=blob(integration?.mainSha??defaultBranch);
         if(typeof trusted!=='string' || trusted!==blob(head)) fail('candidate workflow differs from trusted default branch');
       }
       const result=evaluateHostReviewGate({repository,pr,head,stage:'final',requiredRoles:roles,
         identities:jsonArgument('--identities',args),requiredChecks:['gates'],api:trustedApi()});
+      if(integration) recheckIntegration(repository,pr,head,integration);
       publish('success');
       // Close a head change during publication by revoking this snapshot.
       assertSameHead(pull(repository,pr),head);
-      process.stdout.write(`${JSON.stringify(result)}\n`);
+      if(integration) recheckIntegration(repository,pr,head,integration);
+      const receipt=integration?{...result,kind:'integrated-host-gate-verification',diagnostic:true,
+        submittedHead:head,...integration,statusContext:'host-review-gate',workflowRunId:process.env.GITHUB_RUN_ID??null}:result;
+      process.stdout.write(`${JSON.stringify(receipt)}\n`);
     } catch(error) {
       if(typeof head==='string' && /^[a-f0-9]{40}$/i.test(head)) publish('failure');
       errors.push(`PR ${pr}: ${error.message}`);
     }
   }
   if(errors.length) fail(errors.join('; '));
+}
+
+// Integration SHA is GitHub's merge result, which can differ from submitted
+// head after squash/rebase. This receipt verifies the publisher, not release
+// completion or permission to merge any PR.
+function integratedSnapshot(repository,current) {
+  const integrationSha=current.merge_commit_sha;
+  assertSameHead(integrationSha,integrationSha);
+  const mainSha=json(gh([`repos/${repository}/commits/main`]),'main commit').sha;
+  assertSameHead(mainSha,mainSha);
+  const comparison=json(gh([`repos/${repository}/compare/${integrationSha}...${mainSha}`]),'integration comparison');
+  if(!['ahead','identical'].includes(comparison.status)
+    || comparison.base_commit?.sha!==integrationSha || comparison.merge_base_commit?.sha!==integrationSha) {
+    fail('merged integration is not contained in current main');
+  }
+  return {integrationSha,mainSha};
+}
+
+function recheckIntegration(repository,pr,head,expected) {
+  const current=json(gh([`repos/${repository}/pulls/${pr}`]),'merged pull request');
+  if(current.state!=='closed' || current.merged!==true || current.base?.ref!=='main'
+    || current.base?.repo?.full_name!==repository) fail('merged PR state changed');
+  assertSameHead(current.head?.sha,head);
+  assertSameHead(current.merge_commit_sha,expected.integrationSha);
+  const snapshot=integratedSnapshot(repository,current);
+  assertSameHead(snapshot.mainSha,expected.mainSha);
 }
 
 if(import.meta.url===new URL(`file://${process.argv[1]}`).href) {
