@@ -32,7 +32,8 @@ function makeReview(commit,by,revision=1) {
 
 function fixture(t,{input=answers,missingRoles=[],review={},roleEdits={},assessmentEdits={},extraActualFiles=[],extraAfterReview=[],
   policyDrift=false,accessibilityFinalReview=false,accessibilityFinalReviewEdits={},multipleAssessments=false,
-  secondAssessmentEdits={},initialEvidenceEdits={},beforeAssessmentFiles=[],implementationOnSideBranch=false,mergeCodeAfterReview=false,headRef='feature/tier2-check'}={}) {
+  secondAssessmentEdits={},initialEvidenceEdits={},beforeAssessmentFiles=[],implementationOnSideBranch=false,
+  implementationOnOrphanRoot=false,mergeCodeAfterReview=false,headRef='feature/tier2-check'}={}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'check-tier2-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   const config={
@@ -75,6 +76,10 @@ function fixture(t,{input=answers,missingRoles=[],review={},roleEdits={},assessm
   let reviewedCommit;
   const implementationBranch=git(root,'branch','--show-current');
   if(implementationOnSideBranch) git(root,'checkout','-qb','implementation-side',baseSha);
+  if(implementationOnOrphanRoot) {
+    git(root,'checkout','-q','--orphan','implementation-root');
+    git(root,'rm','-r','-f','--ignore-unmatch','.');
+  }
   for(const file of input.intendedFiles) {
     const target=path.join(root,file);fs.mkdirSync(path.dirname(target),{recursive:true});
     fs.writeFileSync(target,`export const value = '${path.basename(file)}';\n`);
@@ -84,9 +89,11 @@ function fixture(t,{input=answers,missingRoles=[],review={},roleEdits={},assessm
     fs.writeFileSync(target,`export const extra = '${path.basename(file)}';\n`);
   }
   git(root,'add','--',...input.intendedFiles,...extraActualFiles);git(root,'commit','-qm','implement Tier 2 change');
-  if(implementationOnSideBranch) {
+  if(implementationOnSideBranch || implementationOnOrphanRoot) {
     git(root,'checkout','-q',implementationBranch);
-    git(root,'merge','--no-ff','-m','merge preflight and implementation branches','implementation-side');
+    if(implementationOnOrphanRoot) {
+      git(root,'merge','--no-ff','--allow-unrelated-histories','-m','merge orphan implementation branch','implementation-root');
+    } else git(root,'merge','--no-ff','-m','merge preflight and implementation branches','implementation-side');
   }
   reviewedCommit=git(root,'rev-parse','HEAD');
   for(const file of extraAfterReview) {
@@ -251,6 +258,11 @@ test('rejects implementation committed before preflight even if the intended fil
 
 test('rejects intended implementation commits forked before preflight and merged afterward',t=>{
   const state=fixture(t,{implementationOnSideBranch:true});
+  assert.throws(()=>validate(state),/implementation commit.*does not descend from initial assessment/i);
+});
+
+test('rejects intended implementation commits from an orphan root merged after preflight',t=>{
+  const state=fixture(t,{implementationOnOrphanRoot:true});
   assert.throws(()=>validate(state),/implementation commit.*does not descend from initial assessment/i);
 });
 

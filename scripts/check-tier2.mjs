@@ -263,7 +263,7 @@ function assertReviewWindow(root,reviewedCommit,headSha) {
   const commits=git(root,['rev-list','--reverse',`${reviewedCommit}..${headSha}`]).trim().split('\n').filter(Boolean);
   const changed=[];
   for(const commit of commits) {
-    changed.push(...nulPaths(git(root,['diff-tree','--no-commit-id','--no-renames','--name-only','-z','-r','-m',commit])));
+    changed.push(...nulPaths(git(root,['diff-tree','--root','--no-commit-id','--no-renames','--name-only','-z','-r','-m',commit])));
   }
   const forbidden=changed.find(file=>!/^project\/task-assessments\/[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.yaml$/.test(file));
   if(forbidden) fail(`non-assessment change ${forbidden} occurred after reviewedCommit; only task-assessment metadata may change after review`);
@@ -274,7 +274,7 @@ function assertImplementationFollowsPreflight(root,baseSha,baseline,reviewedComm
   catch { fail('reviewed implementation must follow the committed preflight assessment'); }
   const commits=git(root,['rev-list','--reverse',`${baseSha}..${reviewedCommit}`]).trim().split('\n').filter(Boolean);
   for(const commit of commits) {
-    const changed=nulPaths(git(root,['diff-tree','--no-commit-id','--no-renames','--name-only','-z','-r','-m',commit]));
+    const changed=nulPaths(git(root,['diff-tree','--root','--no-commit-id','--no-renames','--name-only','-z','-r','-m',commit]));
     const intendedPath=changed.find(file=>baseline.record.intendedFiles.includes(file));
     if(intendedPath) {
       try { git(root,['merge-base','--is-ancestor',baseline.commit,commit]); }
