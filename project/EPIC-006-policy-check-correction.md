@@ -33,3 +33,54 @@ AGENTS.md explicitly places this template's mandatory PR path in local workflow
 and host protections; no inferred repository identity was added. Its unchanged
 accepted policy keeps direct merge false. Host checks/protections and actual
 integration/activation remain separate release obligations.
+
+## CR-006-003: shared effective overlay semantics
+
+Implementation: `ba5d162`.
+
+Extracted the canonical preflight overlay semantics as the pure
+`applyWorktreeOverlay(rootConfig, worktreeConfig)` export in
+`scripts/lib/workspace-config.mjs`. It returns `{config, sources}`. The
+filesystem resolver retains root/worktree validation before delegation;
+both final checkers consume the helper's effective `config`. Explicit
+autopilot markers, equality of legacy/new tier fields, normalized validation,
+field provenance and mandatory linked-worktree markers are preserved.
+Tier 2 still reconstructs accepted root policy from the committed PR base
+when no registered coordination candidate is available.
+
+RED: `node --test --test-name-pattern='autopilot'
+tests/check-tier1.test.mjs` failed 2/2. The valid marked override was rejected
+as unavailable coordination config; a consistently hashed but unmarked
+override was incorrectly admitted. The same focused command for
+`tests/check-tier2.test.mjs` failed 3/3: linked positive rejected, isolated CI
+positive rejected with unknown `workflow.autopilot`, and invalid unmarked
+policy incorrectly admitted by the actual PR CLI.
+
+GREEN: both files' focused autopilot regressions passed 5/5, zero skips.
+Full focused regression command:
+
+```sh
+node --test tests/check-tier1.test.mjs tests/check-tier2.test.mjs \
+  tests/workspace-config.test.mjs tests/preflight.test.mjs \
+  tests/tier-defaults.test.mjs
+```
+
+Result: 79 passed, zero failed/cancelled/skipped; `git diff --check` passed.
+Mapped requirements: QA-GOV-001/002/003/004/009. Coverage includes both
+accepted autopilot directions through linked Tier 1 final CLI, linked Tier 2
+PR CLI, and isolated single-checkout PR CLI. CI fixtures use a governed Tier 3
+plan because policy setup is itself in that PR's diff; intended source changes
+still follow initial assessment. Tier 1 has no CI base-policy option, and this
+correction adds none. CI clones explicitly have only one registered worktree.
+
+Negative fixtures deliberately supply consistently hashed raw acceptance and
+initial evidence to prove final enforcement rejects unmarked autopilot,
+weakened new tier selection and direct-merge overrides. These are adversarial
+test data, not real acceptance or reviewer approval. Existing marker validation,
+legacy digest, stale provenance, immutable assessment, accessibility, review,
+and preflight-ordering regressions passed. No markerless linked-policy exception,
+bootstrap provenance exception, or release-continuation behavior was introduced.
+
+Findings CR-006-001 and CR-006-004 remain outside this correction. Final finding
+resolution and Staff/AppSec approval belong to the assigned independent
+reviewers after the controller completes the remaining corrections.
