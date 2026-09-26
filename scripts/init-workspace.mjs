@@ -275,6 +275,7 @@ function proposalFor(root) {
     daily_summary:{local_time:'09:00'},
     task_tier:'tier_1',
     tier_overrides:{direct_merge:false},
+    workflow:{autopilot:true},
   };
   const reasons={
     principal:'Tier 3 architectural and interface changes need Principal review.',
@@ -283,6 +284,7 @@ function proposalFor(root) {
     accessibility_reviewer:hasUI ? 'A user interface was detected.' : 'No user interface was detected; proposed structural exemption requires human acceptance.',
     ui_designer:hasUI ? 'A user interface was detected.' : 'No user interface was detected; proposed structural exemption requires human acceptance.',
     task_tier:'Tier 1 direct merge is disabled by default and requires an explicitly reviewed, accepted policy change.',
+    workflow:'Autopilot is enabled for a new proposal and requires owner acceptance with the complete policy.',
   };
   return {config:parseWorkspaceConfig(YAML.stringify(config)),reasons};
 }

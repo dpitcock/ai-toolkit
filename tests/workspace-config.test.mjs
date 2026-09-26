@@ -90,6 +90,19 @@ test('parses versioned workspace tier selection without changing legacy normaliz
   assert.throws(()=>parseWorkspaceConfig(`${sample}task_tier: tier_1\ntier_overrides:\n  direct_merge: false\n  reviewers: true\n`),/tier_overrides.*allowed/i);
 });
 
+test('preserves omitted workflow policy while validating explicit autopilot choices',()=>{
+  const omitted=parseWorkspaceConfig(sample);
+  const enabled=parseWorkspaceConfig(`${sample}workflow:\n  autopilot: true\n`);
+  const disabled=parseWorkspaceConfig(`${sample}workflow:\n  autopilot: false\n`);
+
+  assert.equal(Object.hasOwn(omitted,'workflow'),false);
+  assert.deepEqual(enabled.workflow,{autopilot:true});
+  assert.deepEqual(disabled.workflow,{autopilot:false});
+  assert.notEqual(workspaceConfigDigest(enabled),workspaceConfigDigest(disabled));
+  assert.throws(()=>parseWorkspaceConfig(`${sample}workflow:\n  autopilot: "true"\n`),/workflow.autopilot.*boolean/i);
+  assert.throws(()=>parseWorkspaceConfig(`${sample}workflow:\n  autopilot: true\n  delegated_decision: accepted\n`),/workflow.delegated_decision.*allowed/i);
+});
+
 test('an empty exemption list remains valid after normalization and hashing',()=>{
   const uiConfig=sample.replace('  reason: No user interface in this project\n  exempt: [accessibility_reviewer, ui_designer]',
     '  exempt: []').replace('  accessibility_reviewer: false','  accessibility_reviewer: true').replace('  ui_designer: false','  ui_designer: true');
@@ -158,6 +171,21 @@ test('linked worktree applies only explicit provider, role, and exemption overri
   assert.equal(result.sources['approvals_required.appsec'],'root');
   assert.equal(result.sources['approvals_overrides.exempt'],'worktree');
   assert.equal(result.sources['approvals_overrides.reason'],'worktree');
+});
+
+test('linked worktree resolves explicit autopilot override with field provenance',t=>{
+  const {root,linked}=linkedWorktrees(t);
+  const rootConfig=parseWorkspaceConfig(`${sample}workflow:\n  autopilot: false\n`);
+  const overlay={...rootConfig,workflow:{autopilot:true},worktree_overrides:['workflow.autopilot']};
+  writeConfig(root,rootConfig);
+  writeConfig(linked,overlay);
+
+  const result=resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked});
+  assert.equal(result.config.workflow.autopilot,true);
+  assert.equal(result.sources['workflow.autopilot'],'worktree');
+
+  writeConfig(linked,{...overlay,worktree_overrides:[]});
+  assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}),/workflow.autopilot.*marker|worktree_overrides/i);
 });
 
 test('linked worktree cannot override Tier 1 direct-merge policy',t=>{

@@ -77,20 +77,55 @@ test('headless proposal explains roles and stays pending on repeat',t=>{
   assert.equal(proposal.status,'pending');
   assert.equal(proposal.digest,workspaceConfigDigest(config));
   assert.deepEqual(Object.keys(proposal.reasons).sort(),[
-    'accessibility_reviewer','appsec','principal','qa','task_tier','ui_designer',
+    'accessibility_reviewer','appsec','principal','qa','task_tier','ui_designer','workflow',
   ]);
   assert.equal(config.workspace.repository,'headless-tool');
   assert.equal(config.workspace.provider,'codex');
   assert.equal(config.workspace.slack_channel_name,'ws-headless-tool-codex');
   assert.equal(config.task_tier,'tier_1');
   assert.deepEqual(config.tier_overrides,{direct_merge:false});
+  assert.deepEqual(config.workflow,{autopilot:true});
   assert.match(proposal.reasons.task_tier,/off|disabled|direct.merge/i);
+  assert.match(proposal.reasons.workflow,/autopilot|owner/i);
   assert.deepEqual(config.approvals_overrides.exempt,['accessibility_reviewer','ui_designer']);
   assert.throws(()=>assertAcceptedWorkspaceConfig(root,config));
   assert.throws(()=>run(root,'status'));
   assert.equal(JSON.parse(run(root,'propose')).status,'pending');
   assert.equal(fs.readFileSync(file,'utf8'),first);
   assert.equal(readWorkspaceHistory(root).length,1);
+});
+
+test('legacy omission remains a checkpoint until an accepted autopilot policy change',t=>{
+  const root=fixture(t);
+  const configFile=path.join(root,'config/workspace-config.yaml');
+  const oldPolicy={workspace:{repository:'headless-tool',environment:'local',provider:'codex',slack_channel_name:'ws-headless-tool-codex',timezone:'UTC'},approvals_required:{principal:true,qa:true,appsec:true,accessibility_reviewer:false,ui_designer:false},approvals_overrides:{reason:'No UI',exempt:['accessibility_reviewer','ui_designer']},daily_summary:{local_time:'09:00'}};
+  fs.writeFileSync(configFile,YAML.stringify(oldPolicy));
+  const initial=JSON.parse(run(root,'propose'));
+  assert.equal(Object.hasOwn(initial.reasons,'workflow'),false);
+  run(root,'accept','--by','Dennis','--reason','Accept legacy checkpoint policy','--digest',initial.digest);
+  const accepted=parseWorkspaceConfig(fs.readFileSync(configFile,'utf8'));
+  assert.equal(Object.hasOwn(accepted,'workflow'),false);
+
+  const candidate=structuredClone(accepted);
+  candidate.workflow={autopilot:false};
+  const candidateFile=path.join(root,'autopilot-policy.yaml');
+  fs.writeFileSync(candidateFile,YAML.stringify(candidate));
+  const proposed=JSON.parse(run(root,'propose-change','--candidate',candidateFile));
+  assert.ok(proposed.changes.includes('workflow'));
+  const applied=JSON.parse(run(root,'apply-change','--candidate',candidateFile,'--by','Dennis','--reason','Owner reviewed disabled autopilot','--digest',proposed.digest,'--base-digest',proposed.base_digest));
+  assert.equal(applied.status,'accepted');
+  assert.equal(parseWorkspaceConfig(fs.readFileSync(configFile,'utf8')).workflow.autopilot,false);
+});
+
+test('policy candidates cannot self-declare delegated owner acceptance',t=>{
+  const root=fixture(t);
+  const proposal=JSON.parse(run(root,'propose'));
+  run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
+  const candidate=YAML.parse(fs.readFileSync(path.join(root,'config/workspace-config.yaml'),'utf8'));
+  candidate.workflow.delegated_decision={by:'agent',decision:'accepted'};
+  const candidateFile=path.join(root,'delegated-owner-decision.yaml');
+  fs.writeFileSync(candidateFile,YAML.stringify(candidate));
+  assert.throws(()=>run(root,'propose-change','--candidate',candidateFile),/delegated_decision.*allowed/i);
 });
 
 test('accepted migration replaces legacy tier policy and binds shared definition provenance',t=>{

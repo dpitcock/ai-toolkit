@@ -7,7 +7,7 @@ import {resolveTierDefaults} from './tier-defaults.mjs';
 
 const approvalRoles=['principal','qa','appsec','accessibility_reviewer','ui_designer'];
 const workspaceFields=['repository','environment','provider','slack_channel_name','timezone'];
-const worktreeOverridePaths=['workspace.provider','approvals_overrides',...approvalRoles.map(role=>`approvals_required.${role}`)];
+const worktreeOverridePaths=['workspace.provider','workflow.autopilot','approvals_overrides',...approvalRoles.map(role=>`approvals_required.${role}`)];
 
 function object(value,label) {
   if(value===null || typeof value!=='object' || Array.isArray(value)) {
@@ -35,7 +35,7 @@ function nonempty(value,label) {
 }
 
 function normalize(value,{partial=false}={}) {
-  const data=fields(value,['workspace','approvals_required','approvals_overrides','daily_summary','task_tiers','task_tier','tier_overrides','worktree_overrides'],partial?[]:['workspace','approvals_required','daily_summary'],'config');
+  const data=fields(value,['workspace','approvals_required','approvals_overrides','daily_summary','task_tiers','task_tier','tier_overrides','workflow','worktree_overrides'],partial?[]:['workspace','approvals_required','daily_summary'],'config');
   if(Object.hasOwn(data,'task_tiers') && (Object.hasOwn(data,'task_tier') || Object.hasOwn(data,'tier_overrides'))) {
     throw new Error('task_tiers cannot be used with task_tier or tier_overrides');
   }
@@ -95,6 +95,13 @@ function normalize(value,{partial=false}={}) {
       normalized.local_time=summary.local_time;
     }
     result.daily_summary=normalized;
+  }
+  if(Object.hasOwn(data,'workflow')) {
+    const workflow=fields(data.workflow,['autopilot'],partial?[]:['autopilot'],'workflow');
+    if(Object.hasOwn(workflow,'autopilot') && typeof workflow.autopilot!=='boolean') {
+      throw new Error('workflow.autopilot must be boolean');
+    }
+    result.workflow=Object.hasOwn(workflow,'autopilot') ? {autopilot:workflow.autopilot} : {};
   }
   if(Object.hasOwn(data,'task_tiers')) {
     const taskTiers=fields(data.task_tiers,['tier_1_direct_merge'],['tier_1_direct_merge'],'task_tiers');
@@ -194,6 +201,12 @@ export function resolveWorkspaceConfig({coordinationRoot,worktreeRoot=coordinati
     if(marker==='workspace.provider') {
       effective.workspace.provider=overlay.workspace.provider;
       sources[marker]='worktree';
+    } else if(marker==='workflow.autopilot') {
+      if(!Object.hasOwn(overlay.workflow ?? {},'autopilot')) {
+        throw new Error('workflow.autopilot override marker requires an autopilot value');
+      }
+      effective.workflow={autopilot:overlay.workflow.autopilot};
+      sources[marker]='worktree';
     } else if(marker==='approvals_overrides') {
       effective.approvals_overrides=overlay.approvals_overrides;
       sources['approvals_overrides.reason']='worktree';
@@ -203,6 +216,9 @@ export function resolveWorkspaceConfig({coordinationRoot,worktreeRoot=coordinati
       effective.approvals_required[role]=overlay.approvals_required[role];
       sources[marker]='worktree';
     }
+  }
+  if(JSON.stringify(overlay.workflow) !== JSON.stringify(config.workflow) && !markers.includes('workflow.autopilot')) {
+    throw new Error('workflow.autopilot changes require a worktree_overrides marker');
   }
   return {config:parseWorkspaceConfig(YAML.stringify(effective)),sources};
 }
