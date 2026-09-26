@@ -2,16 +2,21 @@
 kind: task
 id: TASK-014
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: [ tasks/TASK-003.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-26: node --test tests/check-tier1.test.mjs
+    tests/check-tier2.test.mjs failed the new configured-tier regression:
+    check-tier1 rejected a valid tier_2 minimum as internally inconsistent."
+  green: "2026-09-26: node --test tests/check-tier1.test.mjs (12 passed); node
+    --test tests/check-tier2.test.mjs (31 passed)."
+  qa: "QA-GOV-001/002/003 verified: final routing takes the maximum accepted
+    minimum, actual risk/diff classification, and immutable preflight tier; new
+    shared-definition provenance is exact; legacy tier evidence remains valid."
+  commit: c8c1249aa0d7731418b8323345c6234108da425d
 approvals:
   principal_engineer: null
   appsec: null
