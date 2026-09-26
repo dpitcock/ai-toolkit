@@ -2,7 +2,7 @@
 kind: task
 id: TASK-003
 owner: "Codex"
-status: draft
+status: done
 revision: 2
 parent: ../epic-plan.md
 parent_revision: 2
@@ -10,15 +10,30 @@ depends_on:
   - tasks/TASK-001.md
   - tasks/TASK-002.md
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "Initial focused run before implementation: 4/4 test cases failed because
+    scripts/lib/task-assessment.mjs and scripts/preflight.mjs did not exist."
+  green: "node --test tests/task-assessment.test.mjs tests/preflight.test.mjs:
+    10/10 passed; npm test: 80/80 passed."
+  qa: "Verified strict answer allowlist and ID/path checks, accepted root and
+    linked histories with digest drift refusal, registered worktree roots, clean
+    tracked/untracked worktree refusal, deterministic evidence, symlink and
+    overwrite safety, full provenance output, and the evidence-commit
+    instruction. Review regression reproduced then closed. git diff --cached
+    --check clean."
+  commit: "8f3493e18f0039c4469800d6d57e8d04aff02170"
 approvals:
   principal_engineer: null
   appsec: null
   qa_lead: null
-  code_review: null
+  code_review:
+    by: "/root/review_task003"
+    date: "2026-09-25"
+    notes: "Revision 2 task review found a nested-directory root bypass. Added
+      registered worktree top-level validation and a committed nested-config
+      regression fixture; re-review confirmed the finding resolved with no
+      remaining Critical or Important issues."
+    revision: 2
+    commit: "8f3493e18f0039c4469800d6d57e8d04aff02170"
   appsec_review: null
   accessibility: null
   accessibility_review: null
