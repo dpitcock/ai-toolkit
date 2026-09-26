@@ -2,12 +2,22 @@
 kind: task
 id: TASK-003
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 10
 depends_on: [ tasks/TASK-007.md, tasks/TASK-002.md ]
-evidence: { red: null, green: null, qa: null, commit: null }
+evidence:
+  red: "The new exact-plan fixtures initially exposed that unrelated ready-for-PR
+    plans and malformed binding provenance could pass; focused RED cases
+    reproduced both review findings."
+  green: "node --test tests/check-tier2.test.mjs tests/gates.test.mjs passed: 44
+    tests, 0 failures."
+  qa: "npm test passed: 129 tests, 0 failures. Independent TASK-003 re-review
+    approved 813d4c2 after verifying exact loaded plan ID/revision equality and
+    complete accepted root/worktree policy provenance equality. git diff --check
+    passed."
+  commit: "813d4c2c51a6ad929f2213ccfdf95f0983458517"
 approvals:
   {
     principal_engineer: null,
