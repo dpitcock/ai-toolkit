@@ -274,7 +274,13 @@ function tier3Binding(record,config,headRef) {
   }
   const policy=resolveTier3Policy({config});
   const provenance=binding.policy;
-  if(!isObject(provenance.coordination) || !isObject(provenance.worktree)
+  const accepted=record.acceptedConfig;
+  const validPolicyFact=value=>isObject(value) && Object.keys(value).length===2
+    && typeof value.digest==='string' && /^[a-f0-9]{64}$/.test(value.digest)
+    && Number.isInteger(value.revision) && value.revision>0;
+  if(Object.keys(provenance).length!==4 || !validPolicyFact(provenance.coordination) || !validPolicyFact(provenance.worktree)
+    || !isObject(accepted) || !validPolicyFact(accepted.coordination) || !validPolicyFact(accepted.worktree)
+    || !isDeepStrictEqual(provenance.coordination,accepted.coordination) || !isDeepStrictEqual(provenance.worktree,accepted.worktree)
     || provenance.effectiveDigest!==policy.effectiveDigest || !isDeepStrictEqual(provenance.roles,policy.roles)) {
     fail('Tier 3 policy provenance is stale or malformed');
   }

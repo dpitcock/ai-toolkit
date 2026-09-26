@@ -31,6 +31,9 @@ for(const assessmentPath of assessmentPaths) {
   const binding=result.tier3Binding;
   const plan=validatedEpicPlans.get(binding.planPath);
   if(!plan) throw new Error(`Tier 3 assessment must validate its named ready-for-PR plan: ${binding.planPath}`);
+  if(plan.id!==binding.planId || plan.revision!==binding.planRevision) {
+   throw new Error('Tier 3 assessment binding plan ID or revision does not match the loaded ready-for-PR plan');
+  }
   const task=readDocument(binding.taskPath).data;
   if(task.id!==binding.taskId || task.parent_revision!==binding.planRevision || !plan.tasks.includes(`tasks/${binding.taskId}.md`)) {
    throw new Error('Tier 3 assessment task binding is stale or does not belong to its named plan');

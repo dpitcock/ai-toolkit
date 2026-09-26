@@ -147,27 +147,27 @@ function governanceApprovals() {
   return {principal_engineer:null,appsec:null,qa_lead:null,code_review:null,appsec_review:null,accessibility:null,accessibility_review:null};
 }
 
-function writeGovernance(root,id,{status='approved',reviewedCommit=null,frontmatter=false}={}) {
-  const approval=(by,commit=null)=>({by,date:'2026-09-25',notes:'Independent governance review.',revision:1,...(commit===null?{}:{commit})});
+function writeGovernance(root,id,{status='approved',reviewedCommit=null,frontmatter=false,planId=`${id}-PLAN`,planRevision=1,taskPlanRevision=planRevision}={}) {
+  const approval=(by,commit=null,revision=1)=>({by,date:'2026-09-25',notes:'Independent governance review.',revision,...(commit===null?{}:{commit})});
   const project={kind:'project',id:'PROJECT',owner:'project-owner',status:'approved',revision:1,approvals:governanceApprovals()};
   project.approvals.principal_engineer=approval('project-principal');
   const epic={kind:'epic',id,owner:'epic-owner',status:'approved',revision:1,parent:'../../project/project-plan.md',parent_revision:1,
     security:{auth:false,data:false,external:false,concerns:[],rationale:'Local test fixture.'},accessibility:{ui:false,rationale:'No UI.'},qa_requirements:['unit'],approvals:governanceApprovals()};
   epic.approvals.qa_lead=approval('qa-reviewer');epic.approvals.appsec='not-required';
-  const task={kind:'task',id:'TASK-001',owner:'developer',status:reviewedCommit===null?'approved':'done',revision:1,parent:'../epic-plan.md',parent_revision:1,depends_on:[],
+  const task={kind:'task',id:'TASK-001',owner:'developer',status:reviewedCommit===null?'approved':'done',revision:1,parent:'../epic-plan.md',parent_revision:taskPlanRevision,depends_on:[],
     evidence:reviewedCommit===null?{red:null,green:null,qa:null,commit:null}:{red:'RED',green:'GREEN',qa:'QA',commit:reviewedCommit},approvals:governanceApprovals()};
-  const plan={kind:'epic-plan',id:`${id}-PLAN`,owner:'developer',status:reviewedCommit===null?'approved':'ready-for-pr',revision:1,parent:'epic.md',parent_revision:1,
+  const plan={kind:'epic-plan',id:planId,owner:'developer',status:reviewedCommit===null?'approved':'ready-for-pr',revision:planRevision,parent:'epic.md',parent_revision:1,
     security:{auth:false,data:false,external:false,concerns:[],rationale:'Local test fixture.'},accessibility:{ui:false,rationale:'No UI.'},touches_concerns:[],tasks:['tasks/TASK-001.md'],review_comments:[],review_commit:reviewedCommit,approvals:governanceApprovals()};
-  plan.approvals.principal_engineer=approval('plan-principal');plan.approvals.appsec='not-required';
+  plan.approvals.principal_engineer=approval('plan-principal',null,planRevision);plan.approvals.appsec='not-required';
   if(reviewedCommit!==null) {
-    plan.approvals.code_review=approval('code-reviewer',reviewedCommit);
-    plan.approvals.appsec_review=approval('appsec-reviewer',reviewedCommit);
+    plan.approvals.code_review=approval('code-reviewer',reviewedCommit,planRevision);
+    plan.approvals.appsec_review=approval('appsec-reviewer',reviewedCommit,planRevision);
   }
   const write=(relative,value)=>{const target=path.join(root,relative);fs.mkdirSync(path.dirname(target),{recursive:true});const serialized=YAML.stringify(value,{lineWidth:0});fs.writeFileSync(target,frontmatter?`---\n${serialized}\n---\n` : serialized);};
   write('project/project-plan.md',project);write(`epics/${id}/epic.md`,epic);write(`epics/${id}/epic-plan.md`,plan);write(`epics/${id}/tasks/TASK-001.md`,task);
 }
 
-function tier3Fixture(t,{boundPlanId='EPIC-043'}={}) {
+function tier3Fixture(t,{boundPlanId='EPIC-043',policyEdit=null,loadedPlanId=null,loadedPlanRevision=null}={}) {
   const coordination=fs.mkdtempSync(path.join(os.tmpdir(),'check-tier3-coordination-'));
   const linked=path.join(os.tmpdir(),`check-tier3-linked-${path.basename(coordination)}`);
   t.after(()=>{try { git(coordination,'worktree','remove','--force',linked); } catch {} fs.rmSync(coordination,{recursive:true,force:true});fs.rmSync(linked,{recursive:true,force:true});});
@@ -190,10 +190,15 @@ function tier3Fixture(t,{boundPlanId='EPIC-043'}={}) {
     record.tier3Binding.planPath=`epics/${boundPlanId}/epic-plan.md`;record.tier3Binding.planId=`${boundPlanId}-PLAN`;record.tier3Binding.taskPath=`epics/${boundPlanId}/tasks/TASK-001.md`;
     fs.writeFileSync(assessmentFile,YAML.stringify(record,{lineWidth:0}));
   }
+  if(policyEdit!==null) {
+    const assessmentFile=path.join(linked,'project/task-assessments/tier3-change.yaml');const record=YAML.parse(fs.readFileSync(assessmentFile,'utf8'));
+    policyEdit(record.tier3Binding.policy);
+    fs.writeFileSync(assessmentFile,YAML.stringify(record,{lineWidth:0}));
+  }
   git(linked,'add','--','project/task-assessments/tier3-change.yaml');git(linked,'commit','-qm','initial Tier 3 assessment');
   fs.mkdirSync(path.join(linked,'scripts'),{recursive:true});fs.writeFileSync(path.join(linked,'scripts/tier3-change.mjs'),'export const tier3 = true;\n');git(linked,'add','--','scripts/tier3-change.mjs');git(linked,'commit','-qm','implement Tier 3 change');
   const reviewedCommit=git(linked,'rev-parse','HEAD');
-  writeGovernance(linked,'EPIC-043',{reviewedCommit,frontmatter:true});if(boundPlanId!=='EPIC-043') writeGovernance(linked,boundPlanId,{reviewedCommit,frontmatter:true});
+  writeGovernance(linked,'EPIC-043',{reviewedCommit,frontmatter:true,...(loadedPlanId===null?{}:{planId:loadedPlanId}),...(loadedPlanRevision===null?{}:{planRevision:loadedPlanRevision,taskPlanRevision:loadedPlanRevision})});if(boundPlanId!=='EPIC-043') writeGovernance(linked,boundPlanId,{reviewedCommit,frontmatter:true});
   git(linked,'add','--','project','epics');git(linked,'commit','-qm','record final Tier 3 reviews');
   return {root:linked,baseSha,headRef:'epic/EPIC-043'};
 }
@@ -434,4 +439,20 @@ test('check-pr rejects a Tier 3 assessment bound to another valid plan',t=>{
   const result=runCheckPr(state);
   assert.notEqual(result.status,0);
   assert.match(result.stderr,/Tier 3.*(branch|named plan|binding)/i);
+});
+
+test('check-pr rejects a Tier 3 binding whose named plan ID or revision differs from the loaded plan',t=>{
+  for(const options of [{loadedPlanId:'EPIC-043-OTHER'},{loadedPlanRevision:2}]) {
+    const state=tier3Fixture(t,options);
+    const result=runCheckPr(state);
+    assert.notEqual(result.status,0);
+    assert.match(result.stderr,/Tier 3.*plan.*(ID|revision|binding)/i);
+  }
+});
+
+test('check-pr rejects Tier 3 binding policy provenance that differs from accepted root or worktree evidence',t=>{
+  const state=tier3Fixture(t,{policyEdit:policy=>{policy.coordination.digest='a'.repeat(64);policy.worktree.revision=99;}});
+  const result=runCheckPr(state);
+  assert.notEqual(result.status,0);
+  assert.match(result.stderr,/Tier 3.*policy provenance/i);
 });
