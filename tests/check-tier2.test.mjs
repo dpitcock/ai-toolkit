@@ -136,10 +136,10 @@ function validate(state,options={}) {
   return validateTier2Assessment({assessmentPath,repoRoot:state.root,baseSha:state.baseSha,headSha:state.headSha,headRef:state.headRef,...options});
 }
 
-function runCheckPr(state) {
+function runCheckPr(state,{headSha=state.headSha}={}) {
   return spawnSync(process.execPath,[checkPrScript],{
     cwd:state.root,encoding:'utf8',
-    env:{...process.env,BASE_SHA:state.baseSha,HEAD_REF:state.headRef},
+    env:{...process.env,BASE_SHA:state.baseSha,HEAD_SHA:headSha,HEAD_REF:state.headRef},
   });
 }
 
@@ -200,7 +200,7 @@ function tier3Fixture(t,{boundPlanId='EPIC-043',policyEdit=null,loadedPlanId=nul
   const reviewedCommit=git(linked,'rev-parse','HEAD');
   writeGovernance(linked,'EPIC-043',{reviewedCommit,frontmatter:true,...(loadedPlanId===null?{}:{planId:loadedPlanId}),...(loadedPlanRevision===null?{}:{planRevision:loadedPlanRevision,taskPlanRevision:loadedPlanRevision})});if(boundPlanId!=='EPIC-043') writeGovernance(linked,boundPlanId,{reviewedCommit,frontmatter:true});
   git(linked,'add','--','project','epics');git(linked,'commit','-qm','record final Tier 3 reviews');
-  return {root:linked,baseSha,headRef:'epic/EPIC-043'};
+  return {root:linked,baseSha,headSha:git(linked,'rev-parse','HEAD'),headRef:'epic/EPIC-043'};
 }
 
 function linkedFixture(t) {
@@ -425,6 +425,14 @@ test('check-pr keeps the existing epic-plan PR gate before Tier 2 validation',t=
   assert.notEqual(result.status,0);
   assert.match(result.stderr,/PR requires ready-for-pr epic plan/);
   assert.doesNotMatch(result.stdout,/Tier 2 passed/);
+});
+
+test('check-pr rejects an authoritative HEAD_SHA that differs from the checked-out PR head',t=>{
+  const input={...answers,intendedFiles:['project/src/notify.js','project/src/format.js']};
+  const state=fixture(t,{input});
+  const result=runCheckPr(state,{headSha:state.baseSha});
+  assert.notEqual(result.status,0);
+  assert.match(result.stderr,/HEAD_SHA.*checked-out PR HEAD/i);
 });
 
 test('check-pr accepts its exact ready-for-PR Tier 3 plan',t=>{

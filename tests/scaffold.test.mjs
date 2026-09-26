@@ -12,6 +12,21 @@ const tier2Answers={developer:'fixture-implementer',scope:'one-subsystem',risks:
 function git(root,...args) { return execFileSync('git',['-C',root,...args],{encoding:'utf8'}).trim(); }
 function commitAll(root,message) { git(root,'add','-A');git(root,'commit','-m',message);return git(root,'rev-parse','HEAD'); }
 
+test('pull-request workflow passes immutable PR context to the unified validator without irreversible operations',()=>{
+ const workflow=YAML.parse(fs.readFileSync(path.join(source,'.github/workflows/workflow.yml'),'utf8'));
+ const steps=workflow.jobs.gates.steps;
+ assert.ok(steps.some(step=>step.run==='npm test'),'workflow keeps template-only test coverage');
+ const validator=steps.find(step=>step.run==='node scripts/check-pr.mjs');
+ assert.ok(validator,'workflow invokes the single unified PR validator');
+ assert.deepEqual(validator.env,{
+  BASE_SHA:'${{ github.event.pull_request.base.sha }}',
+  HEAD_SHA:'${{ github.event.pull_request.head.sha }}',
+  HEAD_REF:'${{ github.head_ref }}',
+ });
+ assert.equal(steps.filter(step=>step.run==='node scripts/check-pr.mjs').length,1);
+ assert.doesNotMatch(fs.readFileSync(path.join(source,'.github/workflows/workflow.yml'),'utf8'),/\b(?:gh\s+pr|git\s+(?:push|merge|branch\s+-d))\b/i);
+});
+
 test('init is idempotent; real epic worktree is isolated and refuses collisions',t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'blueprint-scaffold-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  for(const item of ['scripts','project','tests','package.json','package-lock.json','.gitignore']) fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
@@ -89,7 +104,7 @@ test('generated adopter executes accepted Tier 1 and Tier 2 routes and documents
  fs.writeFileSync(assessmentPath,YAML.stringify(assessment,{lineWidth:0}));
  commitAll(root,'record Tier 2 reviews');
  const checked=spawnSync(process.execPath,['scripts/check-pr.mjs'],{
-  cwd:root,encoding:'utf8',env:{...process.env,BASE_SHA:tier2Base,HEAD_REF:'feature/tier2-fixture'},
+  cwd:root,encoding:'utf8',env:{...process.env,BASE_SHA:tier2Base,HEAD_SHA:git(root,'rev-parse','HEAD'),HEAD_REF:'feature/tier2-fixture'},
  });
  assert.equal(checked.status,0,checked.stderr);
  assert.match(checked.stdout,/bounded-change\.yaml: Tier 2 passed/);

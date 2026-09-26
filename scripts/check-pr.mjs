@@ -3,9 +3,18 @@ import fs from 'node:fs';
 import {check,readDocument} from './check-gate.mjs';
 import {validateTier2Assessment} from './check-tier2.mjs';
 import {validateTier3RoleEvidence} from './lib/tier3-policy.mjs';
+function canonicalCommit(value,label) {
+ if(!/^[a-f0-9]{40}$/i.test(value??'')) throw new Error(`${label} must be a full commit SHA`);
+ const canonical=execFileSync('git',['rev-parse',`${value}^{commit}`],{encoding:'utf8'}).trim();
+ if(canonical.toLowerCase()!==value.toLowerCase()) throw new Error(`${label} does not identify the requested commit`);
+ return canonical;
+}
 const base=process.env.BASE_SHA;
 if(!/^[a-f0-9]{40}$/.test(base??'')) throw new Error('BASE_SHA must be a full commit SHA');
-const changed=execFileSync('git',['diff','--name-only','-z',`${base}...HEAD`],{encoding:'utf8'}).split('\0').filter(Boolean);
+const headSha=canonicalCommit(process.env.HEAD_SHA,'HEAD_SHA');
+const checkedOutHead=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+if(checkedOutHead.toLowerCase()!==headSha.toLowerCase()) throw new Error('HEAD_SHA must match the checked-out PR HEAD');
+const changed=execFileSync('git',['diff','--name-only','-z',`${base}...${headSha}`],{encoding:'utf8'}).split('\0').filter(Boolean);
 const ids=new Set(changed.map(f=>f.match(/^epics\/(EPIC-\d+)\//)?.[1]).filter(Boolean));
 const branch=process.env.HEAD_REF || execFileSync('git',['branch','--show-current'],{encoding:'utf8'}).trim();
 const branchId=branch.match(/^epic\/(EPIC-\d+)$/)?.[1]; if(branchId) ids.add(branchId);
@@ -23,7 +32,6 @@ for(const id of ids) {
  console.log(check(file,'pr'));
  validatedEpicPlans.set(file,data);
 }
-const headSha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
 for(const assessmentPath of assessmentPaths) {
  const result=validateTier2Assessment({assessmentPath,repoRoot:process.cwd(),baseSha:base,headSha,headRef:process.env.HEAD_REF});
  if(result.tier===3) {
