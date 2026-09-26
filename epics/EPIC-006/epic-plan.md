@@ -2,7 +2,7 @@
 kind: epic-plan
 id: EPIC-006-PLAN
 owner: "Codex"
-status: in-review
+status: in-progress
 revision: 1
 parent: epic.md
 parent_revision: 1
@@ -75,8 +75,8 @@ review_comments:
     file: "scripts/check-tier1.mjs"
     line: 157
     notes: "P2: New accepted direct_merge true is ignored. Use shared effective
-      rules while preserving legacy behavior and template PR-only floors;
-      add final-check coverage. See independent final Staff report."
+      rules while preserving legacy behavior and template PR-only floors; add
+      final-check coverage. See independent final Staff report."
   - id: CR-006-003
     status: open
     severity: Required
@@ -87,8 +87,8 @@ review_comments:
     file: "scripts/check-tier2.mjs"
     line: 133
     notes: "P1: Both final checker overlay copies reject valid marked autopilot
-      overrides accepted by preflight. Share resolver semantics and test
-      linked and single-checkout CI paths. See independent final Staff report."
+      overrides accepted by preflight. Share resolver semantics and test linked
+      and single-checkout CI paths. See independent final Staff report."
   - id: CR-006-004
     status: open
     severity: Required
@@ -102,7 +102,7 @@ review_comments:
       governed PR-to-completion route. Define and verify release continuation
       without weakening status-only finalization, immutable evidence or
       next-epic admission. See independent final Staff report."
-review_commit: "379cba3d027b4c9c8fa2770564ff6c10c46e1ac2"
+review_commit: null
 pr_url: null
 approvals:
   principal_engineer:
