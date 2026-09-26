@@ -167,9 +167,9 @@ function writeGovernance(root,id,{status='approved',reviewedCommit=null,frontmat
   write('project/project-plan.md',project);write(`epics/${id}/epic.md`,epic);write(`epics/${id}/epic-plan.md`,plan);write(`epics/${id}/tasks/TASK-001.md`,task);
 }
 
-function tier3Fixture(t,{boundPlanId='EPIC-043',policyEdit=null,loadedPlanId=null,loadedPlanRevision=null}={}) {
+function tier3Fixture(t,{boundPlanId='EPIC-043',policyEdit=null,bindingEdit=null,loadedPlanId=null,loadedPlanRevision=null}={}) {
   const coordination=fs.mkdtempSync(path.join(os.tmpdir(),'check-tier3-coordination-'));
-  const linked=path.join(os.tmpdir(),`check-tier3-linked-${path.basename(coordination)}`);
+  const linked=path.join(coordination,'.worktrees',`EPIC-043-${path.basename(coordination)}`);
   t.after(()=>{try { git(coordination,'worktree','remove','--force',linked); } catch {} fs.rmSync(coordination,{recursive:true,force:true});fs.rmSync(linked,{recursive:true,force:true});});
   const config={workspace:{repository:'tier3-fixture',environment:'test',provider:'codex',slack_channel_name:'ws-tier3-fixture-codex',timezone:'UTC'},approvals_required:{principal:true,qa:true,appsec:true,accessibility_reviewer:false,ui_designer:false},approvals_overrides:{reason:'No UI',exempt:['accessibility_reviewer','ui_designer']},daily_summary:{local_time:'09:00'},task_tiers:{tier_1_direct_merge:false}};
   fs.mkdirSync(path.join(coordination,'config'),{recursive:true});fs.mkdirSync(path.join(coordination,'project'),{recursive:true});
@@ -193,6 +193,11 @@ function tier3Fixture(t,{boundPlanId='EPIC-043',policyEdit=null,loadedPlanId=nul
   if(policyEdit!==null) {
     const assessmentFile=path.join(linked,'project/task-assessments/tier3-change.yaml');const record=YAML.parse(fs.readFileSync(assessmentFile,'utf8'));
     policyEdit(record.tier3Binding.policy);
+    fs.writeFileSync(assessmentFile,YAML.stringify(record,{lineWidth:0}));
+  }
+  if(bindingEdit!==null) {
+    const assessmentFile=path.join(linked,'project/task-assessments/tier3-change.yaml');const record=YAML.parse(fs.readFileSync(assessmentFile,'utf8'));
+    bindingEdit(record.tier3Binding);
     fs.writeFileSync(assessmentFile,YAML.stringify(record,{lineWidth:0}));
   }
   git(linked,'add','--','project/task-assessments/tier3-change.yaml');git(linked,'commit','-qm','initial Tier 3 assessment');
@@ -463,4 +468,13 @@ test('check-pr rejects Tier 3 binding policy provenance that differs from accept
   const result=runCheckPr(state);
   assert.notEqual(result.status,0);
   assert.match(result.stderr,/Tier 3.*policy provenance/i);
+});
+
+test('check-pr rejects unsafe immutable Tier 3 worktree identities',t=>{
+  for(const worktreePath of ['', '/tmp/EPIC-043', '../EPIC-043', '.worktrees/../EPIC-043']) {
+    const state=tier3Fixture(t,{bindingEdit:binding=>{binding.worktreePath=worktreePath;}});
+    const result=runCheckPr(state);
+    assert.notEqual(result.status,0);
+    assert.match(result.stderr,/Tier 3.*worktree.*(path|identity)|Tier 3 binding/i);
+  }
 });

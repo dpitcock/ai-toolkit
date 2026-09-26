@@ -267,6 +267,13 @@ function tier3Binding(record,config,headRef) {
     || !Number.isInteger(binding.planRevision) || binding.planRevision<1 || !isObject(binding.policy)) {
     fail('Tier 3 binding is missing or malformed');
   }
+  const worktreeParts=binding.worktreePath.split('/');
+  if(binding.worktreePath.includes('\\') || /[\u0000-\u001f\u007f]/.test(binding.worktreePath)
+    || path.posix.isAbsolute(binding.worktreePath) || path.win32.isAbsolute(binding.worktreePath)
+    || path.posix.normalize(binding.worktreePath)!==binding.worktreePath
+    || worktreeParts.some(part=>!part || part==='.' || part==='..')) {
+    fail('Tier 3 binding worktreePath must be a non-empty canonical relative worktree identity');
+  }
   const epicId=binding.branch.match(/^epic\/(EPIC-\d+)$/)?.[1];
   if(!epicId || binding.branch!==headRef || binding.planPath!==`epics/${epicId}/epic-plan.md`
     || binding.planId!==`${epicId}-PLAN` || binding.taskPath!==`epics/${epicId}/tasks/${binding.taskId}.md`) {
