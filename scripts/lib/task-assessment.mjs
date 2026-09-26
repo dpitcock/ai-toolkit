@@ -140,7 +140,9 @@ function readYamlInsideWorktree(root,relativePath,label) {
   if(stat.isSymbolicLink() || !stat.isFile()) reject(`${label} must be a regular file`);
   const actual=fs.realpathSync(candidate);
   if(!actual.startsWith(root+path.sep)) reject(`${label} escapes the registered worktree`);
-  const document=YAML.parseDocument(fs.readFileSync(actual,'utf8'),{uniqueKeys:true});
+  const raw=fs.readFileSync(actual,'utf8');
+  const frontmatter=raw.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  const document=YAML.parseDocument(frontmatter?.[1]??raw,{uniqueKeys:true});
   if(document.errors.length) reject(`${label} is invalid YAML`);
   const value=document.toJS({maxAliasCount:0});
   if(!isObject(value)) reject(`${label} must be a mapping`);
