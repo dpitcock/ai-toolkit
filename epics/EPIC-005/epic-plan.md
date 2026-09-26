@@ -2,7 +2,7 @@
 kind: epic-plan
 id: EPIC-005-PLAN
 owner: "Codex"
-status: in-appsec-review
+status: ready-for-pr
 revision: 10
 parent: epic.md
 parent_revision: 2
@@ -105,7 +105,26 @@ approvals:
       scaffold 5 passed with exactly one named skip; prior renewed final focused
       suites passed 30/30 and 43/43; complete implementation diff checks
       passed."
-  appsec_review: null
+  appsec_review:
+    by: "Codex AppSec final reviewer /root/epic005_final_appsec"
+    date: "2026-09-26"
+    revision: 10
+    commit: "e0070c2c85521efecdfa462dfb6f66ea9ad285da"
+    notes: "Renewed independent final AppSec review after staff review, against
+      exact implementation commit e0070c2c85521efecdfa462dfb6f66ea9ad285da.
+      Reviewed the new CI-local generated-adopter boundary and all prior
+      SEC-TIER3-001 through SEC-TIER3-005 controls. The skip is narrowly
+      attached to one fixture that needs locally installed upstream skills; it
+      does not alter production validators, CI PR-context validation, immutable
+      worktree/plan/task/policy provenance checks, four-role evidence mapping,
+      mandatory final code/AppSec floors, or named-plan UI accessibility floors.
+      Local full scaffold verification passed 8/8, and CI-mode scaffold
+      verification passed 5 tests with exactly the named fixture skipped. CI
+      still executes the regular test suite and read-only PR gate. No new
+      credential, data, network, shell-injection, merge, push, or branch-delete
+      capability was introduced; workflow permission remains contents: read and
+      the PR-only/host-protection cooperative limit is preserved. No unresolved
+      AppSec findings."
   accessibility: null
   accessibility_review: null
 ---
