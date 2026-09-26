@@ -2,16 +2,19 @@
 kind: task
 id: TASK-000
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: []
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "node --test tests/scaffold.test.mjs: 3 generated-adopter cases failed
+    because copied workspace acceptance history had no matching config."
+  green: "node --test tests/scaffold.test.mjs: 8 passed, 0 failed."
+  qa: "QA-GOV-003 and QA-GOV-009: adopter seed excludes instance
+    config/history/transaction/lock/assessments and each fixture accepts its own
+    policy."
+  commit: "7f600f1"
 approvals:
   principal_engineer: null
   appsec: null
