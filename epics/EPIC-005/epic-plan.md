@@ -2,7 +2,7 @@
 kind: epic-plan
 id: EPIC-005-PLAN
 owner: "Codex"
-status: approved
+status: in-progress
 revision: 10
 parent: epic.md
 parent_revision: 2
