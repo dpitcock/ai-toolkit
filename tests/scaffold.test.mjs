@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {pathToFileURL} from 'node:url';
 import {execFileSync,spawnSync} from 'node:child_process';
 import YAML from 'yaml';
 const source=path.resolve(import.meta.dirname,'..');
@@ -19,7 +20,7 @@ function copyAdopterSeed(root,items) {
   'project/workspace-config-transaction.json',
   'project/task-assessments',
  ]);
- for(const item of items) fs.cpSync(path.join(source,item),path.join(root,item),{
+ for(const item of new Set([...items,'policy'])) fs.cpSync(path.join(source,item),path.join(root,item),{
   recursive:true,filter:file=>!instancePaths.has(path.relative(source,file).split(path.sep).join('/')),
  });
  for(const relative of instancePaths) assert.ok(!fs.existsSync(path.join(root,relative)),`${relative} must not seed an adopter`);
@@ -54,6 +55,15 @@ test('Tier 3 guidance preserves the registered-worktree, evidence, and PR-only c
   const text=fs.readFileSync(path.join(source,file),'utf8');
   assert.doesNotMatch(text,/ui_designer/i,`${file} must not make forward ui_designer claims`);
   for(const pattern of patterns) assert.match(text,pattern,`${file} is missing ${pattern}`);
+ }
+});
+
+test('adapter documentation describes the exported controller boundary',()=>{
+ for(const file of ['AGENTS.md','CLAUDE.md','.clinerules/00-governance.md',
+  'skills/governed-plan/SKILL.md','skills/governed-build/SKILL.md','skills/governed-ship/SKILL.md']) {
+  const text=fs.readFileSync(path.join(source,file),'utf8');
+  assert.match(text,/runWorkflowEvent/ ,`${file} names the exported entrypoint`);
+  assert.match(text,/standalone[\s\S]*fails?[ -]closed/i,`${file} explains the standalone boundary`);
  }
 });
 
@@ -100,7 +110,8 @@ test('generated adopter executes accepted Tier 1 and Tier 2 routes and documents
  const proposal=JSON.parse(initOutput.split('\n')[0]);
  assert.equal(proposal.status,'pending');
  const config=YAML.parse(fs.readFileSync(path.join(root,'config/workspace-config.yaml'),'utf8'));
- assert.equal(config.task_tiers.tier_1_direct_merge,false);
+ assert.equal(config.task_tier,'tier_1');
+ assert.equal(config.tier_overrides.direct_merge,false);
  run('node',['scripts/init-workspace.mjs','accept','--root',root,'--by','Fixture policy reviewer','--reason','Accept generated adopter fixture','--digest',proposal.digest]);
  assert.match(run('node',['scripts/init-workspace.mjs','status','--root',root]),/"status":"accepted"/);
  git(root,'init');git(root,'config','user.email','fixture@example.test');git(root,'config','user.name','Fixture');
@@ -217,6 +228,33 @@ test('generated adopter Tier 3 route',
  advanceGate(run,linked,'epics/EPIC-043/tasks/TASK-001.md','approved');
  commitAll(linked,'accept linked policy and start governed epic');
  const baseSha=git(linked,'rev-parse','HEAD');
+ await t.test('packaged controller entrypoint enforces accepted policy and out-of-band identity',async()=>{
+  assert.ok(fs.existsSync(path.join(linked,'policy/task-tier-defaults.yaml')));
+  const packaged=relative=>import(pathToFileURL(path.join(linked,relative)).href);
+  const {resolveWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition}=await packaged('scripts/lib/workspace-config.mjs');
+  const {assertAcceptedWorkspaceConfig}=await packaged('scripts/lib/workspace-history.mjs');
+  const {withWorkflowState,readWorkflowState}=await packaged('scripts/lib/workflow-state.mjs');
+  git(root,'remote','add','origin','https://github.com/fixture/scaffold.git');
+  const effective=resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}).config;
+  const acceptance=directory=>assertAcceptedWorkspaceConfig(directory,YAML.parse(fs.readFileSync(path.join(directory,'config/workspace-config.yaml'),'utf8')));
+  const rootReceipt=acceptance(root),linkedReceipt=acceptance(linked);
+  const provenance={digest:workspaceConfigDigest(effective),definition:workspaceTierDefinition(effective),
+   rootAcceptance:`workspace:${rootReceipt.revision}:${rootReceipt.digest}`,worktreeAcceptance:`workspace:${linkedReceipt.revision}:${linkedReceipt.digest}`};
+  withWorkflowState(linked,state=>{state.authorizations.fixture={id:'fixture',repository:'fixture/scaffold',branch:'epic/EPIC-043',scope:['epics/EPIC-043'],allowedActions:['task.dispatch'],completionCriteria:['fixture-contract'],policy:provenance,authorizedBy:'fixture-owner'};});
+  const event={id:'packaged-dispatch',type:'task.dispatch',epic:'EPIC-043',task:'TASK-001',authorizationId:'fixture',completionCriterion:'fixture-contract'};
+  // Fixture identity is test data, never evidence of a real authenticated session.
+  const actor={harness:{authenticated:true,sessionId:'fixture-session',identity:'fixture-controller',ownerDecisionIds:[]}};
+  const entrypoint=pathToFileURL(path.join(linked,'scripts/workflow-event.mjs')).href;
+  const wrapper=`import {runWorkflowEvent} from ${JSON.stringify(entrypoint)}; await runWorkflowEvent(process.argv.slice(1), {actor:${JSON.stringify(actor)},observers:{}});`;
+  const embedded=run(linked,process.execPath,['--input-type=module','-e',wrapper,'task.dispatch','--root',linked],{input:JSON.stringify(event)});
+  assert.equal(embedded.status,0,embedded.stderr);
+  assert.equal(JSON.parse(embedded.stdout).decision,'continue');
+  assert.equal(JSON.parse(embedded.stdout).reason,'authorized-routine');
+  assert.equal(readWorkflowState(linked).dispatches[event.id].output.decision,'continue');
+  const standalone=run(linked,process.execPath,['scripts/workflow-event.mjs','task.dispatch','--root',linked],{input:JSON.stringify(event),env:{...process.env,WORKFLOW_HARNESS_ACTOR:JSON.stringify(actor)}});
+  assert.equal(standalone.status,1);
+  assert.match(JSON.parse(standalone.stdout).reason,/trusted harness actor is required/);
+ });
  const answers={developer:'fixture-implementer',scope:'cross-cutting',risks:{...noRisks,auth:true},userFacingUI:false,claimedTier:3,intendedFiles:['project/src/tier3-change.js'],accessibilityEvidence:null,tier3Binding:{planPath:'epics/EPIC-043/epic-plan.md',taskPath:'epics/EPIC-043/tasks/TASK-001.md'}};
  const preflight=(cwd,id,input=answers)=>run(cwd,'node',['scripts/preflight.mjs','--id',id,'--coordination-root',root,'--worktree-root',cwd],{input:JSON.stringify(input)});
 

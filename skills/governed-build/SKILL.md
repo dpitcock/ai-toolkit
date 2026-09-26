@@ -8,13 +8,20 @@ description: Use when implementing tasks, running /build or /test, or starting s
 ## Event-boundary adapter contract
 
 Before dispatching a build task, start a fresh task session and invoke
-`node scripts/workflow-event.mjs task.dispatch --root PATH` under stored,
-accepted authority. The adapter supplies authenticated identity; the event
+the exported `runWorkflowEvent(['task.dispatch', '--root', PATH], {actor, observers})`
+from `scripts/workflow-event.mjs` through the authenticated embedding harness,
+with bounded event JSON on stdin under stored, accepted authority. The
+standalone CLI fails closed. Supply actual harness-observed actor context
+out-of-band, not event or environment claims. Observer callbacks are synchronous
+under the state lock; see `docs/workflow.md`. The event
 cannot establish identity, approval, repository, branch, scope, or policy.
 The entrypoint resolves and validates those facts internally. A failed event
 blocks dispatch. Tests and pushes never launch reviews. Agent Alert is only
 for authorized agent messages; Slack text/prefixes are never credentials.
 Retain host protections, tool-specific limits, and the PR-only merge route.
+Inspect the structured decision and stop on rejection or exception. Legacy
+policy may deny with `autopilot-policy-required`; do not rewrite acceptance or
+preflight to bypass it. JSON and authenticated flags are cooperative evidence.
 
 1. For ordinary bounded tasks outside the already-governed Tier 3 epic/plan/task workflow, verify accepted policy with `node scripts/init-workspace.mjs status --root .`, then run `node scripts/preflight.mjs --id ID --coordination-root . --worktree-root . < answers.json`. Commit the initial `project/task-assessments/ID.yaml` as the sole path, directly on top of `startingHead`, before implementation. High risk, uncertainty, unknown answers, or a Tier 3 final-diff classification route to the governed epic/plan/task gates; the final diff may raise a tier, never lower it.
 2. Tier 1 is low-risk, single-file, non-UI work. After implementation run `node scripts/check-tier1.mjs --assessment project/task-assessments/ID.yaml`. Tier 1 direct merge is off by default, requires explicitly accepted policy plus compatible host rules for eligible adopters, and is never allowed in this template repository. `check-tier1.mjs` can still report `Direct merge eligible: yes` if accepted config enables it; that generic result does not enforce this template's PR-only rule, so host protections must prevent bypass.

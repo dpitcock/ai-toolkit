@@ -15,6 +15,89 @@ Projects that use an externally deployed Slack control plane can follow the
 contracts plus the generated, non-secret `config/workspace-config.yaml`; it does not change local Codex,
 Cline, or Claude instructions.
 
+## Authenticated event controller
+
+The embedding harness imports `runWorkflowEvent` from
+`scripts/workflow-event.mjs` and calls
+`runWorkflowEvent([EVENT, '--root', PATH], {actor, observers})`. The function
+reads one bounded JSON event from stdin (64 KiB maximum), writes its structured
+decision to stdout, and returns it. A `human-needed` decision sets exit code 1;
+thrown errors also block dispatch and must be handled by the harness. Inspect
+the decision before taking any action. The standalone
+`node scripts/workflow-event.mjs EVENT --root PATH` command deliberately fails
+closed because it has no authenticated actor. Environment JSON cannot supply one.
+
+The harness must obtain actual session identity and owner authorization through
+its trusted context, then pass actor context out-of-band. Persist narrowly
+scoped authorization in the locked Git-common runtime store; event JSON only
+references its ID. Required event fields are `id`, `type`, `epic`,
+`authorizationId`, and `completionCriterion`; `task.dispatch` additionally
+requires `task`, and `epic.complete` requires `completionId`. Optional
+`repository`, `branch`, and `scope` fields must match internally resolved facts.
+They cannot select another repository or establish authority. The registered
+worktree must be on its `epic/EPIC-NNN` branch with accepted effective policy.
+
+| Event | Boundary and additional controller observations |
+| --- | --- |
+| `epic.start` | Checks predecessor completion before admitting the epic; `integration(receipt)` fetches current host integration facts for a predecessor. Provisioning in `new-epic.sh` reserves admission separately before creating resources. |
+| `task.dispatch` | Checks the canonical approved plan, listed task, legal task state and completed dependencies before dispatch. |
+| `review.ready` | Checks the canonical review stage. Before a PR exists, returns local role/head readiness without inventing a PR. With a canonical PR URL, `pullRequest(context)` returns live `{repository, pr, head}` and durable role/head claims are scheduled. |
+| `merge.eligible` | Requires the canonical PR gate and `reviewAuthority(context)` returning `{identities, api}` for authenticated, paginated current-head reviews/checks. Rechecks the head and merge gates; it does not merge. |
+| `epic.complete` | Requires a merged canonical plan. `completion(context)` supplies typed integration, policy, findings, documentation, activation and cleanup evidence; `integration(receipt)` independently refreshes host facts before completion is persisted. |
+
+Callbacks are synchronous under the state lock; promises are rejected. Context
+contains `root`, `repository`, `epic`, `head`, and the applicable `pr` or
+`completionId`. The API returned by `reviewAuthority` implements the adapter
+contract in `scripts/check-host-reviews.mjs`; use authenticated host reads,
+never caller-supplied green snapshots. Completion receipt fields are defined
+by `scripts/lib/epic-completion.mjs` and distinguish submitted head from squash
+or rebase integration SHA. Harness observations identify actual activation and
+owned cleanup resources. An `authenticated` boolean or JSON receipt cannot
+authenticate anyone by itself: local files remain cooperative evidence.
+
+Duplicate delivery rechecks current actor, revocation and policy provenance.
+Review scheduling persists claims before external dispatch and requires
+acknowledgement afterward. A crash or uncertain transport result requires
+reconciliation; local disk and external delivery are not one transaction.
+Pushes and test runs never start reviewers. See [the transport contract](slack-control-plane.md).
+
+## Plan, implementation and release boundaries
+
+The staged validator distinguishes an initial documentation-only `plan-pr`
+from `implementation-pr` eligibility on an approved, started plan. Initial plan
+receipts bind plan ID/revision/reviewed SHA/role and cannot approve implementation.
+Source, policy or workflow changes cannot hide in nominal documentation paths
+in a plan-only PR. Ordinary plan edits do not create a second initial plan PR;
+material scope changes still require reconciled authorization and signoffs.
+The staged implementation action permits PR updates before final reviews; it
+does not authorize merge or override the active repository workflow instructions.
+
+EPIC-006 bootstrap retains its existing stricter pre-PR gates: complete tasks
+and QA, independent staff review, then AppSec on the same final revision, and
+conditional accessibility review before even a draft PR. Existing approvals,
+plan revision, immutable assessment and legacy policy history stay intact.
+Migration and adapter activation are release work after approved integration.
+Candidate validators and candidate role maps cannot approve their own rollout.
+See [the enforcement boundary](gates.md#enforcement-boundary).
+
+After integration, explicitly propose and accept migration with
+`scripts/init-workspace.mjs propose-change` / `apply-change` with `--candidate`, inspecting the
+candidate diff and digest first. Legacy omitted/false/true direct-merge values
+retain their historical interpretation; old acceptance hashes are not rewritten.
+Root acceptance remains authoritative and linked worktrees cannot override tier
+policy. An unchanged legacy policy can correctly return
+`autopilot-policy-required` at dispatch. Fixture migration proves compatibility,
+not adoption by the current session. Confirm actual root acceptance, loaded
+integrated revision, effective policy digest and host protections before activation.
+
+Merge alone does not complete an epic. Verify remote-main integration, required
+checks and smoke results on that integration SHA, resolved introduced findings,
+current docs, real agent-path activation and safe owned cleanup. Refresh host
+facts at admission; pending/unavailable checks, corrective PRs or missing state
+keep the epic active. Never manufacture a historical completion receipt: legacy
+merged epics need an explicit historical baseline. Next-epic provisioning stays
+blocked until completion/admission succeeds, including after restart.
+
 ## Native workspace lock dependency
 
 Workspace-policy mutations use the native `fs-ext` advisory-lock dependency so

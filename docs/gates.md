@@ -34,6 +34,14 @@ node scripts/check-gate.mjs epics/EPIC-001/epic-plan.md pr
 
 Without `--write` the check is read-only. Failure exits nonzero with `GATE BLOCKED`. The write form validates before changing status. `pr` is an action, not a status, and requires ready-for-pr. `check-gate.sh` is an equivalent shell entry point.
 
+The exported staged gate also supports `plan-pr` (approved or started plan,
+documentation-only changed paths) and `implementation-pr` (approved, started
+plan). These actions do not transition status or grant merge authority. The
+trusted PR validator supplies committed diffs for plan-only content checks;
+calling a helper with an empty path list cannot establish that a PR is safe.
+EPIC-006 bootstrap still follows the stricter `pr` sequence below before opening
+any PR. New staged behavior is adopted only after integrated rollout.
+
 ## Legal progression
 
 | Document | Progression | Blocking prerequisites |
@@ -53,6 +61,15 @@ Without `--write` the check is read-only. Failure exits nonzero with `GATE BLOCK
 
 Before PR creation the validator checks the reviewed commit is an ancestor of HEAD, no tracked implementation differences exist since that commit, and no untracked files remain. `epics/` and `project/` are reserved for governance metadata and excluded from that implementation comparison, allowing approval records to be committed after code review. Never put application code there. Changes outside these directories, including rebases that change the reviewed ancestry, require a new final code review after all outstanding comments are resolved, followed by the required final reviews. Commit all evidence before the PR so reviewers and CI see it.
 
+That historical local metadata allowance does not satisfy the live merge gate.
+Final host approvals must match the exact current PR head, including metadata
+commits, and the accepted actor-to-role mapping. Dismissals, unresolved requests
+for changes, stale heads, wrong roles and pending checks block merge. Collect
+all paginated reviews/checks through authenticated host reads, recheck the head
+after collection and immediately before merge with the expected SHA. Initial
+plan receipts remain bound to their reviewed plan revision and cannot substitute
+for code review. JSON snapshots are diagnostic inputs, not host authority.
+
 ## Accessibility review for UI changes
 
 The epic and plan must explicitly set `accessibility.ui` and explain the decision. When true, an independent accessibility reviewer records `accessibility` approval for the epic’s WCAG 2.2 AA requirements and, after Principal/AppSec plan signoff, for the plan before implementation. Following code review and mandatory AppSec review, the reviewer validates the same implementation commit for keyboard operation, focus, semantic structure/ARIA, labels and errors, contrast, screen-reader behavior, and zoom/reflow. The separate final `accessibility_review` approval must carry the plan revision and reviewed commit; it is required for PR eligibility only when the plan has UI changes.
@@ -65,4 +82,23 @@ Tier 3 preflight is available only to a registered isolated worktree, distinct f
 
 These are cooperative file gates, wired into required skill wrappers and a PR CI check. They cannot authenticate handwritten identities, prove that a test log is true, detect an undisclosed boundary, or prevent an arbitrary shell command from opening a PR. YAML editing can bypass local state history; dates only establish day-level order. The repository is PR-only, but no local validator can push or merge. Do not claim this is a tamper-proof access control system.
 
-For enforced merge policy, configure the host to require `workflow / gates`, independent code-owner/security reviews and no direct pushes to the protected base branch. Protect scripts, workflow definitions, AGENTS.md and approval records from unreviewed edits. The included workflow validates changed epic plans for PR eligibility; template-only changes run tests. Host configuration remains a repository-admin step after pushing. Local pre-PR blocking comes from agent instructions and governed-ship; server-side CI runs after a PR exists.
+For enforced merge policy, configure the host to require the actual check name
+`gates` and commit status `host-review-gate`, independent code-owner/security
+reviews and no direct pushes to the protected base branch. The trusted
+`review-gates.yml` publisher reevaluates approval, dismissal, request-changes,
+synchronize and check-completion events on the same PR head without dispatching
+reviewers or creating commits. It reads gate code and accepted policy from the
+trusted base branch, never executes candidate code with a write token, and
+publishes status for the exact observed head after race checks.
+
+Install protections only after integration and observation of these actual
+status contexts; verify the configuration through the authenticated admin
+connection. During EPIC-006 bootstrap, live discovery found no installed main
+protection, so independent authenticated pre-merge inspection remains required;
+do not claim protection or activation until installed and verified. GitHub
+Actions publishers share app ID `15368`: binding a status to that app does not
+isolate one workflow from other workflow writers, who may impersonate the
+status. Independent required host reviews remain mandatory. Protect scripts,
+workflow definitions, role mappings, AGENTS.md and approval records from
+unreviewed edits. Local instructions block pre-PR work; hosted checks apply
+after a PR exists. A candidate cannot weaken its own merge bar.

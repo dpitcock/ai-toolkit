@@ -39,15 +39,28 @@ Tier 3 runs only in a registered isolated worktree on its `epic/EPIC-NNN` branch
 
 ## Event-boundary dispatch
 
-At every agent dispatch boundary, begin a fresh task session by invoking the
-bounded `scripts/workflow-event.mjs` entrypoint with the event type and the
-registered epic worktree root. The adapter supplies the authenticated harness
-actor; event input may reference stored authorization only. It cannot supply
+At every agent dispatch boundary, begin a fresh task session through the
+authenticated embedding harness. It imports `runWorkflowEvent` from
+`scripts/workflow-event.mjs` and calls `runWorkflowEvent(args, {actor, observers})`
+with `args = [EVENT, '--root', PATH]` and bounded event JSON on stdin. The
+standalone CLI deliberately fails closed: it has no authenticated actor.
+The harness supplies observed session identity out-of-band, never from event
+JSON or environment claims. Event input may reference stored authorization only. It cannot supply
 an actor, owner decision, reviewer identity, repository, branch, scope, or
 policy authority. The entrypoint resolves accepted policy and canonical
 repository identity itself, then validates the exact branch, scope, policy
 provenance, completion criterion, and durable delivery record before returning
 an action.
+
+Observer callbacks are synchronous under the state lock. The harness supplies
+live PR/head and authenticated review/check observations for host review/merge,
+and typed integration, activation and cleanup observations for completion.
+See `docs/workflow.md` for callback contracts. JSON records and an
+`authenticated` flag are cooperative evidence, not proof of identity. Stop on
+`human-needed`, a nonzero exit, or an exception; do not treat returned JSON as
+success without inspecting the decision. Legacy accepted policy can correctly
+deny with `autopilot-policy-required`; migration is an explicit transaction
+after integration, not an excuse to rewrite immutable bootstrap evidence.
 
 Pushes and tests can invalidate or verify work but never dispatch a review.
 Dispatch review work only after the explicit `review.ready` event for the
