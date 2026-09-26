@@ -24,6 +24,7 @@ test('report schema rejects authority, commands, injection, alternate references
  assert.equal(typeof module.validateActivationReport,'function');
  const mutations=[r=>r.command='sh',r=>r.version=2,r=>r.epic='EPIC-007',r=>r.observations[0].kind='execute',
   r=>r.observations[0].status='approved',r=>r.observations[0].at='yesterday',r=>r.observations[0].head=null,
+  r=>r.activationBase=[r.activationBase],r=>r.loadedRevision=[r.loadedRevision],r=>r.policyDigest=[r.policyDigest],r=>r.observations[0].head=[r.observations[0].head],
   r=>r.observations[1].references=[{type:'runtime',id:'false-observation'}],r=>r.observations[0].references[0].path='/tmp/data',
   r=>r.observations[0].references[0].id='[click](https://evil.test)',r=>r.observations[0].references[0].id='<!-- EPIC-006 -->',
   r=>r.observations[0].references[0].id='$(touch owned)',r=>r.observations[0].references[0].id='../elsewhere',

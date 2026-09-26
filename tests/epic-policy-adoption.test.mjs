@@ -8,6 +8,12 @@ import {fileURLToPath} from 'node:url';
 import * as adoption from '../scripts/lib/epic-policy-adoption.mjs';
 import {readWorkflowState,withWorkflowState} from '../scripts/lib/workflow-state.mjs';
 import {check} from '../scripts/check-gate.mjs';
+import {replaceActivationBlock} from '../scripts/lib/activation-report.mjs';
+import {handleWorkflowEvent} from '../scripts/workflow-event.mjs';
+const releaseURL=new URL('../scripts/lib/release-verification-proof.mjs',import.meta.url);
+const release=fs.existsSync(releaseURL)?await import(releaseURL):{};
+const runtimeURL=new URL('../scripts/lib/release-verification-runtime.mjs',import.meta.url);
+const releaseRuntime=fs.existsSync(runtimeURL)?await import(runtimeURL):{};
 
 const source=fileURLToPath(new URL('..',import.meta.url));
 const historicalImplementation='b2b742b066615a860bc82c74c430778a56b676d8';
@@ -28,6 +34,7 @@ function fixture(t,{originalSquash=false}={}) {
  const f={root};
  // H0 is historical evidence; execute today's initializer and shipped ignore rule.
  fs.copyFileSync(path.join(source,'.gitignore'),path.join(root,'.gitignore'));
+ fs.copyFileSync(path.join(source,'docs/verification.md'),path.join(root,'docs/verification.md'));
  edit(f,'epics/EPIC-006/epic-plan.md',text=>text.replace('status: in-progress','status: ready-for-pr'));
  const originalBase=git(root,'rev-parse','HEAD');
  f.h0=commit(f,'fixture original submission');f.m=f.h0;
@@ -196,6 +203,153 @@ test('actual runtime lifecycle reaches an independently proven squash I, retaini
  const result=adoption.controlPolicyAdoption({...f.options(),operation:'integrate',integration:{pr:12,sha:i},...controller(f)});
  assert.equal(result.phase,'integrated');assert.equal(result.proof.original.mergeCommit,f.m);assert.equal(result.proof.finalization.to,f.f);assert.equal(result.proof.adoption.integrationSha,i);
  assert.equal(readWorkflowState(f.root).epics['EPIC-006'].completed,undefined);
+});
+
+test('historical adoption proof remains data-only after I while live adoption still rejects advanced main',t=>{
+ assert.equal(typeof adoption.proveHistoricalPolicyAdoption,'function','historical chain proof must be separate from live adoption');
+ const f=fixture(t);hosted(f);
+ const i=git(f.root,'commit-tree',`${f.h1}^{tree}`,'-p',f.f,'-m','adoption squash');
+ f.pulls[12]={...f.pulls[12],state:'closed',merged:true,merge_commit_sha:i};f.main=i;
+ const proof=adoption.provePolicyAdoption({...f.options(),integration:{pr:12,sha:i}});
+ f.main='f'.repeat(40);
+ assert.throws(()=>adoption.provePolicyAdoption({...f.options(),integration:{pr:12,sha:i}}),/main/);
+ assert.deepEqual(adoption.proveHistoricalPolicyAdoption({root:f.root,proof,api:f.api}),proof);
+ assert.equal(typeof adoption.observeHistoricalPolicyAdoption,'function');
+ assert.deepEqual(adoption.observeHistoricalPolicyAdoption({root:f.root,integrationSha:i,api:f.api}),proof);
+ const forged=structuredClone(proof);forged.adoption.head=f.h0;
+ assert.throws(()=>adoption.proveHistoricalPolicyAdoption({root:f.root,proof:forged,api:f.api}));
+});
+
+function verificationFixture(t) {
+ const f=fixture(t);hosted(f);
+ f.i=git(f.root,'commit-tree',`${f.h1}^{tree}`,'-p',f.f,'-m','adoption squash');
+ f.pulls[12]={...f.pulls[12],state:'closed',merged:true,merge_commit_sha:f.i};f.main=f.i;
+ f.adoption=adoption.provePolicyAdoption({...f.options(),integration:{pr:12,sha:f.i}});
+ git(f.root,'reset','--hard',f.i);
+ f.report={version:1,epic:'EPIC-006',repository,activationBase:f.i,loadedRevision:f.i,policyDigest:digest,observations:[{kind:'activation',status:'observed',at:'2026-09-26T12:00:00.000Z',head:f.i,references:[{type:'session',id:'controlled-fixture'}]},{kind:'host-review',status:'pending',at:null,head:null,references:[]}]};
+ f.document=fs.readFileSync(path.join(f.root,'docs/verification.md'),'utf8');
+ f.write=()=>{fs.writeFileSync(path.join(f.root,'project/EPIC-006-activation-evidence.json'),JSON.stringify(f.report)+'\n');fs.writeFileSync(path.join(f.root,'docs/verification.md'),replaceActivationBlock(f.document,f.report));};
+ f.write();f.h2=commit(f,'activation evidence');
+ f.releaseOptions=()=>({root:f.root,baseSha:f.i,headSha:f.h2,headRef:'epic/EPIC-006',api:f.api});
+ return f;
+}
+test('release provenance proves PR0/M/F/PR1/I and two-path PR2/J separately without runtime authority',t=>{
+ assert.equal(typeof release.proveReleaseVerification,'function','finite release proof must exist');
+ const f=verificationFixture(t),proof=release.proveReleaseVerification(f.releaseOptions());
+ assert.equal(proof.adoption.original.pr,10);assert.equal(proof.adoption.adoption.pr,12);assert.equal(proof.release.pr,null);
+ f.j=git(f.root,'commit-tree',`${f.h2}^{tree}`,'-p',f.i,'-m','release squash');
+ f.pulls[13]={number:13,state:'closed',merged:true,merge_commit_sha:f.j,head:{sha:f.h2,ref:'epic/EPIC-006'},base:{sha:f.i,ref:'main',repo:{full_name:repository}}};f.main=f.j;
+ const integrated=release.proveReleaseVerification({...f.releaseOptions(),integration:{pr:13,sha:f.j}});
+ assert.equal(integrated.release.integrationSha,f.j);assert.equal(integrated.adoption.adoption.integrationSha,f.i);
+ assert.throws(()=>adoption.provePolicyAdoption({...f.options(),integration:{pr:12,sha:f.i}}),/main/);
+ f.main='f'.repeat(40);assert.throws(()=>release.proveReleaseVerification({...f.releaseOptions(),integration:{pr:13,sha:f.j}}),/main/);
+});
+test('trusted release stage rejects malformed candidate paths and cannot fall back through candidate status or branch',t=>{
+ assert.equal(typeof release.releaseVerificationStage,'function');const f=verificationFixture(t);
+ assert.equal(release.releaseVerificationStage({root:f.root,baseSha:f.i}),'pending');
+ edit(f,'epics/EPIC-006/epic-plan.md',text=>text.replace('status: merged','status: in-progress'));f.h2=commit(f,'forbidden plan reset');
+ assert.throws(()=>release.proveReleaseVerification(f.releaseOptions()),/two deliverable|unauthorized/);
+ assert.throws(()=>release.proveReleaseVerification({...f.releaseOptions(),headRef:'other'}),/branch/);
+});
+test('release trusted host gate uses current PR2 reviews/checks and cannot trust report approvals',t=>{
+ assert.equal(typeof release.evaluateReleaseHostGate,'function');
+ const f=verificationFixture(t);
+ f.pulls[13]={number:13,state:'open',merged:false,head:{sha:f.h2,ref:'epic/EPIC-006'},base:{sha:f.i,ref:'main',repo:{full_name:repository}}};
+ for(const review of f.reviews) review.commit_id=f.h2;f.checks[0].head_sha=f.h2;
+ const api=f.api;f.api=endpoint=>endpoint.includes('/actions/runs?')?[{workflow_runs:[{check_suite_id:1,path:'.github/workflows/workflow.yml',repository:{full_name:repository},head_sha:f.h2,event:'pull_request',status:'completed',conclusion:'success'}]}]:api(endpoint);
+ assert.equal(release.evaluateReleaseHostGate({...f.releaseOptions(),pr:13}).head,f.h2);
+ git(f.root,'checkout','--quiet','--detach',f.i);
+ assert.equal(release.trustedReleaseVerificationGate({root:f.root,repository,pull:f.pulls[13],api:f.api}).head,f.h2);
+ assert.equal(git(f.root,'rev-parse','HEAD'),f.i,'trusted publisher never checks out candidate code');
+ assert.throws(()=>release.trustedReleaseVerificationGate({root:f.root,repository,pull:{...f.pulls[13],head:{...f.pulls[13].head,ref:'other'}},api:f.api}),/branch/);
+ f.reviews[1].commit_id=f.h1;
+ assert.throws(()=>release.evaluateReleaseHostGate({...f.releaseOptions(),pr:13}),/approval/);
+});
+test('real CI release route is selected from trusted I and never needs local runtime or its own green result',t=>{
+ const f=verificationFixture(t),responses={};
+ release.proveReleaseVerification({...f.releaseOptions(),api:(endpoint,options)=>{const value=f.api(endpoint,options);responses[endpoint]=value;return value;}});
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'release-host-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ const quote=value=>`'${value.replaceAll("'","'\\''")}'`;
+ const cases=Object.entries(responses).map(([endpoint,value],index)=>{const file=path.join(dir,`${index}.json`);fs.writeFileSync(file,JSON.stringify(value));return `${quote(endpoint)}) /bin/cat ${quote(file)};;`;});
+ fs.writeFileSync(path.join(dir,'gh'),`#!/bin/sh\nfor endpoint do :; done\ncase "$endpoint" in\n${cases.join('\n')}\n*) exit 7;;\nesac\n`,{mode:0o755});
+ const env={...process.env,PATH:`${dir}:${process.env.PATH}`,BASE_SHA:f.i,HEAD_SHA:f.h2,HEAD_REF:'epic/EPIC-006'};
+ const run=extra=>spawnSync(process.execPath,[path.join(source,'scripts/check-pr.mjs')],{cwd:f.root,encoding:'utf8',env:{...env,...extra}});
+ const result=run();assert.equal(result.status,0,result.stdout+result.stderr);assert.match(result.stdout,/release-verification.*committed provenance/);
+ const branch=run({HEAD_REF:'other'});assert.equal(branch.status,1);assert.match(branch.stderr,/branch/);
+ edit(f,'epics/EPIC-006/epic-plan.md',text=>text.replace('status: merged','status: in-progress'));f.h2=commit(f,'forbidden route fallback');
+ const tampered=run({HEAD_SHA:f.h2});assert.equal(tampered.status,1);assert.match(tampered.stderr,/two deliverable|unauthorized/);
+});
+
+function liveVerificationFixture(t) {
+ const f=releaseFixture(t);operation(f,'prepare');operation(f,'review',controller(f,'staff','code_reviewer'));operation(f,'review',controller(f,'security','appsec'));hosted(f);
+ const context=controller(f);context.observers.pullRequest=()=>({number:12});operation(f,'publish',context);
+ f.i=git(f.root,'commit-tree',`${f.h1}^{tree}`,'-p',f.f,'-m','adoption integration');
+ f.pulls[12]={...f.pulls[12],state:'closed',merged:true,merge_commit_sha:f.i};f.main=f.i;
+ const adopted=adoption.controlPolicyAdoption({...f.options(),operation:'integrate',integration:{pr:12,sha:f.i},...controller(f)});
+ git(f.root,'reset','--hard',f.i);
+ f.actor=controller(f).actor;
+ f.observers={api:f.api,activation:()=>({source:'session-harness',sessionId:f.actor.harness.sessionId,loadedRevision:f.i,policyDigest:digest,observedAt:new Date().toISOString()})};
+ const provenance={digest,definition:adopted.proof.policy.definition,rootAcceptance:`workspace:3:${digest}`,worktreeAcceptance:`workspace:3:${digest}`};
+ withWorkflowState(f.root,state=>{state.authorizations.release={repository,branch:'epic/EPIC-006',scope:['epics/EPIC-006'],allowedActions:['release.verify','review.ready','merge.eligible','epic.complete'],completionCriteria:['verified J'],authorizedBy:'fixture-owner',status:'active',policy:provenance};});
+ f.event=(id,type='release.verify',operation='prepare')=>({id,type,epic:'EPIC-006',authorizationId:'release',completionCriterion:'verified J',...(type==='release.verify'?{operation}:{})});
+ f.run=event=>handleWorkflowEvent({root:f.root,event,actor:f.actor,observers:f.observers});
+ f.report={version:1,epic:'EPIC-006',repository,activationBase:f.i,loadedRevision:f.i,policyDigest:digest,observations:[{kind:'activation',status:'observed',at:'2026-09-26T12:00:00.000Z',head:f.i,references:[{type:'session',id:'controlled-fixture'}]}]};
+ f.document=fs.readFileSync(path.join(f.root,'docs/verification.md'),'utf8');
+ f.write=()=>{fs.writeFileSync(path.join(f.root,'project/EPIC-006-activation-evidence.json'),JSON.stringify(f.report)+'\n');fs.writeFileSync(path.join(f.root,'docs/verification.md'),replaceActivationBlock(f.document,f.report));};
+ return f;
+}
+test('active release preparation and commit/push effects use current permits, durable dispatch and actual reconciliation',t=>{
+ assert.equal(typeof releaseRuntime.controlReleaseVerification,'function','trusted finite runtime controller is required');
+ const f=liveVerificationFixture(t),prepared=f.run(f.event('prepare'));
+ assert.equal(prepared.decision,'continue');assert.equal(prepared.reason,'authorized-routine');assert.equal(prepared.release.phase,'prepared');
+ assert.throws(()=>f.run({...f.event('premature-completion','epic.complete'),completionId:'not-yet'}),/verified J/);
+ f.write();const event=f.event('commit-one','release.verify','commit'),decision=f.run(event);
+ assert.equal(decision.release.operation,'commit');
+ const control=operation=>releaseRuntime.controlReleaseVerification({root:f.root,operation,deliveryId:event.id,actor:f.actor,observers:f.observers});
+ assert.equal(control('dispatch').effect.status,'dispatched');
+ assert.throws(()=>control('dispatch'),/dispatched|replay/);
+ const head=commit(f,'actual evidence commit');
+ f.observers.effect=()=>({operationId:'git-commit-one',head,result:'succeeded',observedAt:new Date().toISOString()});
+ assert.equal(control('ack').effect.status,'acknowledged');
+ assert.equal(f.run(event).release.actionable,false);
+ const push=f.event('push-one','release.verify','push');f.run(push);
+ const pushControl=operation=>releaseRuntime.controlReleaseVerification({root:f.root,operation,deliveryId:push.id,actor:f.actor,observers:f.observers});
+ pushControl('dispatch');pushControl('uncertain');assert.throws(()=>pushControl('dispatch'),/uncertain|replay/);
+ f.observers.effect=()=>({operationId:'git-push-one',head,remoteHead:head,result:'succeeded',observedAt:new Date().toISOString()});
+ assert.equal(pushControl('reconcile').effect.status,'reconciled');
+ assert.equal(f.run(push).release.actionable,false);
+ assert.equal(Object.keys(readWorkflowState(f.root).reviews).length,0,'commits and pushes never dispatch reviewers');
+ withWorkflowState(f.root,state=>{state.authorizations.release.status='revoked';});
+ assert.equal(f.run(f.event('stale')).reason,'authorization-stale');
+});
+test('release effects reject missing identity, arbitrary operations, stale decisions, policy drift and false acknowledgements',t=>{
+ const f=liveVerificationFixture(t);
+ assert.throws(()=>handleWorkflowEvent({root:f.root,event:f.event('actor-missing'),observers:f.observers}),/harness/);
+ assert.throws(()=>f.run({...f.event('command'),command:'echo forged'}),/malformed/);
+ assert.throws(()=>f.run(f.event('arbitrary','release.verify','execute')),/operation/);
+ const loaded=f.observers.activation;f.observers.activation=()=>({...loaded(),loadedRevision:f.h0});
+ assert.throws(()=>f.run(f.event('wrong-loaded')),/loaded/);f.observers.activation=loaded;
+ f.run(f.event('prepare'));f.write();
+ const first=f.event('first','release.verify','commit');f.run(first);
+ const control=operation=>releaseRuntime.controlReleaseVerification({root:f.root,operation,deliveryId:first.id,actor:f.actor,observers:f.observers});
+ f.report.observations.push({kind:'smoke',status:'pending',at:null,head:null,references:[]});f.write();
+ assert.throws(()=>control('dispatch'),/changed/);
+ f.report.observations.pop();f.write();
+ withWorkflowState(f.root,state=>{state.authorizations.release.expiresAt='2000-01-01T00:00:00.000Z';});
+ assert.throws(()=>control('dispatch'),/authorization-stale/);
+ withWorkflowState(f.root,state=>{delete state.authorizations.release.expiresAt;});
+ control('dispatch');const head=commit(f,'authorized evidence');
+ f.observers.effect=()=>({operationId:'false',head:f.i,result:'succeeded',observedAt:new Date().toISOString()});
+ assert.throws(()=>control('ack'),/incomplete/);
+ assert.equal(readWorkflowState(f.root).epics['EPIC-006'].releaseVerification.actions.first.status,'dispatched');
+ f.observers.effect=()=>{fs.appendFileSync(path.join(f.root,'docs/verification.md'),'raced document');return {operationId:'actual-commit',head,result:'succeeded',observedAt:new Date().toISOString()};};
+ assert.throws(()=>control('ack'),/clean|changed/,'observation cannot race the final checked snapshot');f.write();
+ f.observers.effect=()=>({operationId:'actual-commit',head,result:'succeeded',observedAt:new Date().toISOString()});control('ack');
+ const rootPolicy=path.join(path.dirname(f.root),'config/workspace-config.yaml'),original=fs.readFileSync(rootPolicy,'utf8');
+ fs.writeFileSync(rootPolicy,original+'\n');
+ assert.throws(()=>f.run(f.event('root-drift','release.verify','push')),/mirror/);
+ fs.writeFileSync(rootPolicy,original);
+ assert.throws(()=>withWorkflowState(f.root,state=>{state.epics['EPIC-006'].releaseVerification.actions.first.snapshot=['f'.repeat(64)];}),/malformed/);
 });
 
 test('fresh-checkout real CI entrypoint succeeds without runtime or PR1 reviews while standalone publication gate denies',t=>{

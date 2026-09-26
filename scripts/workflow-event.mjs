@@ -3,9 +3,7 @@ import {execFileSync} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {parseWorkspaceConfig,resolveWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from './lib/workspace-config.mjs';
-import {assertAcceptedWorkspaceConfig} from './lib/workspace-history.mjs';
-import {resolveTierDefaults} from './lib/tier-defaults.mjs';
+import {acceptedPolicy,trustedActor} from './lib/workflow-context.mjs';
 import {decideAction} from './lib/workflow-authorization.mjs';
 import {withWorkflowState} from './lib/workflow-state.mjs';
 import {check,readDocument,checkWorkflowReadiness} from './check-gate.mjs';
@@ -14,43 +12,17 @@ import {evaluateHostReviewGate} from './check-host-reviews.mjs';
 import {evaluateCompletion,admitEpic} from './lib/epic-completion.mjs';
 import {validateEpicAdmission} from './lib/workflow-admission.mjs';
 import {observeMergedEpic} from './lib/epic-finalization.mjs';
+import {applyReleaseVerification} from './lib/release-verification-runtime.mjs';
 
 const MAX_INPUT_BYTES=64*1024;
-const TYPES=new Set(['epic.start','task.dispatch','review.ready','merge.eligible','epic.complete']);
+const TYPES=new Set(['epic.start','task.dispatch','review.ready','merge.eligible','epic.complete','release.verify']);
 function fail(message) { throw new Error(`Workflow event ${message}`); }
 function text(value,label) { if(typeof value!=='string' || !value.trim()) fail(`${label} must be a non-empty string`);return value.trim(); }
 function object(value) { return value!==null && typeof value==='object' && !Array.isArray(value); }
 function git(root,args) { return execFileSync('git',['-C',root,...args],{encoding:'utf8'}).trim(); }
 
-function canonicalRoot(root) {
- const result=fs.realpathSync(root);
- if(fs.realpathSync(git(result,['rev-parse','--show-toplevel']))!==result) fail('root must be a registered worktree root');
- const worktrees=git(result,['worktree','list','--porcelain']).split('\n').filter(line=>line.startsWith('worktree ')).map(line=>fs.realpathSync(line.slice(9)));
- if(!worktrees.includes(result)) fail('root is not a registered worktree');
- return {root:result,coordinationRoot:worktrees[0]};
-}
-function acceptedPolicy(root) {
- const {root:worktree,coordinationRoot}=canonicalRoot(root);
- const {config}=resolveWorkspaceConfig({coordinationRoot,worktreeRoot:worktree});
- const rootAcceptance=assertAcceptedWorkspaceConfig(coordinationRoot,resolveWorkspaceConfig({coordinationRoot}).config);
- const worktreeAcceptance=assertAcceptedWorkspaceConfig(worktree,parseWorkspaceConfig(fs.readFileSync(path.join(worktree,'config/workspace-config.yaml'),'utf8')));
- // Legacy accepted policies inherit the immutable Tier 1 shared definition;
- // their old direct-merge knob remains only a compatibility override.
- const definition=workspaceTierDefinition(config) ?? resolveTierDefaults({tier:1,overrides:{direct_merge:config.task_tiers?.tier_1_direct_merge},templateRepository:true}).definition;
- const branch=git(worktree,['symbolic-ref','--quiet','--short','HEAD']);
- if(!/^epic\/EPIC-\d+$/.test(branch)) fail('workflow event requires an epic worktree branch');
- const origin=git(coordinationRoot,['remote','get-url','origin']);
- const match=origin.match(/^(?:https:\/\/github\.com\/|git@github\.com:)([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?$/);
- if(!match) fail('repository origin must identify a canonical GitHub repository');
- return {worktree,coordinationRoot,repository:match[1],policy:{...config,provenance:{digest:workspaceConfigDigest(config),definition,rootAcceptance:`workspace:${rootAcceptance.revision}:${rootAcceptance.digest}`,worktreeAcceptance:`workspace:${worktreeAcceptance.revision}:${worktreeAcceptance.digest}`}},branch};
-}
-function trustedActor(actor) {
- const harness=actor?.harness;
- if(!object(harness) || harness.authenticated!==true || typeof harness.sessionId!=='string' || !harness.sessionId.trim() || typeof harness.identity!=='string' || !harness.identity.trim()) fail('trusted harness actor is required');
- return actor;
-}
 function validateEvent(event,identity) {
- const allowed=['id','type','epic','authorizationId','completionCriterion','repository','branch','scope','completionId','task'];
+ const allowed=['id','type','epic','authorizationId','completionCriterion','repository','branch','scope','completionId','task','operation'];
  if(!object(event) || Object.keys(event).some(key=>!allowed.includes(key))) fail('is malformed or claims actor authority');
  const id=text(event.id,'delivery ID'),type=text(event.type,'type');if(!TYPES.has(type)) fail('type is unsupported');
  const epic=text(event.epic,'epic');if(!/^EPIC-\d+$/.test(epic)) fail('epic is malformed');
@@ -64,7 +36,9 @@ function validateEvent(event,identity) {
  if(type!=='epic.complete' && event.completionId!==undefined) fail('completion ID is only valid for epic completion');
  if(type==='task.dispatch' && !/^TASK-\d+$/.test(event.task??'')) fail('task identifier is required');
  if(type!=='task.dispatch' && event.task!==undefined) fail('task is only valid for task dispatch');
- return {id,type,epic,authorizationId,completionCriterion,scope,completionId:event.completionId,task:event.task};
+ if(type==='release.verify' && !['prepare','commit','push'].includes(event.operation)) fail('release operation must be prepare, commit or push');
+ if(type!=='release.verify' && event.operation!==undefined) fail('operation is only valid for release verification');
+ return {id,type,epic,authorizationId,completionCriterion,scope,completionId:event.completionId,task:event.task,operation:event.operation};
 }
 
 function canonicalPlan(root,epic) {
@@ -120,6 +94,7 @@ function lifecycle(state,input,resolved,identity,observers) {
  }
  if(input.type==='epic.complete') {
   if(plan.status!=='merged') fail('completion requires canonical merged plan');
+  if(identity.repository==='dpitcock/ai-toolkit' && input.epic==='EPIC-006' && state.epics[input.epic]?.releaseVerification?.phase!=='integrated') fail('EPIC-006 completion requires verified J release integration');
   const evidence=observed(observers,'completion',{...context,completionId:input.completionId});
   if(evidence?.repository!==identity.repository || evidence?.epic!==input.epic || evidence?.pullRequest!==pullRequest(plan,identity.repository) || evidence?.policy?.digest!==resolved.policy.provenance.digest) fail('completion does not bind canonical epic, PR, and accepted policy');
   const {receipt}=evaluateCompletion(evidence);
@@ -154,7 +129,10 @@ export function handleWorkflowEvent({root,event,actor,observers}={}) {
    if(current?.active===true) fail('epic is already active');
    validateEpicAdmission({root:resolved.worktree,epic:input.epic,state,observeIntegration:observers?.integration});
   }
-  Object.assign(output,lifecycle(state,input,resolved,identity,observers));
+  if(input.type==='release.verify') {
+   if(decision.decision!=='continue' || decision.reason!=='authorized-routine') fail('release verification requires current active routine authorization');
+   output.release=applyReleaseVerification(state,input,resolved,actor,observers);
+  } else Object.assign(output,lifecycle(state,input,resolved,identity,observers));
   state.dispatches[input.id]={event:input,output};
   if(input.type==='epic.start') state.epics[input.epic]={...(state.epics[input.epic]??{}),active:true,provisioning:false,repository:identity.repository,branch:identity.branch};
   if(input.type==='epic.complete' && decision.decision!=='human-needed') state.epics[input.epic]={...state.epics[input.epic],active:false,completed:true};

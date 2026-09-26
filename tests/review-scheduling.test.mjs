@@ -104,3 +104,15 @@ test('missing or corrupt state blocks review progression',()=>{
   assert.throws(()=>ready({version:1,reviews:[]} ),/reviews/i);
   assert.throws(()=>ready({version:1,reviews:{bad:{repository:'agent-canvas'}}}),/Review scheduling/);
 });
+test('finite local release claims persist head/role identity before a PR exists and reconcile without redispatch',()=>{
+ const identity={repository:'dpitcock/ai-toolkit',epic:'EPIC-006',release:'activation-evidence',head:'a'.repeat(40)};
+ const ready=applyReviewEvent(state(),{...identity,type:'ready',roles:['code_reviewer']});
+ const claim=onlyClaim(ready.state);assert.equal(Object.values(ready.state.reviews)[0].pr,undefined);
+ const event={...identity,type:'claim',claimId:claim.id,reviewerIdentity:'independent-staff',operationId:'session:staff'};
+ const claimed=applyReviewEvent(ready.state,event);assert.equal(claimed.dispatches.length,1);assert.equal(claimed.dispatches[0].pr,undefined);
+ const uncertain=applyReviewEvent(claimed.state,{...event,uncertain:true});
+ const reconciled=applyReviewEvent(uncertain.state,{...identity,type:'reconcile',claimId:claim.id,observed:{operationId:'session:staff',reviewerIdentity:'independent-staff',role:'code_reviewer',head:identity.head}});
+ assert.equal(onlyClaim(reconciled.state).status,'reconciled');assert.deepEqual(reconciled.dispatches,[]);
+ assert.throws(()=>applyReviewEvent(reconciled.state,event),/not queued/);
+ for(const extra of [{pr:1},{epic:'EPIC-007'},{release:'arbitrary'}]) assert.throws(()=>applyReviewEvent(state(),{...identity,...extra,type:'ready',roles:['code_reviewer']}));
+});

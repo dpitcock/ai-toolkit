@@ -18,12 +18,20 @@ function fixture(t) {
  function write() {fs.writeFileSync(path.join(root,'project/EPIC-006-activation-evidence.json'),JSON.stringify(report)+'\n');fs.writeFileSync(path.join(root,'docs/verification.md'),replaceActivationBlock(document,report));}
  write();const head=commit();return {root,base,head,digest,report,write,commit,document};
 }
-test('each submitted and squash/rebase snapshot restricts evidence changes and preserves document bytes',t=>{
+test('each submitted and squash snapshot restricts evidence changes and preserves document bytes',t=>{
  assert.equal(typeof module.assertActivationHistory,'function','history proof is required');
  const f=fixture(t),result=module.assertActivationHistory(f);
  assert.deepEqual(result.paths,['docs/verification.md','project/EPIC-006-activation-evidence.json']);
  const integrated=git(f.root,'commit-tree',`${f.head}^{tree}`,'-p',f.base,'-m','squash');
  assert.deepEqual(module.assertActivationHistory({...f,head:integrated}).report,f.report);
+});
+test('rebased evidence commits are checked individually and unrelated merges are rejected',t=>{
+ const f=fixture(t);f.report.observations.push({kind:'smoke',status:'pending',at:null,head:null,references:[]});f.write();const second=f.commit();
+ const firstRebased=git(f.root,'commit-tree',`${f.head}^{tree}`,'-p',f.base,'-m','rebased first');
+ const secondRebased=git(f.root,'commit-tree',`${second}^{tree}`,'-p',firstRebased,'-m','rebased second');
+ assert.equal(module.assertActivationHistory({...f,head:secondRebased}).nonempty.length,2);
+ const unrelated=git(f.root,'commit-tree',`${second}^{tree}`,'-p',f.head,'-p',firstRebased,'-m','unrelated merge');
+ assert.throws(()=>module.assertActivationHistory({...f,head:unrelated,integratedHead:second}),/unrelated merge/);
 });
 for(const [label,change] of [
  ['source edit',f=>fs.appendFileSync(path.join(f.root,'source.mjs'),'hidden')],
@@ -36,8 +44,22 @@ for(const [label,change] of [
 ]) test(`evidence history rejects ${label}`,t=>{
  assert.equal(typeof module.assertActivationHistory,'function');const f=fixture(t);change(f);f.head=f.commit();assert.throws(()=>module.assertActivationHistory(f));
 });
-test('hidden source edit/revert and empty commits cannot be counted as meaningful evidence work',t=>{
+test('hidden source edit/revert is rejected even when the final source snapshot is unchanged',t=>{
  assert.equal(typeof module.assertActivationHistory,'function');const f=fixture(t);
  fs.writeFileSync(path.join(f.root,'source.mjs'),'changed');f.commit();fs.writeFileSync(path.join(f.root,'source.mjs'),'original\n');f.head=f.commit();
  assert.throws(()=>module.assertActivationHistory(f),/unauthorized/);
+});
+test('empty commits and integration merge commits are excluded from nonempty action receipts',t=>{
+ const f=fixture(t);git(f.root,'commit','--allow-empty','-qm','empty');f.head=git(f.root,'rev-parse','HEAD');
+ assert.equal(module.assertActivationHistory(f).nonempty.length,1);
+ const merged=git(f.root,'commit-tree',`${f.head}^{tree}`,'-p',f.base,'-p',f.head,'-m','integration');
+ assert.equal(module.assertActivationHistory({...f,head:merged,integratedHead:f.head}).nonempty.length,1);
+});
+test('local replacement refs cannot hide actual outside-marker bytes from immutable snapshots',t=>{
+ const f=fixture(t),good=git(f.root,'rev-parse',`${f.head}:docs/verification.md`);
+ fs.appendFileSync(path.join(f.root,'docs/verification.md'),'unauthorized outside bytes\n');f.head=f.commit();
+ const bad=git(f.root,'rev-parse',`${f.head}:docs/verification.md`);
+ assert.throws(()=>module.assertActivationHistory(f),/outside bytes/);
+ git(f.root,'replace',bad,good);
+ assert.throws(()=>module.assertActivationHistory(f),/outside bytes/,'replace refs must not conceal committed bytes');
 });

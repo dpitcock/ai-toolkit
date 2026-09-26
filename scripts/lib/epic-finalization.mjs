@@ -6,7 +6,7 @@ import YAML from 'yaml';
 import {evaluateHostReviewGate} from '../check-host-reviews.mjs';
 
 function fail(message) {throw new Error(`Epic finalization ${message}`);}
-function git(root,args) {return execFileSync('git',['-C',root,...args],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();}
+function git(root,args) {return execFileSync('git',['--no-replace-objects','-C',root,...args],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();}
 function sha(value) {if(!/^[a-f0-9]{40}$/.test(value??'')) fail('requires full commit identities');return value;}
 export function canonicalRepository(root) {
  const origin=git(root,['remote','get-url','origin']);
@@ -63,14 +63,14 @@ export function hostSnapshot(api,repository,revision) {
  }};
 }
 export function localSnapshot(root,revision='HEAD',{working=false}={}) {
- const raw=execFileSync('git',['-C',root,'ls-tree','-rz',revision],{encoding:'utf8'}),tree=new Map();
+ const raw=execFileSync('git',['--no-replace-objects','-C',root,'ls-tree','-rz',revision],{encoding:'utf8'}),tree=new Map();
  for(const entry of raw.split('\0').filter(Boolean)) {
   const match=entry.match(/^(\d+) (\w+) ([a-f0-9]{40})\t([\s\S]+)$/);if(!match) fail('local tree is malformed');
   tree.set(match[4],{mode:match[1],type:match[2],sha:match[3]});
  }
  if(working) {
   if(git(root,['ls-files','--others','--exclude-standard'])) fail('untracked files are not finalization markers');
-  const changes=execFileSync('git',['-C',root,'diff','--name-only','-z',revision],{encoding:'utf8'}).split('\0').filter(Boolean);
+  const changes=execFileSync('git',['--no-replace-objects','-C',root,'diff','--name-only','-z',revision],{encoding:'utf8'}).split('\0').filter(Boolean);
   for(const name of changes) {
    const file=path.join(root,name);
    if(!fs.existsSync(file)) {tree.delete(name);continue;}
@@ -78,7 +78,7 @@ export function localSnapshot(root,revision='HEAD',{working=false}={}) {
    tree.set(name,{mode:stat.mode&0o111?'100755':'100644',type:'blob',sha:git(root,['hash-object','--',name])});
   }
  }
- return {tree,read:name=>working?fs.readFileSync(path.join(root,name),'utf8'):execFileSync('git',['-C',root,'show',`${revision}:${name}`],{encoding:'utf8'})};
+ return {tree,read:name=>working?fs.readFileSync(path.join(root,name),'utf8'):execFileSync('git',['--no-replace-objects','-C',root,'show',`${revision}:${name}`],{encoding:'utf8'})};
 }
 export function assertHostFinalization({api=githubJSON,repository,epic,pr,from,to,ancestry=true}={}) {
  sha(from);sha(to);

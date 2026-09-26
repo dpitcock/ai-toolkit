@@ -27,14 +27,15 @@ export function assertActivationHistory({root,base,head,digest,integratedHead,em
  if(!/^[a-f0-9]{40}$/.test(base??'') || !/^[a-f0-9]{40}$/.test(head??'')) fail('full revisions required');
  git(root,['merge-base','--is-ancestor',base,head]);
  const before=localSnapshot(root,base),result=assertActivationSnapshot({before,after:localSnapshot(root,head),base,digest,empty});
- const commits=git(root,['rev-list','--reverse',`${base}..${head}`]).split('\n').filter(Boolean),meaningful=[];
+ const commits=git(root,['rev-list','--reverse',`${base}..${head}`]).split('\n').filter(Boolean),nonempty=[];
  for(const revision of commits) {
   const parents=git(root,['show','-s','--format=%P',revision]).split(' ');
   if(parents.length!==1 && !(revision===head && integratedHead && equal(parents,[base,integratedHead]))) fail('unrelated merge is forbidden');
   const paths=git(root,['diff-tree','--root','-m','--no-commit-id','--no-renames','--name-only','-z','-r',revision]).split('\0').filter(Boolean);
   if(paths.some(name=>!ACTIVATION_PATHS.includes(name))) fail('intermediate commit changes an unauthorized path');
   const snapshot=assertActivationSnapshot({before,after:localSnapshot(root,revision),base,digest});
-  if(paths.length && snapshot.report) meaningful.push(revision);
+  // Nonempty is structural only. Independent QA decides actual meaningfulness.
+  if(paths.length && snapshot.report && parents.length===1) nonempty.push(revision);
  }
- return {...result,commits,meaningful};
+ return {...result,commits,nonempty};
 }

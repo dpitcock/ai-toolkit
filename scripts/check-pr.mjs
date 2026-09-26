@@ -4,6 +4,7 @@ import {check,readDocument} from './check-gate.mjs';
 import {validateTier2Assessment} from './check-tier2.mjs';
 import {observeMergedEpic,assertFinalizationSnapshots,localSnapshot} from './lib/epic-finalization.mjs';
 import {provePolicyAdoption,policyAdoptionStage,materializePolicyAdoptionHistory} from './lib/epic-policy-adoption.mjs';
+import {releaseVerificationStage,materializeReleaseHistory,proveReleaseVerification} from './lib/release-verification-proof.mjs';
 function canonicalCommit(value,label) {
  if(!/^[a-f0-9]{40}$/i.test(value??'')) throw new Error(`${label} must be a full commit SHA`);
  const canonical=execFileSync('git',['rev-parse',`${value}^{commit}`],{encoding:'utf8'}).trim();
@@ -24,6 +25,16 @@ const planOnlyFile=/^(?:docs\/[^/]+\.md|project\/[^/]+\.md|epics\/.+\.md|README\
 const assessmentPaths=changed.filter(file=>/^project\/task-assessments\/.+\.yaml$/.test(file));
 const policyChanged=changed.some(name=>['config/workspace-config.yaml','project/workspace-config-history.jsonl'].includes(name));
 const adoptionStage=policyChanged?policyAdoptionStage({root:process.cwd(),baseSha:base}):null;
+const releaseStage=releaseVerificationStage({root:process.cwd(),baseSha:base});
+if(releaseStage==='pending' || (releaseStage==='integrated' && branch==='epic/EPIC-006')) {
+ if(branch!=='epic/EPIC-006') throw new Error('Release verification requires the canonical epic branch');
+ materializeReleaseHistory({root:process.cwd(),baseSha:base,headSha});
+ proveReleaseVerification({root:process.cwd(),baseSha:base,headSha,headRef:branch});
+ console.log('EPIC-006: release-verification committed provenance verified (not publication or merge authority)');
+ // The finite proof has validated the complete diff and every intermediate commit.
+ // It cannot contain an assessment or another epic, even under a changed branch.
+ ids.clear();
+}
 if(adoptionStage==='pending') {
  if(branch!=='epic/EPIC-006') throw new Error('Policy adoption requires the canonical epic branch');
  ids.add('EPIC-006');

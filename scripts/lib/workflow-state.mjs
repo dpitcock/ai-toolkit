@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import fsExt from 'fs-ext';
 import {validateAdoptionRecord} from './policy-adoption-record.mjs';
+import {validateReleaseRecord} from './release-verification-record.mjs';
 
 const STATE_FILE='workflow-state.json';
 const VERSION=1;
@@ -33,6 +34,10 @@ function validate(state) {
  for(const [epic,record] of Object.entries(state.epics)) if(record?.policyAdoption!==undefined) {
   if(epic!=='EPIC-006') fail('policy adoption is restricted to EPIC-006');
   validateAdoptionRecord(record.policyAdoption);
+ }
+ for(const [epic,record] of Object.entries(state.epics)) if(record?.releaseVerification!==undefined) {
+  if(epic!=='EPIC-006') fail('release verification is restricted to EPIC-006');
+  validateReleaseRecord(record.releaseVerification);
  }
  return state;
 }

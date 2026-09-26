@@ -18,7 +18,15 @@ function pr(value) {
   if(!Number.isInteger(value) || value<1) fail('PR must be a positive integer');
   return value;
 }
-function key({repository,pr:pullRequest,role,head:commit}) { return JSON.stringify([repository,pullRequest,role,commit]); }
+function target(value) {
+ if(value.release!==undefined || value.epic!==undefined) {
+  if(value.pr!==undefined || value.repository!=='dpitcock/ai-toolkit' || value.epic!=='EPIC-006' || value.release!=='activation-evidence') fail('local release identity is outside the finite route');
+  return {epic:value.epic,release:value.release};
+ }
+ return {pr:pr(value.pr)};
+}
+function targetKey(value) {return value.release?`release:${value.epic}:${value.release}`:value.pr;}
+function key(value) { return JSON.stringify([value.repository,targetKey(value),value.role,value.head]); }
 function exactKeys(value,keys,label) {
   if(!object(value) || Object.keys(value).some(name=>!keys.includes(name))) fail(`${label} is malformed`);
 }
@@ -32,12 +40,12 @@ function validateClaim(value) {
   }
 }
 function validateRecord(value,recordKey) {
-  exactKeys(value,['repository','pr','role','head','ready','invalidated','claim'],'review record');
-  const repository=string(value.repository,'repository'),pullRequest=pr(value.pr),role=string(value.role,'role'),commit=head(value.head);
+  exactKeys(value,['repository','pr','epic','release','role','head','ready','invalidated','claim'],'review record');
+  const repository=string(value.repository,'repository'),identity=target(value),role=string(value.role,'role'),commit=head(value.head);
   if(typeof value.ready!=='boolean' || typeof value.invalidated!=='boolean') fail('review record is corrupt');
   if(value.invalidated && value.ready) fail('review record is corrupt');
   validateClaim(value.claim);
-  if(key({repository,pr:pullRequest,role,head:commit})!==recordKey) fail('review record key is corrupt');
+  if(key({repository,...identity,role,head:commit})!==recordKey) fail('review record key is corrupt');
 }
 function validateState(state) {
   if(!object(state) || state.version!==1 || !object(state.reviews)) fail('state reviews are missing or corrupt');
@@ -45,13 +53,13 @@ function validateState(state) {
 }
 function baseEvent(event,allowed) {
   if(!object(event) || typeof event.type!=='string') fail('event is malformed');
-  exactKeys(event,allowed,'event');
-  return {repository:string(event.repository,'repository'),pr:pr(event.pr),head:head(event.head)};
+  exactKeys(event,[...allowed,'epic','release'],'event');
+  return {repository:string(event.repository,'repository'),...target(event),head:head(event.head)};
 }
-function recordFor(state,{repository,pr:pullRequest,head:commit},claimId) {
+function recordFor(state,identity,claimId) {
   let found=null;
   for(const record of Object.values(state.reviews)) {
-    if(record.repository!==repository || record.pr!==pullRequest || record.head!==commit) continue;
+    if(record.repository!==identity.repository || targetKey(record)!==targetKey(identity) || record.head!==identity.head) continue;
     if(record.claim.id===claimId) {
       if(found) fail('claim ID is ambiguous');
       found=record;
@@ -85,7 +93,7 @@ export function applyReviewEvent(state,event) {
       const normalizedRole=role.trim(),recordKey=key({...identity,role:normalizedRole});
       if(Object.hasOwn(next.reviews,recordKey)) continue;
       next.reviews[recordKey]={
-        repository:identity.repository,pr:identity.pr,role:normalizedRole,head:identity.head,
+        ...identity,role:normalizedRole,
         ready:true,invalidated:false,
         claim:{id:crypto.randomUUID(),status:'queued',reviewerIdentity:null,operationId:null},
       };
@@ -96,7 +104,7 @@ export function applyReviewEvent(state,event) {
   if(event?.type==='push') {
     const identity=baseEvent(event,['type','repository','pr','head']);
     for(const record of Object.values(next.reviews)) {
-      if(record.repository===identity.repository && record.pr===identity.pr && record.head!==identity.head) {
+      if(record.repository===identity.repository && targetKey(record)===targetKey(identity) && record.head!==identity.head) {
         record.ready=false;
         record.invalidated=true;
       }
@@ -118,7 +126,7 @@ export function applyReviewEvent(state,event) {
     if(event.uncertain!==undefined && event.uncertain!==false) fail('claim uncertainty must be boolean');
     if(record.claim.status!=='queued') fail('claim is not queued');
     record.claim={id,status:'claimed',reviewerIdentity,operationId};
-    return result(next,[{claimId:id,repository:record.repository,pr:record.pr,role:record.role,head:record.head,reviewerIdentity,operationId}]);
+    return result(next,[{claimId:id,repository:record.repository,...target(record),role:record.role,head:record.head,reviewerIdentity,operationId}]);
   }
 
   if(event?.type==='ack') {

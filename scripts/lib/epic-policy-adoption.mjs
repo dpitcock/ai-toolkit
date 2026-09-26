@@ -102,6 +102,33 @@ function delta({root,from,to,candidate,integratedHead}) {
 
 /** CI provenance only: never consumes local authority, local reviews, or PR1 checks. */
 export function provePolicyAdoption({root,baseSha,headSha,headRef,api=githubJSON,integration}={}) {
+ return adoptionChain({root,baseSha,headSha,headRef,api,integration},true);
+}
+
+/** Historical chain only. Does not grant publication, integration, or current-main
+ * authority. Reconstructs the whole pinned proof from real host/Git facts; live
+ * callers still use provePolicyAdoption and cannot supply a historical switch.
+ */
+export function proveHistoricalPolicyAdoption({root,proof,api=githubJSON}={}) {
+ validateAdoptionRelation(proof);
+ if(!proof.adoption.integrationSha || !proof.adoption.pr) fail('historical proof requires integrated adoption');
+ const actual=adoptionChain({root,baseSha:proof.adoption.base,headSha:proof.adoption.head,headRef:proof.branch,api,
+  integration:{pr:proof.adoption.pr,sha:proof.adoption.integrationSha}},false);
+ if(!equal(actual,proof)) fail('historical relation differs from observed chain');
+ return actual;
+}
+
+/** Resolve I from immutable host PR association, never from report-selected lineage. */
+export function observeHistoricalPolicyAdoption({root,integrationSha,api=githubJSON}={}) {
+ const i=sha(integrationSha),prefix=`repos/${REPOSITORY}`;
+ const associated=hostPages(api(`${prefix}/commits/${i}/pulls?per_page=100`,{paginate:true}));
+ const matches=associated.map(item=>api(`${prefix}/pulls/${item.number}`)).filter(item=>item?.merged===true && item.merge_commit_sha===i);
+ if(matches.length!==1) fail('historical adoption PR identity is ambiguous');
+ const pull=merged(matches[0]);
+ return adoptionChain({root,baseSha:sha(pull.base.sha),headSha:pull.head.sha,headRef:BRANCH,api,integration:{pr:pull.number,sha:i}},false);
+}
+
+function adoptionChain({root,baseSha,headSha,headRef,api,integration},live) {
  if(canonicalRepository(root)!==REPOSITORY || headRef!==BRANCH) fail('repository or branch is outside the bounded route');
  const f=sha(baseSha),h1=sha(headSha),base=localSnapshot(root,f),plan=doc(base);
  if(plan.id!=='EPIC-006-PLAN' || plan.revision!==1 || plan.status!=='merged' || plan.accessibility?.ui!==false) fail('requires the original merged plan revision');
@@ -136,12 +163,14 @@ export function provePolicyAdoption({root,baseSha,headSha,headRef,api=githubJSON
   adoption={...adoption,pr:current.number,integrationSha:integration.sha};
  }
  const expectedMain=integration?.sha??f;
- const open=hostPages(api(`${prefix}/pulls?state=open&base=main&per_page=100`,{paginate:true}));
- if(open.some(item=>item.head?.ref===BRANCH && (integration || item.head.sha!==h1)) || open.filter(item=>item.head?.ref===BRANCH).length>1) fail('unexpected open or second adoption PR');
- if(api(`${prefix}/git/ref/heads/main`)?.object?.sha!==expectedMain) fail('current main advanced beyond the bounded base');
+ if(live) {
+  const open=hostPages(api(`${prefix}/pulls?state=open&base=main&per_page=100`,{paginate:true}));
+  if(open.some(item=>item.head?.ref===BRANCH && (integration || item.head.sha!==h1)) || open.filter(item=>item.head?.ref===BRANCH).length>1) fail('unexpected open or second adoption PR');
+  if(api(`${prefix}/git/ref/heads/main`)?.object?.sha!==expectedMain) fail('current main advanced beyond the bounded base');
+ }
  const again=merged(api(`${prefix}/pulls/${pr}`));if(again.head.sha!==h0 || again.merge_commit_sha!==m) fail('original host identity changed');
  const finalAgain=merged(api(`${prefix}/pulls/${finalPRs[0].number}`));
- if(finalAgain.head.sha!==finalPRs[0].head.sha || finalAgain.merge_commit_sha!==f || api(`${prefix}/git/ref/heads/main`)?.object?.sha!==expectedMain) fail('finalization/main changed during observation');
+ if(finalAgain.head.sha!==finalPRs[0].head.sha || finalAgain.merge_commit_sha!==f || (live && api(`${prefix}/git/ref/heads/main`)?.object?.sha!==expectedMain)) fail('finalization/main changed during observation');
  return validateAdoptionRelation({kind:'epic-policy-adoption',version:1,epic:EPIC,repository:REPOSITORY,branch:BRANCH,
   original:{pr,submittedHead:h0,mergeCommit:m},finalization:{pr:finalPRs[0].number,from:m,to:f,paths:finalization.changed},
   assessment:{path:ASSESSMENT,commit:bootstrap.initialEvidenceCommit,digest:hash(localSnapshot(root,h0).read(ASSESSMENT))},plan:{id:plan.id,revision:1},
