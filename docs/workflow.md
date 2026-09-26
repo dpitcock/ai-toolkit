@@ -2,12 +2,33 @@
 
 This repository turns a project goal into independently reviewable epics. The EM owns scope and assignment, the Principal owns technical coherence, QA defines evidence, and AppSec participates at three distinct points. Developers own implementation; independent reviewers decide whether it can ship. Read roles.md for the upstream skill used at each stage and gates.md for exact approval fields.
 
+## Tool-specific execution
+
+Codex and Claude Code should carry an approved workflow forward without requesting routine confirmation: refine in-scope work, run tests, coordinate independent reviews, record evidence, and make permitted state transitions. They pause for the user only when requirements are ambiguous, credentials or external authorization are needed, or a decision would materially change scope.
+
+Cline uses an explicit handoff at the same boundaries because its adapter does not provide native Superpowers session hooks or subagent dispatch. The handoff must identify the document and gate state, work/evidence completed, the specific missing clarification or authorization, and the next safe action. This is a tool-execution difference, not a gate bypass: all tools remain subject to the same approval and PR requirements.
+
 ## Optional external Slack control plane
 
 Projects that use an externally deployed Slack control plane can follow the
 [Slack control-plane guide](slack-control-plane.md). It supplies routing and safety
-contracts plus a non-secret workspace descriptor; it does not change local Codex,
+contracts plus the generated, non-secret `config/workspace-config.yaml`; it does not change local Codex,
 Cline, or Claude instructions.
+
+## Native workspace lock dependency
+
+Workspace-policy mutations use the native `fs-ext` advisory-lock dependency so
+concurrent stale-lock recovery cannot delete a live replacement lock. A
+repository-owned install first runs `npm ci --ignore-scripts`, verifies the
+pinned `fs-ext` build hook, then rebuilds only that reviewed package. All three
+steps scope npm's cache and node-gyp SDK download directory to the active
+worktree. Set both the current scoped and legacy node-gyp variables for
+compatible toolchains.
+`--nodedir` is intentionally not used: it selects a pre-existing Node source
+tree rather than the SDK download directory. Do not use or repair a user-level
+npm or node-gyp cache. Native builds require a supported compiler and Python;
+CI runs the reviewed native build on Linux filesystems that support advisory
+locks and checks the actual SDK download directory after a clean install.
 
 ## Start a project
 
@@ -19,17 +40,25 @@ The EM uses /spec, interview-me and idea-refine, with Superpowers brainstorming,
 
 The EM assigns a stable ID and owner. Load Superpowers using-git-worktrees and run `bash scripts/new-epic.sh EPIC-001` from the coordination checkout. The script verifies project approval, clean Git state and ignored worktree placement, creates branch epic/EPIC-001 in .worktrees/EPIC-001, installs validator dependencies, runs the baseline tests, and creates the epic, plan and first task from templates. A failed setup retains the worktree for diagnosis; it never silently deletes work. Use native worktree tools instead when your harness provides them, following the same checks and template copying.
 
-Enter that worktree and run `bash scripts/install-skills.sh`. Fill epic.md, including developer owner and QA/security fields. Circulate relevant epics to AppSec for concern IDs and threat-model notes; a low-risk routing decision still needs an explicit rationale. The QA Lead uses the upstream test-engineer persona and /constraints to specify unit/integration coverage, end-to-end or abuse cases where appropriate, and special QA requests. A project CONSTRAINTS.md may hold common standards; the epic must link and enumerate its applicable QA requirements. Transition the epic through awaiting-review to approved, then in-progress.
+Enter that worktree and run `bash scripts/install-skills.sh`. Fill epic.md, including developer owner and QA/security fields. Circulate relevant epics to AppSec for concern IDs and threat-model notes; a low-risk routing decision still needs an explicit rationale. The QA Lead uses the upstream test-engineer persona and /constraints to specify unit/integration coverage, end-to-end or abuse cases where appropriate, and special QA requests. For any user-facing UI change, the independent accessibility reviewer uses accessibility-review to define WCAG 2.2 AA requirements and approve the epic. A project CONSTRAINTS.md may hold common standards; the epic must link and enumerate its applicable QA requirements. Transition the epic through awaiting-review to approved, then in-progress.
 
 ## Plan small, then get signoff
 
 The developer invokes governed-plan and Superpowers writing-plans. Break the epic into the smallest useful tasks: one observable behavior, exact file paths, acceptance criteria, expected failing test and passing command, relevant QA IDs, dependencies and a single implementation commit. Create each task from TASK-XXX.md.template, replace the ID, and list its path in epic-plan.md. `depends_on` uses plan-relative paths such as `tasks/TASK-001.md`. Prefer minutes of focused work per task rather than a large context containing the whole epic.
 
-Record which AppSec concerns the plan touches and which are unaffected, plus its own auth/data/external boundaries. Principal must approve task sizing, architecture and interfaces. If sensitive, move to awaiting-appsec-signoff and obtain AppSec approval next; otherwise record not-required with rationale. The approved transition is blocked until these conditions and the epic's QA/triage approvals are satisfied.
+Record which AppSec concerns the plan touches and which are unaffected, plus its own auth/data/external boundaries. Explicitly declare whether the plan changes a user-facing interface. Principal must approve task sizing, architecture and interfaces. If sensitive, move to awaiting-appsec-signoff and obtain AppSec approval next; otherwise record not-required with rationale. UI plans then move to awaiting-accessibility-signoff for independent accessibility approval. The approved transition is blocked until these conditions and the epic's QA/triage approvals are satisfied.
+
+## Classify ordinary tasks before implementation
+
+For a bounded task outside an already-governed Tier 3 epic plan, first confirm the effective workspace policy is accepted (`node scripts/init-workspace.mjs status --root .`). Do not proceed on a pending or stale policy. In a clean registered worktree, provide `answers.json` on stdin to `node scripts/preflight.mjs --id quick-fix --coordination-root . --worktree-root . < answers.json`; include the developer, scope, all eight explicit risk answers, UI status, claimed tier, intended repository-relative files, and accessibility evidence. Commit `project/task-assessments/quick-fix.yaml` alone as a direct child of its recorded `startingHead`, before any intended source path changes.
+
+Tier 1 is limited to an explicitly low-risk, single-file, non-UI change. After implementation, run `node scripts/check-tier1.mjs --assessment project/task-assessments/quick-fix.yaml` and retain its final-check evidence. Final-diff classification may only raise the tier, never lower the preflight classification. Tier 1 direct merge is disabled in generated policy by default. An adopter may enable it only with an accepted policy and compatible host rules; in this template repository direct merge is never allowed and PRs are always required. `check-tier1.mjs` can report `Direct merge eligible: yes` when accepted config enables it; that generic result does not enforce this template's PR-only rule, so host protections must prevent bypass.
+
+Tier 2 follows the PR route: keep the initial assessment commit before code, bind valid self-check or independent review evidence and each configured role approval (from someone independent of the developer) to the exact reviewed implementation commit, then run the existing `node scripts/check-pr.mjs` PR gate. CI supplies `BASE_SHA` and `HEAD_REF` from the pull request. UI work cannot be Tier 1; Tier 2 UI needs independent accessibility triage and plan evidence before implementation and independent final accessibility review on the reviewed commit. Unknown or high-risk answers, uncertainty, or a final diff that reclassifies to Tier 3 route through governed-plan and the approved epic/task gates. The tier checks consume file evidence; they do not authenticate approvers or enforce branch/merge policy.
 
 ## Build with evidence
 
-The governed-build skill runs the gate before entering upstream subagent-driven-development. Start the plan, then each task through the validator. Superpowers owns RED/GREEN/REFACTOR and fresh task contexts. Include unit tests, required integration tests and every applicable special QA request. Commit each task's implementation separately; record its SHA and actual test results in its markdown file, then move it through in-review to done. Evidence metadata may be committed afterward to avoid a self-referential commit SHA.
+The governed-build skill runs the gate before entering upstream subagent-driven-development. Start the plan, then each task through the validator. Superpowers owns RED/GREEN/REFACTOR and fresh task contexts. Include unit tests, required integration tests and every applicable special QA request. Commit each task's implementation separately; record its SHA and actual test results in its markdown file, then move it through in-review to done without staff code-review approval. Evidence metadata may be committed afterward to avoid a self-referential commit SHA.
 
 Multiple developers can work different epics at once because each has a branch/worktree. Do not share working directories, mutate a shared plan file concurrently, or cherry-pick another developer's unfinished task. Within an epic the default is one task at a time. Optional parallel tasks require separate task worktrees, no unresolved dependencies or overlapping file ownership, and a developer who integrates and verifies them in order. The gate checks declared dependencies, but coordination and conflict resolution remain the developer's responsibility. A blocked epic need not block unrelated approved epics.
 
@@ -37,8 +66,8 @@ If scope changes, reset the affected document to draft with the validator, recon
 
 ## Review and merge
 
-Finish all tasks and run the full QA bar, then move the plan to in-review. Use the existing code-reviewer persona and code-review-and-quality skill for five axes: correctness, readability/simplicity, architecture, security and performance. Superpowers requesting-code-review and receiving-code-review coordinate feedback. Set review_commit to the full implementation SHA and record staff code_review approval for it.
+Finish all tasks and run the full QA bar, then move the plan to in-review. An independent staff reviewer evaluates the final implementation revision using the existing code-reviewer persona and code-review-and-quality skill for five axes: correctness, readability/simplicity, architecture, security and performance. Superpowers requesting-code-review and receiving-code-review coordinate feedback. Record each finding in `review_comments`. If any finding requires a fix, make the necessary commit(s), then request a new code review. The final code reviewer records the resolution and approval only after verifying every finding on the final `review_commit`; intermediate commits do not need separate approvals.
 
-Only then move to in-appsec-review. Use appsec-gate with the existing security-auditor for the mandatory pre-merge pass, regardless of whether earlier AppSec involvement was waived. Record appsec_review for the same SHA. Move to ready-for-pr; commit metadata; governed-ship runs the `pr` gate immediately before opening a PR. Include the epic plan, QA evidence, findings and both approvals in the PR description.
+Only then move to in-appsec-review. Use appsec-gate with the existing security-auditor for the mandatory pre-merge pass, regardless of whether earlier AppSec involvement was waived. Record appsec_review for the same SHA. UI plans then move to in-accessibility-review for a final independent accessibility review of that same SHA before ready-for-pr. Commit metadata; governed-ship runs the `pr` gate immediately before opening a PR. Include the epic plan, QA evidence, findings and all applicable approvals in the PR description.
 
 Use finishing-a-development-branch for verification and branch cleanup, choosing the PR route. Host checks and configured required reviewers must pass. Re-run the gate before merging; merge through the PR. After the host confirms it, record pr_url and transition the epic plan, then the epic, to merged in a metadata follow-up. Do not delete other developers' worktrees. The EM tracks completed epics against project success criteria and milestones.

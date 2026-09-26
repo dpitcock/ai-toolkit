@@ -23,6 +23,8 @@ approvals:
   qa_lead: null
   code_review: null
   appsec_review: null
+  accessibility: null
+  accessibility_review: null
 ---
 
 # TASK-XXX

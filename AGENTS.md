@@ -15,9 +15,29 @@ Before every status transition run `node scripts/check-gate.mjs DOCUMENT TARGET 
 
 Read upstream skills from `skills/upstream/{superpowers,agent-skills}/skills/NAME/SKILL.md` when native discovery is unavailable. Read agent-skills personas from its `agents/` directory; resolve missing shared references from that upstream checkout. Superpowers owns TDD, worktrees and task execution. Local gates override upstream workflow shortcuts. Use a fresh task context with only its plan, relevant interfaces, and QA requirements.
 
-Each epic has an isolated worktree and branch; this is the standing worktree preference. Load Superpowers using-git-worktrees before scripts/new-epic.sh. Do not fall back to shared-checkout implementation on a worktree failure. One task at a time per epic, separate commit per task. Concurrent epics are allowed; independent tasks across those epics can run simultaneously. Within-epic parallelism requires separate task worktrees, explicit dependency/file ownership, and developer-controlled integration.
+Each epic has an isolated worktree and branch; this is the standing worktree preference. Load Superpowers using-git-worktrees before scripts/new-epic.sh. Do not fall back to shared-checkout implementation on a worktree failure. One task at a time per epic, separate commit per task with local RED/GREEN/QA evidence. Task completion does not require staff code-review approval. Concurrent epics are allowed; independent tasks across those epics can run simultaneously. Within-epic parallelism requires separate task worktrees, explicit dependency/file ownership, and developer-controlled integration.
 
-Do not open even a draft PR before both final reviews pass. Only PR-based merge is permitted. Files are cooperative governance, not authenticated authorization: see docs/gates.md for host enforcement and limitations.
+After all tasks and the full QA bar, obtain independent five-axis staff code review on the final implementation revision, followed by mandatory AppSec review of that same revision. Later implementation changes require both final reviews again. Do not open even a draft PR before both final reviews pass. Only PR-based merge is permitted. Files are cooperative governance, not authenticated authorization: see docs/gates.md for host enforcement and limitations.
+
+## Proportional task routes
+
+Before changing source for an ordinary bounded task, confirm the workspace policy is accepted with `node scripts/init-workspace.mjs status --root .`; resolve any pending policy review first. Run preflight in a clean, registered worktree with explicit scope, all risk answers, UI status, intended paths, and accessibility evidence:
+
+```sh
+node scripts/preflight.mjs --id quick-fix --coordination-root . --worktree-root . < answers.json
+git add project/task-assessments/quick-fix.yaml
+git commit -m "evidence: classify quick-fix"
+```
+
+That initial assessment commit must be the sole changed path and a direct child of its recorded `startingHead`, before implementation. Tier 1 excludes UI and is limited to a low-risk, single-file change; after implementation run `node scripts/check-tier1.mjs --assessment project/task-assessments/quick-fix.yaml`. The final diff may raise the tier, never lower the preflight tier. Tier 1 direct merge is disabled by default; direct merge is never allowed for this template repository. An adopter may consider enabling it only through an explicitly accepted policy and compatible host rules. `check-tier1.mjs` can report `Direct merge eligible: yes` when accepted config enables it; that generic result does not enforce this template's PR-only rule, so host protections must prevent bypass.
+
+Tier 2 changes use the PR route. Record valid self-check or independent review evidence, plus every configured role approval from a reviewer independent of the developer, against the exact reviewed implementation commit. Then rely on the existing PR check (`BASE_SHA` and `HEAD_REF` are supplied by `.github/workflows/workflow.yml`, which runs `node scripts/check-pr.mjs`). UI is never Tier 1: Tier 2 UI requires independent accessibility triage and plan evidence before implementation, plus independent final accessibility review on the reviewed commit. High risk, unknown answers, uncertainty, or a final diff that reclassifies as Tier 3 must use the governed epic/plan/task route and its required signoffs. Local checks validate supplied evidence and diff history; they do not authenticate reviewers or enforce repository-host policy.
+
+## Tool execution and handoffs
+
+The Cline adapter has an explicit handoff boundary because it lacks native Superpowers session hooks and subagent dispatch. When Cline reaches work it cannot safely complete in its session—such as an external authorization, credentials, a missing product decision, or an independent approval—it must provide a concise handoff naming the current document/state, completed evidence, blocker, and exact next action. It must not silently bypass a gate or infer authorization.
+
+Codex and Claude Code continue autonomously through ordinary in-scope planning, implementation, testing, review coordination, and governed transitions. They should involve the user only when clarification, credentials, external coordination, or a decision that materially changes scope is required. They must still honor every approval gate: an independent reviewer may approve only after an actual review, and an agent may not manufacture an approval or treat its absence as consent.
 
 ## File reading
 

@@ -17,6 +17,9 @@ security:
   external: false
   concerns: []
   rationale: "TODO: explain boundary assessment"
+accessibility:
+  ui: false
+  rationale: "TODO: explain whether this epic changes a user-facing interface"
 qa_requirements: []
 approvals:
   principal_engineer: null
@@ -24,6 +27,8 @@ approvals:
   qa_lead: null
   code_review: null
   appsec_review: null
+  accessibility: null
+  accessibility_review: null
 ---
 
 # EPIC-XXX
@@ -36,6 +41,9 @@ Use stable IDs in security.concerns. For low-risk scope record rationale and app
 
 ## QA requirements
 QA Lead fills qa_requirements with stable requirement IDs and defines coverage here (unit, integration, end-to-end, abuse cases, special requests).
+
+## Accessibility triage
+Set `accessibility.ui` when scope changes a user-facing interface. The independent accessibility reviewer approves applicable epics and defines WCAG 2.2 AA coverage for keyboard access, semantic structure, focus, forms/errors, contrast, screen-reader behavior, and zoom/reflow.
 
 ## Dependencies and ownership
 TODO: interfaces, other epics, assigned developer
