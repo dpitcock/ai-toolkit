@@ -38,7 +38,7 @@ async function readInput() {
 export async function runPreflight(args=process.argv.slice(2)) {
   const options=parseArguments(args);
   const answers=await readInput();
-  const result=createTaskAssessment({...options,answers});
+  const result=createTaskAssessment({...options,answers,enforceTier3Binding:true});
   process.stdout.write(`${formatTaskAssessment(result)}\n`);
 }
 
