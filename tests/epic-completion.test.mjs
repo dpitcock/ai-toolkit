@@ -73,3 +73,14 @@ test('explicitly observed empty process inventory needs no invented process clea
  delete evidence.cleanup.processes;
  assert.throws(()=>evaluateCompletion(evidence),/processes/i);
 });
+
+test('keeps original merge and integrated bookkeeping SHA distinct with bounded host proof',()=>{
+ const value=completion();value.host.mergeCommit=submitted;
+ value.host.finalization={from:submitted,to:integrated,paths:['epics/EPIC-006/epic-plan.md','epics/EPIC-006/epic.md']};
+ const result=evaluateCompletion(value);
+ assert.equal(result.receipt.host.mergeCommit,submitted);
+ const observed=admission(result.receipt);observed.hostObservation.mergeCommit=submitted;observed.hostObservation.finalization=value.host.finalization;
+ assert.equal(admitEpic(observed,{id:'EPIC-007'}).admitted,true);
+ value.host.finalization.paths.push('config/workspace-config.yaml');
+ assert.throws(()=>evaluateCompletion(value),/finalization/i);
+});

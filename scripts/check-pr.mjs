@@ -2,6 +2,7 @@ import {execFileSync} from 'node:child_process';
 import fs from 'node:fs';
 import {check,readDocument} from './check-gate.mjs';
 import {validateTier2Assessment} from './check-tier2.mjs';
+import {observeMergedEpic,assertFinalizationSnapshots,localSnapshot} from './lib/epic-finalization.mjs';
 function canonicalCommit(value,label) {
  if(!/^[a-f0-9]{40}$/i.test(value??'')) throw new Error(`${label} must be a full commit SHA`);
  const canonical=execFileSync('git',['rev-parse',`${value}^{commit}`],{encoding:'utf8'}).trim();
@@ -26,7 +27,15 @@ for(const id of ids) {
  const file=`epics/${id}/epic-plan.md`;
  if(!fs.existsSync(file)) throw new Error(`Missing epic plan: ${file}`);
  const {data}=readDocument(file);
- if(data.status==='merged') throw new Error(`Tier 3 assessment requires a successfully validated epic plan; merged epic plan cannot authorize a new PR: ${file}`);
+ if(data.status==='merged') {
+  if(assessmentPaths.length || ids.size!==1) throw new Error('Postmerge finalization cannot authorize a Tier 3 assessment or another epic');
+  const merged=observeMergedEpic({root:process.cwd(),epic:id,plan:data,reviews:false,working:false,revision:headSha});
+  execFileSync('git',['merge-base','--is-ancestor',merged.mergeCommit,headSha],{stdio:'pipe'});
+  const finalization=assertFinalizationSnapshots({epic:id,repository:merged.repository,pr:merged.pr,before:localSnapshot(process.cwd(),base),after:localSnapshot(process.cwd(),headSha)});
+  if(!finalization.changed.length) throw new Error('Postmerge finalization requires actual merged markers');
+  console.log(check(file,'finalization-pr',{root:process.cwd()}));
+  continue; // A completed plan never becomes authority for new implementation.
+ }
  const stage=changed.every(name=>planOnlyFile.test(name)) ? 'plan-pr' : 'implementation-pr';
  if(stage==='implementation-pr' && !['in-progress','in-review','in-appsec-review','in-accessibility-review','ready-for-pr'].includes(data.status)) {
   throw new Error('PR requires ready-for-pr epic plan or a started implementation plan');

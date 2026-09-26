@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { execFileSync } from 'node:child_process';
+import {observeMergedEpic} from './lib/epic-finalization.mjs';
 
 const roles = ['principal_engineer', 'appsec', 'qa_lead', 'code_review', 'appsec_review', 'accessibility', 'accessibility_review'];
 const graphs = {
@@ -58,9 +59,9 @@ function projectApproved(ctx) {
   approval(p.data,'principal_engineer');
   requireThat(ctx.data.parent_revision===p.data.revision,'Project changed: reconcile epic against current revision');
 }
-function epicApproved(ctx) {
+function epicApproved(ctx,{allowMerged=false}={}) {
   const e=related(ctx,ctx.data.parent,'epic');
-  requireThat(['approved','in-progress'].includes(e.data.status),'Epic must be approved');
+  requireThat(['approved','in-progress',...(allowMerged?['merged']:[])].includes(e.data.status),'Epic must be approved');
   projectApproved(e); approval(e.data,'qa_lead');
   if(risks(e.data)) approval(e.data,'appsec');
   else requireThat(e.data.approvals.appsec==='not-required','Epic AppSec triage must be recorded');
@@ -78,8 +79,8 @@ function needsAccessibility(ctx) {
   requireThat(ctx.data.accessibility && typeof ctx.data.accessibility.ui==='boolean' && meaningful(ctx.data.accessibility.rationale), 'Explicit UI accessibility assessment required');
   return ctx.data.accessibility.ui;
 }
-function planApproved(ctx) {
-  const e=epicApproved(ctx); approval(ctx.data,'principal_engineer');
+function planApproved(ctx,options) {
+  const e=epicApproved(ctx,options); approval(ctx.data,'principal_engineer');
   if(needsAppsec(ctx,e)) approval(ctx.data,'appsec');
   else requireThat(ctx.data.approvals.appsec==='not-required','Plan needs explicit AppSec not-required decision');
   if(needsAccessibility(ctx)) approval(ctx.data,'accessibility');
@@ -117,6 +118,9 @@ function liveMergeEvidence(ctx, {root,head,hostEvidence}={}) {
   requireThat(typeof head==='string' && /^[a-f0-9]{40}$/i.test(head),'Merge requires an exact current HEAD SHA');
   const current=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim().toLowerCase();
   requireThat(current===head.toLowerCase(),'Merge evidence must name the exact current HEAD');
+  reviewedHeadEvidence(ctx,current,hostEvidence);
+}
+function reviewedHeadEvidence(ctx,current,hostEvidence) {
   requireThat(hostEvidence && typeof hostEvidence==='object' && !Array.isArray(hostEvidence),'Merge requires live host evidence');
   requireThat(hostEvidence.head?.toLowerCase?.()===current && Array.isArray(hostEvidence.receipts),'Live host evidence must bind the exact current HEAD');
   const required=ctx.data.accessibility?.ui ? ['code_reviewer','appsec','accessibility_reviewer'] : ['code_reviewer','appsec'];
@@ -161,7 +165,7 @@ export function checkWorkflowReadiness(file,{root=process.cwd(),task}={}) {
  return {roles:[role]};
 }
 
-export function check(file,target,{root=process.cwd(),write=false,changedFiles=[],head,hostEvidence}={}) {
+export function check(file,target,{root=process.cwd(),write=false,changedFiles=[],head,hostEvidence,mergedEvidence}={}) {
   const ctx={...readDocument(file),root}; const d=ctx.data;
   if(target==='draft') {
     requireThat(!['merged','done'].includes(d.status),'Completed documents cannot be reset');
@@ -173,8 +177,10 @@ export function check(file,target,{root=process.cwd(),write=false,changedFiles=[
     }
     return `${d.id}: reset to draft; obtain fresh approvals for new revision`;
   }
-  if(target==='pr') {
+  if(['pr','merge-eligible'].includes(target)) {
     requireThat(d.kind==='epic-plan' && d.status==='ready-for-pr','PR requires ready-for-pr epic plan');
+  } else if(target==='finalization-pr') {
+    requireThat(d.kind==='epic-plan' && d.status==='merged','Finalization requires an already merged plan');
   } else if(target==='plan-pr') {
     requireThat(d.kind==='epic-plan','Plan PR requires an epic plan');
     requireThat(Array.isArray(changedFiles) && changedFiles.every(file=>typeof file==='string' && planOnlyPath(file)),'Plan PR cannot contain source or workflow files');
@@ -197,7 +203,7 @@ export function check(file,target,{root=process.cwd(),write=false,changedFiles=[
     if(target==='merged') requireThat(related(ctx,'epic-plan.md','epic-plan').data.status==='merged','Merge epic plan first');
   }
   if(d.kind==='epic-plan') {
-    const e=epicApproved(ctx); const needed=needsAppsec(ctx,e);
+    const e=epicApproved(ctx,{allowMerged:target==='finalization-pr'}); const needed=needsAppsec(ctx,e);
     tasks(ctx);
     const ui=needsAccessibility(ctx);
     if(target==='awaiting-appsec-signoff') {approval(d,'principal_engineer'); requireThat(needed,'AppSec plan signoff is not required');}
@@ -205,13 +211,13 @@ export function check(file,target,{root=process.cwd(),write=false,changedFiles=[
       approval(d,'principal_engineer'); requireThat(ui,'Accessibility review is not required');
       if(needed) {requireThat(d.status==='awaiting-appsec-signoff','AppSec signoff must precede accessibility review'); approval(d,'appsec');}
     }
-    if(!['awaiting-principal-signoff','awaiting-appsec-signoff','awaiting-accessibility-signoff'].includes(target)) planApproved(ctx);
+    if(!['awaiting-principal-signoff','awaiting-appsec-signoff','awaiting-accessibility-signoff'].includes(target)) planApproved(ctx,{allowMerged:target==='finalization-pr'});
     if(target==='approved' && needed && !ui) requireThat(d.status==='awaiting-appsec-signoff','Principal then AppSec signoff required');
     if(target==='approved' && ui) requireThat(d.status==='awaiting-accessibility-signoff','Accessibility signoff required before approval');
-    if(['in-review','in-appsec-review','in-accessibility-review','ready-for-pr','pr','merged'].includes(target)) tasks(ctx,true);
-    if(['in-appsec-review','in-accessibility-review','ready-for-pr','pr','merged'].includes(target)) {const cr=approval(d,'code_review'); reviewComments(d,cr);}
-    if(['in-accessibility-review','ready-for-pr','pr','merged'].includes(target)) approval(d,'appsec_review');
-    if(['ready-for-pr','pr','merged'].includes(target)) {
+    if(['in-review','in-appsec-review','in-accessibility-review','ready-for-pr','pr','merge-eligible','finalization-pr','merged'].includes(target)) tasks(ctx,true);
+    if(['in-appsec-review','in-accessibility-review','ready-for-pr','pr','merge-eligible','finalization-pr','merged'].includes(target)) {const cr=approval(d,'code_review'); reviewComments(d,cr);}
+    if(['in-accessibility-review','ready-for-pr','pr','merge-eligible','finalization-pr','merged'].includes(target)) approval(d,'appsec_review');
+    if(['ready-for-pr','pr','merge-eligible','finalization-pr','merged'].includes(target)) {
       const cr=approval(d,'code_review'), ar=approval(d,'appsec_review');
       requireThat(ar.date>=cr.date,'Final AppSec review must follow code review');
       requireThat(/^[a-f0-9]{40}$/.test(d.review_commit),'review_commit must be a full commit SHA');
@@ -222,7 +228,7 @@ export function check(file,target,{root=process.cwd(),write=false,changedFiles=[
         requireThat(aa.commit===d.review_commit,'Accessibility review must cover the reviewed implementation commit');
       }
     }
-    if(target==='pr') {
+    if(['pr','merge-eligible'].includes(target)) {
       const git=(args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
       git(['merge-base','--is-ancestor',d.review_commit,'HEAD']);
       requireThat(!git(['diff','--name-only',d.review_commit,'--','.',':(exclude)epics/**',':(exclude)project/**']),'Implementation changed after reviews; repeat both reviews');
@@ -230,8 +236,11 @@ export function check(file,target,{root=process.cwd(),write=false,changedFiles=[
     }
     if(target==='merged') {
       requireThat(meaningful(d.pr_url) && /^https:\/\//.test(d.pr_url),'Record merged PR URL');
-      liveMergeEvidence(ctx,{root,head,hostEvidence});
+      requireThat(mergedEvidence?.source==='authenticated-github-api' && d.pr_url===`https://github.com/${mergedEvidence.repository}/pull/${mergedEvidence.pr}` && [mergedEvidence.submittedHead,mergedEvidence.mergeCommit,mergedEvidence.integrationSha].every(value=>/^[a-f0-9]{40}$/.test(value??'')),'Recording merge requires authenticated merged PR evidence');
+      requireThat(mergedEvidence.hostEvidence?.head===mergedEvidence.submittedHead,'Recording merge requires reviewed submitted-head evidence');
+      reviewedHeadEvidence(ctx,mergedEvidence.submittedHead,mergedEvidence.hostEvidence);
     }
+    if(target==='merge-eligible') liveMergeEvidence(ctx,{root,head,hostEvidence});
   }
   if(d.kind==='task') {
     const p=related(ctx,d.parent,'epic-plan'); planApproved(p);
@@ -246,7 +255,7 @@ export function check(file,target,{root=process.cwd(),write=false,changedFiles=[
     }
     if(['in-review','done'].includes(target)) taskEvidence(d);
   }
-  if(write && target!=='pr') {
+  if(write && !['pr','merge-eligible','finalization-pr'].includes(target)) {
     const parsed=YAML.parseDocument(ctx.match[1]); parsed.set('status',target);
     if(target==='in-progress' && ['in-review','in-appsec-review','in-accessibility-review','ready-for-pr'].includes(d.status)) {
       parsed.setIn(['approvals','code_review'],null); parsed.setIn(['approvals','appsec_review'],null); parsed.setIn(['approvals','accessibility_review'],null); parsed.set('review_commit',null);
@@ -259,6 +268,14 @@ if(process.argv[1] && path.resolve(process.argv[1])===fileURLToPath(import.meta.
   try {
     const [file,target,...flags]=process.argv.slice(2);
     requireThat(file && target && flags.every(f=>f==='--write'),'Usage: node scripts/check-gate.mjs DOCUMENT TARGET [--write]');
-    console.log(check(path.resolve(file),target,{write:flags.includes('--write')}));
+    const absolute=path.resolve(file),root=process.cwd();
+    let mergedEvidence;
+    if(['merged','finalization-pr'].includes(target)) {
+      const {data}=readDocument(absolute),planFile=data.kind==='epic'?path.join(path.dirname(absolute),'epic-plan.md'):absolute;
+      const plan=readDocument(planFile).data,epic=readDocument(path.join(path.dirname(planFile),'epic.md')).data.id;
+      mergedEvidence=observeMergedEpic({root,epic,plan});
+      if(target==='finalization-pr') requireThat(mergedEvidence.localChanges.length>0,'Finalization PR requires new postmerge markers');
+    }
+    console.log(check(absolute,target,{root,write:flags.includes('--write'),mergedEvidence}));
   } catch(e) {console.error(`GATE BLOCKED: ${e.message}`); process.exitCode=1;}
 }

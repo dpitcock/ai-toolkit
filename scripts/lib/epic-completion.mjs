@@ -42,16 +42,23 @@ function checkReceipts(checks,integrationSha) {
  });
 }
 
-function hostReceipt(value,{repository,pullRequest,integrationSha}={}) {
- keys(value,['source','observedAt','merged','mergeCommit','checks','smoke'],'host receipt');
+function hostReceipt(value,{repository,epic,pullRequest,integrationSha}={}) {
+ keys(value,['source','observedAt','merged','mergeCommit','checks','smoke','finalization'],'host receipt');
  if(value.source!==AUTHENTICATED_HOST) fail('host facts must come from the authenticated host');
  const observedAt=instant(value.observedAt,'host observation');
  if(value.merged!==true) fail('pull request is not merged');
- if(sha(value.mergeCommit,'merge commit')!==integrationSha) fail('merge result does not match integration SHA');
+ const mergeCommit=sha(value.mergeCommit,'merge commit');
+ let finalization;
+ if(mergeCommit!==integrationSha) {
+  if(!value.finalization) fail('merge result does not match integration SHA without finalization proof');
+  keys(value.finalization,['from','to','paths'],'finalization proof');
+  if(value.finalization.from!==mergeCommit || value.finalization.to!==integrationSha || !Array.isArray(value.finalization.paths) || !value.finalization.paths.length || new Set(value.finalization.paths).size!==value.finalization.paths.length || value.finalization.paths.some(name=>![`epics/${epic}/epic.md`,`epics/${epic}/epic-plan.md`].includes(name))) fail('finalization must bind merge and integration SHA through same-epic markers');
+  finalization=structuredClone(value.finalization);
+ } else if(value.finalization!==undefined) fail('unchanged integration cannot claim finalization advancement');
  const checks=checkReceipts(value.checks,integrationSha);
  keys(value.smoke,['revision','result'],'smoke receipt');
  if(sha(value.smoke.revision,'smoke revision')!==integrationSha || value.smoke.result!=='passed') fail('integrated smoke evidence is incomplete');
- return {source:AUTHENTICATED_HOST,observedAt,repository,pullRequest,integrationSha,checks,smoke:{revision:integrationSha,result:'passed'}};
+ return {source:AUTHENTICATED_HOST,observedAt,repository,pullRequest,mergeCommit,integrationSha,...(finalization?{finalization}:{}),checks,smoke:{revision:integrationSha,result:'passed'}};
 }
 
 function activationReceipt(value) {
@@ -94,7 +101,7 @@ export function evaluateCompletion(evidence={}) {
  keys(evidence,['repository','epic','pullRequest','submittedHead','integrationSha','host','policy','findings','documentation','activation','cleanup','correctivePullRequests'],'completion evidence');
  const repository=string(evidence.repository,'repository'),epic=string(evidence.epic,'epic'),pullRequest=positive(evidence.pullRequest,'pull request');
  const submittedHead=sha(evidence.submittedHead,'submitted head'),integrationSha=sha(evidence.integrationSha,'integration SHA');
- const host=hostReceipt(evidence.host,{repository,pullRequest,integrationSha});
+ const host=hostReceipt(evidence.host,{repository,epic,pullRequest,integrationSha});
  keys(evidence.policy,['digest','loadedRevision'],'policy receipt');
  if(typeof evidence.policy.digest!=='string' || !DIGEST.test(evidence.policy.digest)) fail('policy digest is malformed');
  if(!Number.isInteger(evidence.policy.loadedRevision) || evidence.policy.loadedRevision<1) fail('loaded policy revision is malformed');
@@ -110,10 +117,11 @@ export function evaluateCompletion(evidence={}) {
 }
 
 function hostAdmission(value,receipt) {
- keys(value,['source','observedAt','repository','pullRequest','integrationSha','mergeCommit','checks','smoke'],'admission host observation');
+ keys(value,['source','observedAt','repository','pullRequest','integrationSha','mergeCommit','checks','smoke','finalization'],'admission host observation');
  if(value.repository!==receipt.repository || positive(value.pullRequest,'admission pull request')!==receipt.pullRequest) fail('admission host observation is for a different pull request');
  if(sha(value.integrationSha,'admission integration SHA')!==receipt.integrationSha) fail('integrated state changed since completion');
- return hostReceipt({source:value.source,observedAt:value.observedAt,merged:true,mergeCommit:value.mergeCommit,checks:value.checks,smoke:value.smoke},{repository:receipt.repository,pullRequest:receipt.pullRequest,integrationSha:receipt.integrationSha});
+ if(value.mergeCommit!==(receipt.host.mergeCommit??receipt.integrationSha)) fail('original merge result changed since completion');
+ return hostReceipt({source:value.source,observedAt:value.observedAt,merged:true,mergeCommit:value.mergeCommit,checks:value.checks,smoke:value.smoke,...(value.finalization?{finalization:value.finalization}:{})},{repository:receipt.repository,epic:receipt.epic,pullRequest:receipt.pullRequest,integrationSha:receipt.integrationSha});
 }
 
 export function admitEpic(state={},nextEpic={}) {
@@ -129,7 +137,7 @@ export function admitEpic(state={},nextEpic={}) {
  if(!object(state.completion)) fail('completion receipt is required');
  const receipt=state.completion;
  // Re-evaluate through a narrow reconstruction to reject forged/malformed receipts.
- const verified=evaluateCompletion({repository:receipt.repository,epic:receipt.epic,pullRequest:receipt.pullRequest,submittedHead:receipt.submittedHead,integrationSha:receipt.integrationSha,host:{source:receipt.host.source,observedAt:receipt.host.observedAt,merged:true,mergeCommit:receipt.integrationSha,checks:receipt.host.checks,smoke:receipt.host.smoke},policy:receipt.policy,findings:{unresolved:[]},documentation:{revision:receipt.integrationSha,current:true},activation:{...receipt.activation,active:true},cleanup:receipt.cleanup,correctivePullRequests:[]}).receipt;
+ const verified=evaluateCompletion({repository:receipt.repository,epic:receipt.epic,pullRequest:receipt.pullRequest,submittedHead:receipt.submittedHead,integrationSha:receipt.integrationSha,host:{source:receipt.host.source,observedAt:receipt.host.observedAt,merged:true,mergeCommit:receipt.host.mergeCommit??receipt.integrationSha,checks:receipt.host.checks,smoke:receipt.host.smoke,...(receipt.host.finalization?{finalization:receipt.host.finalization}:{})},policy:receipt.policy,findings:{unresolved:[]},documentation:{revision:receipt.integrationSha,current:true},activation:{...receipt.activation,active:true},cleanup:receipt.cleanup,correctivePullRequests:[]}).receipt;
  hostAdmission(state.hostObservation,verified);
  if(state.currentIntegrationSha!==undefined && sha(state.currentIntegrationSha,'current integration SHA')!==verified.integrationSha) fail('integrated state changed since completion');
  if(!Array.isArray(state.activeEpics) || state.activeEpics.some(value=>typeof value!=='string')) fail('active epic state is malformed');

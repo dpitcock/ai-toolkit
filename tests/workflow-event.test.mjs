@@ -172,15 +172,16 @@ function readyFixture(t,options={}) {
  const repository='fixture/workflow-fixture',pr=7;
  const identities=Object.fromEntries(['code_reviewer','appsec'].map(role=>[role,{actor:role,kind:'human',roleEvidence:true,provenance:{source:'controller-fixture',id:role}}]));
  const api={pull:()=>head,checks:()=>[{id:1,name:'gates',head_sha:head,status:'completed',conclusion:'success',app:{id:15368,slug:'github-actions'}}],reviews:()=>['code_reviewer','appsec'].map((role,index)=>({id:index+1,user:{login:role,type:'User'},state:'APPROVED',commit_id:head,submitted_at:`2026-09-26T12:00:0${index}Z`}))};
- return {...f,plan,head,repository,pr,observers:{pullRequest:()=>({repository,pr,head}),reviewAuthority:()=>({identities,api})}};
+ return {...f,plan,head,repository,pr,observers:{pullRequest:()=>({repository,pr,head,state:'open',base:'main',headBranch:'epic/EPIC-999'}),reviewAuthority:()=>({identities,api})}};
 }
 
 test('host-ready review claims are durable and deduplicate role/PR/head, including replay',t=>{
- const f=readyFixture(t);f.plan.pr_url=`https://github.com/${f.repository}/pull/${f.pr}`;f.save();
+ const f=readyFixture(t);f.plan.pr_url=`https://github.com/${f.repository}/pull/${f.pr}`;f.plan.status='ready-for-pr';f.plan.review_commit=f.head;
+ for(const role of ['code_review','appsec_review']) f.plan.approvals[role]={...f.approval,commit:f.head};f.save();
  const run=id=>handleWorkflowEvent({root:f.worktree,event:event('review.ready',{id}),actor,observers:f.observers});
  const first=run('ready-1'),second=run('ready-2');
- assert.deepEqual(first.review.claims,second.review.claims);assert.equal(first.review.claims.length,1);
- assert.equal(Object.keys(readWorkflowState(f.worktree).reviews).length,1);
+ assert.deepEqual(first.review.claims,second.review.claims);assert.equal(first.review.claims.length,2);
+ assert.equal(Object.keys(readWorkflowState(f.worktree).reviews).length,2);
  f.observers.pullRequest=()=>({repository:f.repository,pr:f.pr,head:'c'.repeat(40)});
  assert.throws(()=>run('ready-1'),/current PR head/i);
 });
@@ -194,6 +195,15 @@ test('both modes require live exact-head reviews for merge even on cached delive
   f.observers.reviewAuthority().api.reviews=()=>[];
   assert.throws(run,/approval/i);
  }
+});
+
+test('completed local reviews can publish verified verdicts at ready-for-pr without reopening',t=>{
+ const f=readyFixture(t);f.plan.status='ready-for-pr';f.plan.pr_url=`https://github.com/${f.repository}/pull/${f.pr}`;f.plan.review_commit=f.head;
+ for(const role of ['code_review','appsec_review']) f.plan.approvals[role]={...f.approval,commit:f.head};f.save();
+ f.observers.pullRequest=()=>({repository:f.repository,pr:f.pr,head:f.head,state:'open',base:'main',headBranch:'epic/EPIC-999'});
+ const result=handleWorkflowEvent({root:f.worktree,event:event('review.ready'),actor,observers:f.observers});
+ assert.deepEqual(result.review.roles,['code_reviewer','appsec']);assert.equal(result.review.purpose,'publish-completed-verdicts');
+ assert.equal(f.plan.status,'ready-for-pr');
 });
 
 test('both modes complete from typed observations, revalidate replay, and admit only fresh integration',t=>{

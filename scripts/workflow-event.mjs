@@ -13,6 +13,7 @@ import {applyReviewEvent} from './lib/review-scheduling.mjs';
 import {evaluateHostReviewGate} from './check-host-reviews.mjs';
 import {evaluateCompletion,admitEpic} from './lib/epic-completion.mjs';
 import {validateEpicAdmission} from './lib/workflow-admission.mjs';
+import {observeMergedEpic} from './lib/epic-finalization.mjs';
 
 const MAX_INPUT_BYTES=64*1024;
 const TYPES=new Set(['epic.start','task.dispatch','review.ready','merge.eligible','epic.complete']);
@@ -86,26 +87,36 @@ function pullRequest(plan,repository) {
  if(!match || match[1]!==repository) fail('canonical PR URL must match the repository');
  return Number(match[2]);
 }
+function hostedContext({file,plan,root,context,identity,observers}) {
+ if(plan.status==='merged') {
+  check(file,'finalization-pr',{root});
+  observeMergedEpic({root,epic:context.epic,plan,reviews:false,api:observers?.finalizationApi});
+ } else {
+  check(file,'pr',{root});
+ }
+ const originalPr=pullRequest(plan,identity.repository);
+ const current=observed(observers,'pullRequest',{...context,originalPr,pr:plan.status==='merged'?undefined:originalPr});
+ if(current?.repository!==identity.repository || current?.head!==context.head || current?.state!=='open' || current?.base!=='main' || current?.headBranch!==identity.branch || !Number.isSafeInteger(current?.pr) || current.pr<1) fail('hosted verdict publication requires the open canonical branch PR at current PR head');
+ if(plan.status==='merged'?current.pr===originalPr:current.pr!==originalPr) fail('publication PR does not match the canonical lifecycle stage');
+ return {pr:current.pr,originalPr,roles:plan.accessibility.ui?['code_reviewer','appsec','accessibility_reviewer']:['code_reviewer','appsec']};
+}
 function lifecycle(state,input,resolved,identity,observers) {
  const root=resolved.worktree,{file,data:plan}=canonicalPlan(root,input.epic),head=git(root,['rev-parse','HEAD']);
  const context={root,repository:identity.repository,epic:input.epic,head};
  if(input.type==='task.dispatch') return checkWorkflowReadiness(file,{root,task:`tasks/${input.task}.md`});
  if(input.type==='review.ready') {
-  const {roles}=checkWorkflowReadiness(file,{root});
-  if(!plan.pr_url) return {review:{stage:'local',head,roles}};
-  const pr=pullRequest(plan,identity.repository);
-  const current=observed(observers,'pullRequest',{...context,pr});
-  if(current?.repository!==identity.repository || current?.pr!==pr || current?.head!==head) fail('review readiness requires the live current PR head');
+  if(!plan.pr_url) {const {roles}=checkWorkflowReadiness(file,{root});return {review:{stage:'local',head,roles}};}
+  const {pr,originalPr,roles}=hostedContext({file,plan,root,context,identity,observers});
   const pushed=applyReviewEvent(state,{type:'push',repository:identity.repository,pr,head});
   state.reviews=applyReviewEvent(pushed.state,{type:'ready',repository:identity.repository,pr,head,roles}).state.reviews;
-  return {review:{stage:'host',pr,head,roles,claims:Object.values(state.reviews).filter(record=>record.pr===pr && record.repository===identity.repository && record.head===head && roles.includes(record.role)).map(record=>record.claim)}};
+  return {review:{stage:'host',purpose:'publish-completed-verdicts',pr,originalPr,head,reviewedImplementation:plan.review_commit,roles,claims:Object.values(state.reviews).filter(record=>record.pr===pr && record.repository===identity.repository && record.head===head && roles.includes(record.role)).map(record=>record.claim)}};
  }
  if(input.type==='merge.eligible') {
-  check(file,'pr',{root});
-  const pr=pullRequest(plan,identity.repository),requiredRoles=plan.accessibility.ui?['code_reviewer','appsec','accessibility_reviewer']:['code_reviewer','appsec'];
+  const {pr,originalPr,roles:requiredRoles}=hostedContext({file,plan,root,context,identity,observers});
   const trusted=observed(observers,'reviewAuthority',{...context,pr});
   const hostEvidence=evaluateHostReviewGate({repository:identity.repository,pr,head,stage:'final',requiredRoles,identities:trusted.identities,requiredChecks:['gates'],api:trusted.api});
-  check(file,'merged',{root,head,hostEvidence});return {hostEvidence};
+  if(plan.status!=='merged') check(file,'merge-eligible',{root,head,hostEvidence});
+  return {hostEvidence,originalPr,publicationPr:pr};
  }
  if(input.type==='epic.complete') {
   if(plan.status!=='merged') fail('completion requires canonical merged plan');

@@ -1,5 +1,6 @@
 import {execFileSync} from 'node:child_process';
 import {evaluateChecks} from './review-evidence.mjs';
+import {assertHostFinalization} from './epic-finalization.mjs';
 
 function fail(message) {throw new Error(`Epic integration ${message}`);}
 function github(endpoint,{paginate=false}={}) {
@@ -18,12 +19,20 @@ export function observeEpicIntegration(receipt,{api=github}={}) {
  const {repository,pullRequest,integrationSha,epic}=receipt;
  if(!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository??'') || !Number.isSafeInteger(pullRequest) || pullRequest<1 || !/^[a-f0-9]{40}$/.test(integrationSha??'') || !/^EPIC-\d+$/.test(epic??'')) fail('receipt identity is malformed');
  const prefix=`repos/${repository}`;
+ let mergeCommit,finalization;
  const verify=()=>{
   const pull=api(`${prefix}/pulls/${pullRequest}`);
-  if(pull?.merged!==true || pull.merge_commit_sha!==integrationSha || pull.base?.ref!=='main' || pull.base?.repo?.full_name!==repository) fail('PR is not the canonical main integration');
+  const expected=receipt.host.mergeCommit??integrationSha;
+  if(pull?.merged!==true || pull.merge_commit_sha!==expected || pull.base?.ref!=='main' || pull.base?.repo?.full_name!==repository || (receipt.submittedHead!==undefined && pull.head?.sha!==receipt.submittedHead)) fail('PR is not the canonical main integration');
+  mergeCommit=pull.merge_commit_sha;
   if(api(`${prefix}/git/ref/heads/main`)?.object?.sha!==integrationSha) fail('remote main integration changed');
  };
  verify();
+ if(mergeCommit!==integrationSha) {
+  const {changed}=assertHostFinalization({api,repository,epic,pr:pullRequest,from:mergeCommit,to:integrationSha});
+  if(!changed.length) fail('advanced integration requires actual finalization markers');
+  finalization={from:mergeCommit,to:integrationSha,paths:changed};
+ }
  const all=pages(api(`${prefix}/commits/${integrationSha}/check-runs?per_page=100`,{paginate:true}),'check_runs');
  const candidates=all.filter(check=>check.name==='gates').sort((a,b)=>a.id-b.id);
  const check=candidates.at(-1);
@@ -34,5 +43,5 @@ export function observeEpicIntegration(receipt,{api=github}={}) {
  const open=pages(api(`${prefix}/pulls?state=open&base=main&per_page=100`,{paginate:true}));
  if(open.some(pull=>pull.head?.ref===`epic/${epic}`)) fail('corrective PR keeps the epic active');
  verify();
- return {source:'authenticated-github-api',observedAt:new Date().toISOString(),repository,pullRequest,integrationSha,mergeCommit:integrationSha,checks,smoke:receipt.host.smoke};
+ return {source:'authenticated-github-api',observedAt:new Date().toISOString(),repository,pullRequest,integrationSha,mergeCommit,...(finalization?{finalization}:{}),checks,smoke:receipt.host.smoke};
 }

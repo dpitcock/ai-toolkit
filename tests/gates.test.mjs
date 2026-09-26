@@ -89,17 +89,23 @@ test('merge requires fresh exact-current-head live host receipts, not metadata a
  const {execFileSync}=await import('node:child_process');const f=fixture(t);
  const git=(args)=>execFileSync('git',args,{cwd:f.root,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
  git(['init']);git(['config','user.email','test@example.invalid']);git(['config','user.name','Test']);
+ fs.mkdirSync(path.join(f.root,'epics'));for(const name of Object.keys(f.docs)) fs.renameSync(path.join(f.root,name),path.join(f.root,'epics',name));
  fs.writeFileSync(path.join(f.root,'app.mjs'),'export const value = 1;\n');git(['add','.']);git(['commit','-m','Implementation']);
  const head=git(['rev-parse','HEAD']);
  f.docs['task.md'].status='done';f.docs['task.md'].evidence={red:'Expected failure',green:'Focused suite passed',qa:'QA passed',commit:head};
  f.docs['plan.md'].status='ready-for-pr';f.docs['plan.md'].pr_url='https://github.com/example/repo/pull/1';f.docs['plan.md'].review_commit=head;
  for(const role of ['code_review','appsec_review']) f.docs['plan.md'].approvals[role]={...f.approval,commit:head};
  f.save();
- assert.throws(()=>check(path.join(f.root,'plan.md'),'merged',{root:f.root,head}),/live host evidence/i);
+ for(const name of Object.keys(f.docs)) fs.renameSync(path.join(f.root,name),path.join(f.root,'epics',name));
+ const planPath=path.join(f.root,'epics/plan.md');
+ assert.throws(()=>check(planPath,'merge-eligible',{root:f.root,head}),/live host evidence/i);
  const hostEvidence={head,receipts:[
   {stage:'final',role:'code_reviewer',reviewedSha:head,verdict:'APPROVED'},
   {stage:'final',role:'appsec',reviewedSha:head,verdict:'APPROVED'},
  ]};
- assert.doesNotThrow(()=>check(path.join(f.root,'plan.md'),'merged',{root:f.root,head,hostEvidence}));
- assert.throws(()=>check(path.join(f.root,'plan.md'),'merged',{root:f.root,head:'b'.repeat(40),hostEvidence}),/current head|exact/i);
+ assert.doesNotThrow(()=>check(planPath,'merge-eligible',{root:f.root,head,hostEvidence}));
+ assert.throws(()=>check(planPath,'merge-eligible',{root:f.root,head:'b'.repeat(40),hostEvidence}),/current head|exact/i);
+ assert.throws(()=>check(planPath,'merged',{root:f.root,head,hostEvidence}),/authenticated merged PR evidence/i);
+ const mergedEvidence={source:'authenticated-github-api',repository:'example/repo',pr:1,submittedHead:head,mergeCommit:'b'.repeat(40),integrationSha:'b'.repeat(40),hostEvidence:{head,receipts:[]}};
+ assert.throws(()=>check(planPath,'merged',{root:f.root,mergedEvidence}),/code_reviewer/i);
 });
