@@ -2,13 +2,22 @@
 kind: task
 id: TASK-003
 owner: "Codex"
-status: draft
+status: in-progress
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 10
-depends_on: [tasks/TASK-007.md, tasks/TASK-002.md]
-evidence: {red: null, green: null, qa: null, commit: null}
-approvals: {principal_engineer: null, appsec: null, qa_lead: null, code_review: null, appsec_review: null, accessibility: null, accessibility_review: null}
+depends_on: [ tasks/TASK-007.md, tasks/TASK-002.md ]
+evidence: { red: null, green: null, qa: null, commit: null }
+approvals:
+  {
+    principal_engineer: null,
+    appsec: null,
+    qa_lead: null,
+    code_review: null,
+    appsec_review: null,
+    accessibility: null,
+    accessibility_review: null
+  }
 ---
 
 # TASK-003: Validate Exact Tier 3 Plans at PR Entry
