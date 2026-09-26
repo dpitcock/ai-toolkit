@@ -9,6 +9,7 @@ import {
   parseWorkspaceConfig,
   resolveWorkspaceConfig,
   workspaceConfigDigest,
+  workspaceTierDefinition,
 } from '../scripts/lib/workspace-config.mjs';
 import {resolveTier3Policy,tier3PolicyContract,validateTier3RoleEvidence} from '../scripts/lib/tier3-policy.mjs';
 import {assertAcceptedWorkspaceConfig} from '../scripts/lib/workspace-history.mjs';
@@ -74,6 +75,19 @@ test('accepts only an explicit boolean Tier 1 policy and includes it in the acce
   assert.throws(()=>parseWorkspaceConfig(`${sample}task_tiers: {}\n`),/tier_1_direct_merge.*required/i);
   assert.throws(()=>parseWorkspaceConfig(`${sample}task_tiers:\n  tier_1_direct_merge: "true"\n`),/must be boolean/i);
   assert.throws(()=>parseWorkspaceConfig(`${sample}task_tiers:\n  tier_1_direct_merge: false\n  allow_all: true\n`),/not allowed/i);
+});
+
+test('parses versioned workspace tier selection without changing legacy normalization',()=>{
+  const legacy=parseWorkspaceConfig(`${sample}task_tiers:\n  tier_1_direct_merge: false\n`);
+  const selected=parseWorkspaceConfig(`${sample}task_tier: tier_1\ntier_overrides:\n  direct_merge: false\n`);
+
+  assert.equal(workspaceConfigDigest(legacy),'c703705da949108548f2f484ef5edd948bba2831e33811c66e7198369b507e82');
+  assert.equal(selected.task_tier,'tier_1');
+  assert.deepEqual(selected.tier_overrides,{direct_merge:false});
+  assert.match(workspaceTierDefinition(selected).digest,/^[a-f0-9]{64}$/);
+  assert.throws(()=>parseWorkspaceConfig(`${sample}task_tier: tier_1\ntask_tiers:\n  tier_1_direct_merge: false\ntier_overrides:\n  direct_merge: false\n`),/cannot.*used with/i);
+  assert.throws(()=>parseWorkspaceConfig(`${sample}task_tier: tier_4\ntier_overrides:\n  direct_merge: false\n`),/task_tier/i);
+  assert.throws(()=>parseWorkspaceConfig(`${sample}task_tier: tier_1\ntier_overrides:\n  direct_merge: false\n  reviewers: true\n`),/tier_overrides.*allowed/i);
 });
 
 test('an empty exemption list remains valid after normalization and hashing',()=>{
@@ -158,6 +172,16 @@ test('linked worktree cannot override Tier 1 direct-merge policy',t=>{
   });
 
   assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}),/worktrees cannot override|Tier 1 policy is defined/i);
+});
+
+test('linked worktree cannot weaken the root configured tier',t=>{
+  const {root,linked}=linkedWorktrees(t);
+  const rootConfig=parseWorkspaceConfig(`${sample}task_tier: tier_3\ntier_overrides:\n  direct_merge: false\n`);
+  const overlay={...rootConfig,task_tier:'tier_1',worktree_overrides:[]};
+  writeConfig(root,rootConfig);
+  writeConfig(linked,overlay);
+
+  assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}),/tier.*coordination root|cannot override/i);
 });
 
 test('linked worktree rejects missing, duplicate, unknown, and incomplete override markers',t=>{

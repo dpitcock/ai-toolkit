@@ -4,7 +4,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import YAML from 'yaml';
-import {parseWorkspaceConfig,resolveWorkspaceConfig,workspaceConfigDigest} from './lib/workspace-config.mjs';
+import {parseWorkspaceConfig,resolveWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from './lib/workspace-config.mjs';
 import {appendWorkspaceHistory,readWorkspaceHistory,parseWorkspaceHistory,assertAcceptedWorkspaceConfig,withWorkspaceHistoryLock,withWorkspaceHistoryLocks} from './lib/workspace-history.mjs';
 
 function options(args) {
@@ -273,7 +273,8 @@ function proposalFor(root) {
       exempt:['accessibility_reviewer','ui_designer'],
     },
     daily_summary:{local_time:'09:00'},
-    task_tiers:{tier_1_direct_merge:false},
+    task_tier:'tier_1',
+    tier_overrides:{direct_merge:false},
   };
   const reasons={
     principal:'Tier 3 architectural and interface changes need Principal review.',
@@ -281,7 +282,7 @@ function proposalFor(root) {
     appsec:hasSecuritySurface ? 'Security-relevant dependencies detected; AppSec review is proposed.' : 'No security dependency signal detected; AppSec review is proposed conservatively for policy and external boundaries.',
     accessibility_reviewer:hasUI ? 'A user interface was detected.' : 'No user interface was detected; proposed structural exemption requires human acceptance.',
     ui_designer:hasUI ? 'A user interface was detected.' : 'No user interface was detected; proposed structural exemption requires human acceptance.',
-    task_tiers:'Tier 1 direct merge is disabled by default and requires an explicitly reviewed, accepted policy change.',
+    task_tier:'Tier 1 direct merge is disabled by default and requires an explicitly reviewed, accepted policy change.',
   };
   return {config:parseWorkspaceConfig(YAML.stringify(config)),reasons};
 }
@@ -340,7 +341,7 @@ function applyChange(root,args) {
     const {file,config,record:current}=acceptedConfig(root);
     if(base!==current.digest) throw new Error('Accepted policy changed after the reviewed base');
     const record={kind:'change',digest,revision:current.revision+1,date:new Date().toISOString().slice(0,10),by,reason,
-      changes:changedFields(config,candidate)};
+      changes:changedFields(config,candidate),...(workspaceTierDefinition(candidate) ? {definition:workspaceTierDefinition(candidate)} : {})};
     const previous=fs.readFileSync(file,'utf8');
     const historyFile=path.join(root,'project','workspace-config-history.jsonl');
     const journal=transactionPath(root);
@@ -398,6 +399,7 @@ function proposeLocked(root,history,append) {
     );
     if(!latest) append({
       kind:'proposal',digest,revision:1,date:new Date().toISOString().slice(0,10),config,reasons,
+      ...(workspaceTierDefinition(config) ? {definition:workspaceTierDefinition(config)} : {}),
       ...(legacy ? {legacyDigest:legacy.digest} : {}),
     });
     return {status:'pending',digest,reasons};
@@ -411,6 +413,7 @@ function proposeLocked(root,history,append) {
   fs.writeFileSync(file,YAML.stringify(config),{flag:'wx',mode:0o600});
   append({
     kind:'proposal',digest,revision:1,date:new Date().toISOString().slice(0,10),config,reasons,
+    ...(workspaceTierDefinition(config) ? {definition:workspaceTierDefinition(config)} : {}),
     ...(legacy ? {legacyDigest:legacy.digest} : {}),
   });
   return {status:'pending',digest,reasons};
@@ -443,8 +446,8 @@ function accept(root,args) {
     if(!proposal || proposal.kind!=='proposal') throw new Error('A pending proposal is required before acceptance');
     assertLegacySource(proposal,legacy,config);
     const record={kind:'acceptance',digest,revision:proposal.revision,date:new Date().toISOString().slice(0,10),by,reason,
-      changes:changedFields(proposal.config,config),...(legacy ? {legacyDigest:legacy.digest} : {})};
-    append(record);if(legacy) retireLegacy(root,legacy);
+      changes:changedFields(proposal.config,config),...(workspaceTierDefinition(config) ? {definition:workspaceTierDefinition(config)} : {}),...(legacy ? {legacyDigest:legacy.digest} : {})};
+    append(record);assertAcceptedWorkspaceConfig(root,config);if(legacy) retireLegacy(root,legacy);
     return {status:'accepted',digest,revision:record.revision};
   },{beforeRead:()=>recoverWorkspaceTransaction(root)});
 }

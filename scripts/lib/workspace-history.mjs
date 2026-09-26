@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import fsExt from 'fs-ext';
-import {workspaceConfigDigest} from './workspace-config.mjs';
+import {workspaceConfigDigest,workspaceTierDefinition} from './workspace-config.mjs';
 
 function historyPath(root,{createDirectory=false}={}) {
   const base=fs.realpathSync(root);
@@ -40,6 +40,9 @@ function validRecord(record) {
   if(!/^\d{4}-\d{2}-\d{2}$/.test(record.date) || Number.isNaN(Date.parse(record.date))) {
     throw new Error('Malformed workspace history date');
   }
+  if(Object.hasOwn(record,'definition') && (!record.definition || !Number.isInteger(record.definition.version) || record.definition.version<1 || !/^[a-f0-9]{64}$/.test(record.definition.digest))) {
+    throw new Error('Malformed workspace definition provenance');
+  }
   if(record.kind==='proposal') {
     if(!record.config || !record.reasons || typeof record.reasons!=='object') {
       throw new Error('Malformed workspace proposal');
@@ -50,11 +53,23 @@ function validRecord(record) {
   return record;
 }
 
+function assertDefinitionProvenance(record,config) {
+  const definition=workspaceTierDefinition(config);
+  if(!definition) {
+    if(Object.hasOwn(record,'definition')) throw new Error('Legacy workspace policy cannot claim tier definition provenance');
+    return;
+  }
+  if(!record.definition || record.definition.version!==definition.version || record.definition.digest!==definition.digest) {
+    throw new Error('Workspace tier definition provenance is invalid or stale');
+  }
+}
+
 function validateHistory(records) {
   if(!records.length) return records;
   const first=records[0];
   if(first.kind!=='proposal' || first.revision!==1) throw new Error('Workspace history requires an initial proposal at revision 1');
   if(workspaceConfigDigest(first.config)!==first.digest) throw new Error('Workspace history proposal digest does not match its snapshot');
+  assertDefinitionProvenance(first,first.config);
   for(let index=1;index<records.length;index+=1) {
     const previous=records[index-1],record=records[index];
     if(record.kind==='acceptance') {
@@ -142,5 +157,6 @@ export function assertAcceptedWorkspaceConfig(root,config) {
   if(latest.digest!==workspaceConfigDigest(config)) {
     throw new Error('Workspace configuration changed after acceptance');
   }
+  assertDefinitionProvenance(latest,config);
   return latest;
 }

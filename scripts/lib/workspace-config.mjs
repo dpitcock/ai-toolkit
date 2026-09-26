@@ -3,6 +3,7 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import YAML from 'yaml';
+import {resolveTierDefaults} from './tier-defaults.mjs';
 
 const approvalRoles=['principal','qa','appsec','accessibility_reviewer','ui_designer'];
 const workspaceFields=['repository','environment','provider','slack_channel_name','timezone'];
@@ -34,7 +35,13 @@ function nonempty(value,label) {
 }
 
 function normalize(value,{partial=false}={}) {
-  const data=fields(value,['workspace','approvals_required','approvals_overrides','daily_summary','task_tiers','worktree_overrides'],partial?[]:['workspace','approvals_required','daily_summary'],'config');
+  const data=fields(value,['workspace','approvals_required','approvals_overrides','daily_summary','task_tiers','task_tier','tier_overrides','worktree_overrides'],partial?[]:['workspace','approvals_required','daily_summary'],'config');
+  if(Object.hasOwn(data,'task_tiers') && (Object.hasOwn(data,'task_tier') || Object.hasOwn(data,'tier_overrides'))) {
+    throw new Error('task_tiers cannot be used with task_tier or tier_overrides');
+  }
+  if(Object.hasOwn(data,'task_tier')!==Object.hasOwn(data,'tier_overrides')) {
+    throw new Error('task_tier and tier_overrides must be declared together');
+  }
   const result={};
   if(Object.hasOwn(data,'workspace')) {
     const workspace=fields(data.workspace,workspaceFields,partial?[]:workspaceFields,'workspace');
@@ -94,6 +101,17 @@ function normalize(value,{partial=false}={}) {
     if(typeof taskTiers.tier_1_direct_merge!=='boolean') throw new Error('task_tiers.tier_1_direct_merge must be boolean');
     result.task_tiers={tier_1_direct_merge:taskTiers.tier_1_direct_merge};
   }
+  if(Object.hasOwn(data,'task_tier')) {
+    if(!['tier_1','tier_2','tier_3'].includes(data.task_tier)) {
+      throw new Error('task_tier must be tier_1, tier_2, or tier_3');
+    }
+    const overrides=fields(data.tier_overrides,['direct_merge'],[], 'tier_overrides');
+    if(Object.hasOwn(overrides,'direct_merge') && typeof overrides.direct_merge!=='boolean') {
+      throw new Error('tier_overrides.direct_merge must be boolean');
+    }
+    result.task_tier=data.task_tier;
+    result.tier_overrides=Object.hasOwn(overrides,'direct_merge') ? {direct_merge:overrides.direct_merge} : {};
+  }
   if(Object.hasOwn(data,'worktree_overrides')) {
     if(!Array.isArray(data.worktree_overrides) || data.worktree_overrides.some(marker=>typeof marker!=='string' || !worktreeOverridePaths.includes(marker))) {
       throw new Error('worktree_overrides must contain only known override paths');
@@ -128,6 +146,13 @@ export function workspaceConfigDigest(config) {
   return createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
 }
 
+export function workspaceTierDefinition(config) {
+  const normalized=normalize(config);
+  if(!Object.hasOwn(normalized,'task_tier')) return null;
+  const tier=Number(normalized.task_tier.slice(-1));
+  return resolveTierDefaults({tier,overrides:normalized.tier_overrides,templateRepository:false}).definition;
+}
+
 export function resolveWorkspaceConfig({coordinationRoot,worktreeRoot=coordinationRoot}) {
   if(!coordinationRoot || !worktreeRoot) throw new Error('A repository root is required');
   const root=fs.realpathSync(coordinationRoot);
@@ -144,7 +169,11 @@ export function resolveWorkspaceConfig({coordinationRoot,worktreeRoot=coordinati
   const worktree=fs.realpathSync(worktreeRoot);
   const sources={};
   for(const [section,entries] of Object.entries(config)) {
-    for(const key of Object.keys(entries)) sources[`${section}.${key}`]='root';
+    if(entries && typeof entries==='object' && !Array.isArray(entries)) {
+      for(const key of Object.keys(entries)) sources[`${section}.${key}`]='root';
+    } else {
+      sources[section]='root';
+    }
   }
   if(worktree===root) return {config,sources};
   const registered=execFileSync('git',['-C',worktree,'worktree','list','--porcelain'],{encoding:'utf8'})
@@ -153,8 +182,10 @@ export function resolveWorkspaceConfig({coordinationRoot,worktreeRoot=coordinati
     throw new Error('Worktree and coordination root must be linked Git worktrees');
   }
   const overlay=readConfig(worktree);
-  if(Object.hasOwn(overlay,'task_tiers') && JSON.stringify(overlay.task_tiers)!==JSON.stringify(config.task_tiers)) {
-    throw new Error('Tier 1 policy is defined by the accepted coordination root; worktrees cannot override task_tiers.tier_1_direct_merge');
+  for(const field of ['task_tiers','task_tier','tier_overrides']) {
+    if(JSON.stringify(overlay[field])!==JSON.stringify(config[field])) {
+      throw new Error('Tier policy is defined by the accepted coordination root; worktrees cannot override it');
+    }
   }
   const markers=overlay.worktree_overrides;
   if(!markers) throw new Error('Linked worktree config requires worktree_overrides markers');
