@@ -7,7 +7,7 @@
 kind: epic-plan
 id: EPIC-004-PLAN
 owner: "Codex"
-status: ready-for-pr
+status: merged
 revision: 3
 parent: epic.md
 parent_revision: 2
@@ -55,7 +55,7 @@ review_comments:
     verified_date: "2026-09-26"
     verified_commit: "2bb030369d5aef34f2ff1c0f999ec796d9932612"
 review_commit: "2bb030369d5aef34f2ff1c0f999ec796d9932612"
-pr_url: null
+pr_url: "https://github.com/dpitcock/ai-toolkit/pull/7"
 approvals:
   principal_engineer:
     by: "/root/epic004_principal_revision3"
