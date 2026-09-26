@@ -84,3 +84,13 @@ bootstrap provenance exception, or release-continuation behavior was introduced.
 Findings CR-006-001 and CR-006-004 remain outside this correction. Final finding
 resolution and Staff/AppSec approval belong to the assigned independent
 reviewers after the controller completes the remaining corrections.
+
+## Independent controller verification
+
+On 2026-09-26, `/root` independently reran the complete five-file focused
+command above after both implementation/evidence pairs were committed.
+Result: 79 passed, zero failed/cancelled/skipped/todo, 44018.384625 ms.
+Log: `/tmp/epic006-policy-check-independent.log`. Inspected the shared-helper
+diff and confirmed that new/legacy direct-merge resolution retains the explicit
+generic-checker limitation. This verifies the correction; it does not resolve
+Staff findings or replace either final review.
