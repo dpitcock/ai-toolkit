@@ -2,7 +2,7 @@
 kind: epic-plan
 id: EPIC-005-PLAN
 owner: "Codex"
-status: in-appsec-review
+status: ready-for-pr
 revision: 10
 parent: epic.md
 parent_revision: 2
@@ -108,7 +108,28 @@ approvals:
       verification: 30/30 check-tier2, 43/43 gate/preflight/ policy, and 8/8
       scaffold tests passed; diff checks for the complete implementation range
       passed."
-  appsec_review: null
+  appsec_review:
+    by: "Codex AppSec final reviewer /root/epic005_final_appsec"
+    date: "2026-09-26"
+    revision: 10
+    commit: "f93a46b37c374e07a370f31eae85548ac65e4173"
+    notes: "Independent final AppSec review after the staff review, against exact
+      implementation commit f93a46b37c374e07a370f31eae85548ac65e4173. Reviewed
+      SEC-TIER3-001 through SEC-TIER3-005 and the final worktree-path
+      correction: Tier 3 now rejects empty, absolute, traversal, backslash,
+      control-character, and non-normalized immutable worktree identities.
+      Verified fail-closed exact plan/task/revision/branch binding,
+      accepted-policy digest and per-role provenance reconstruction, four-role
+      scope, mandatory independent final code/AppSec floors, and named-plan
+      conditional UI accessibility floors. Trust-boundary review found no new
+      credential, personal-data, network, shell-injection, or external-action
+      path: Git invocation uses fixed command arguments, workflow permissions
+      remain contents: read, and validators do not push, merge, or delete
+      branches. The PR-only and host-protection cooperative enforcement
+      limitation remains explicit. Security evidence: focused Tier 3 rejection
+      tests and generated-adopter Tier 3 route passed; npm audit --omit=dev
+      --audit-level=high reported 0 vulnerabilities. No unresolved AppSec
+      findings."
   accessibility: null
   accessibility_review: null
 ---
