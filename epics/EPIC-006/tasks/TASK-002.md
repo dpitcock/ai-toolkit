@@ -2,16 +2,23 @@
 kind: task
 id: TASK-002
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: [ tasks/TASK-001.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "node --test tests/workspace-config.test.mjs tests/init-workspace.test.mjs:
+    failed before implementation because workspaceTierDefinition was not
+    exported and the new migration/default-selection assertions were
+    unsupported."
+  green: "node --test tests/workspace-config.test.mjs
+    tests/init-workspace.test.mjs: 45 passed, 0 failed."
+  qa: "QA-GOV-001/002/003: legacy normalized digests and history remain valid;
+    accepted migration records definition version/digest; conflicting syntax,
+    invalid or stale provenance, and worktree tier weakening fail closed;
+    default selection is tier_1 with direct_merge false."
+  commit: "9874775"
 approvals:
   principal_engineer: null
   appsec: null
