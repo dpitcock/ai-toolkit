@@ -2,12 +2,22 @@
 kind: task
 id: TASK-004
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 10
 depends_on: [ tasks/TASK-003.md ]
-evidence: { red: null, green: null, qa: null, commit: null }
+evidence:
+  red: "Workflow contract RED failed because HEAD_SHA was absent; remediation RED
+    showed check-pr ignored an authoritative mismatched HEAD_SHA."
+  green: "node --test tests/check-tier2.test.mjs tests/scaffold.test.mjs passed:
+    33 tests, 0 failures."
+  qa: "Serial full suite passed: 131 tests, 0 failures. Independent TASK-004
+    re-review approved 88a7fbdb after verifying authoritative HEAD_SHA
+    canonicalization/mismatch rejection, single validator wiring, retained
+    template tests, and no irreversible workflow operation. git diff --check
+    passed."
+  commit: "88a7fbdbec16b954606f8eae3dded87dff13eaa9"
 approvals:
   {
     principal_engineer: null,
