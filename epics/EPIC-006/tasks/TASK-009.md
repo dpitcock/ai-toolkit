@@ -2,16 +2,22 @@
 kind: task
 id: TASK-009
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: [ tasks/TASK-008.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-26: node --test tests/gates.test.mjs
+    tests/task-assessment.test.mjs failed 2/27 as expected: implementation-pr
+    was an illegal transition and the merge fixture had no live-host-evidence
+    requirement."
+  green: "2026-09-26: node --test tests/gates.test.mjs
+    tests/task-assessment.test.mjs passed 27/27 after implementation."
+  qa: "QA-GOV-005/006: node --test tests/check-tier2.test.mjs passed 31/31; it
+    verifies immutable Tier 3 bindings and PR-admission compatibility alongside
+    the focused stage/merge regressions."
+  commit: "7185e5602291bb91c1d91a5af2154e33db58c376"
 approvals:
   principal_engineer: null
   appsec: null
