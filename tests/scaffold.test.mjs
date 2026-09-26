@@ -34,7 +34,7 @@ test('Tier 3 guidance preserves the registered-worktree, evidence, and PR-only c
   'docs/gates.md':[/Tier 3[\s\S]*registered[\s\S]*isolated worktree/i,/plan[\s\S]*task[\s\S]*branch[\s\S]*provenance/i,/principal[\s\S]*qa[\s\S]*appsec[\s\S]*accessibility_reviewer/i,/cooperative[\s\S]*host/i],
   'docs/verification.md':[/Tier 3[\s\S]*registered[\s\S]*isolated worktree/i,/plan[\s\S]*task[\s\S]*branch[\s\S]*provenance/i,/conditional[\s\S]*accessibility[\s\S]*ui/i,/PR-only[\s\S]*host/i],
   'skills/governed-build/SKILL.md':[/Tier 3[\s\S]*registered[\s\S]*isolated worktree/i,/plan[\s\S]*task[\s\S]*branch[\s\S]*provenance/i,/principal[\s\S]*qa[\s\S]*appsec[\s\S]*accessibility_reviewer/i,/PR-only[\s\S]*host/i],
-  'skills/governed-ship/SKILL.md':[/Tier 3[\s\S]*reviewed[\s\S]*commit/i,/PR-only[\s\S]*host/i,/do not[\s\S]*(?:push|merge)/i],
+  'skills/governed-ship/SKILL.md':[/Tier 3[\s\S]*registered[\s\S]*isolated worktree/i,/plan[\s\S]*task[\s\S]*branch[\s\S]*provenance/i,/principal[\s\S]*qa[\s\S]*appsec[\s\S]*accessibility_reviewer/i,/conditional[\s\S]*ui[\s\S]*accessibility[\s\S]*(?:plan approval|final review)/i,/PR-only[\s\S]*host/i,/do not[\s\S]*(?:push|merge)/i],
  };
  for(const [file,patterns] of Object.entries(tier3Guidance)) {
   const text=fs.readFileSync(path.join(source,file),'utf8');
