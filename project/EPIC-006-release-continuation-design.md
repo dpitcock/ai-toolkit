@@ -353,3 +353,151 @@ adoption/update using the corrected concrete lineage. No additional product
 scope question is needed for implementing this restricted repair after AppSec
 design signoff. If implementation cannot satisfy this complete trace, retain
 CR-006-004 open and return for design reassessment; do not weaken a predicate.
+
+## Additional activation trace audit: post-adoption release verification
+
+Principal addendum, 2026-09-26, `/root/bootstrap_release_design`.
+This capability requires new independent QA and AppSec design assessment before
+implementation. Earlier design signoff does not approve this addendum.
+
+The preceding trace stops short of proving QA-GOV-010. Its adoption-PR activity
+occurs before I; successful completion after I does not prove active-policy
+routine commits/pushes, readiness or review claims. Bootstrap coordination and
+legacy `autopilot-policy-required` denials remain evidence of bootstrap only.
+Do not reopen completed tasks or let `task.dispatch` accept a merged plan.
+
+Principal ruling: the finite release verification below is **bounded restoration
+of the approved QA-GOV-010 and release-documentation obligations**, not new
+product scope. The detailed plan explicitly requires real release observations
+outside implementation tasks. `docs/verification.md` currently states activation
+and QA-GOV-010 are pending. Replacing those statements with verified evidence is
+needed deliverable work. This ruling does not authorize an arbitrary task,
+disposable test PR, manufactured bug or generic corrective-PR framework.
+
+No new product-owner choice is required for this restricted capability. Actual
+root adoption still requires the explicit release authority described above.
+Independent QA must determine whether the real evidence-update trace below meets
+the unchanged QA bar; independent AppSec must approve its authority boundaries.
+Until both decisions are recorded, this is a concrete proposal, not permission
+to implement the additional stage or claim QA-GOV-010 passed.
+
+### Exact finite work and integration
+
+After verified adoption integration I, create one same-epic release verification
+record for `activation-evidence`. Bind repository, EPIC-006, original PR0/H0/M,
+finalization F, adoption PR1/H1/I, policy digest, original immutable assessment
+identity and the owner-authorized release scope. The canonical plan stays merged.
+Neither admission nor `task.dispatch` is relaxed.
+
+Only these two deliverable paths may change relative to I:
+
+- `project/EPIC-006-activation-evidence.json`: one bounded, versioned report of
+  actual release observations. Required identity fields are epic, repository,
+  activation base I, observed loaded revision, effective policy digest and
+  observation records with kind, time and evidence references. Allow only named
+  activation, smoke, restart/admission, routine-action, readiness/claim/ack and
+  host-review/check observation kinds. Reject unknown fields, executable content
+  interfaces, unbounded strings/arrays, alternate path references and symlinks.
+  This report is evidence for review, never authority or a green-check source.
+- `docs/verification.md`: only the EPIC-006 activation block delimited by fixed
+  markers installed with this correction before original implementation review.
+  Preserve all bytes outside the block. Render the block deterministically from
+  the validated report; it must distinguish observed, pending and not-exercised
+  facts and link the report. Never broadly permit this document to carry code.
+
+For every commit between I and the release head, reject other paths, mode
+changes, source/policy/plan/task/assessment edits, hidden edit/revert changes and
+unrelated merges. Root and worktree accepted policy/history remain exact mirrors.
+The original immutable assessment is explicitly checked again; no new assessment
+is invented for completed-task dispatch. Scope derives from approved release
+work and this integrated gate, not from the report's claims.
+
+Introduce `release.verify` as a bounded adapter event with an enumerated
+operation `prepare`, `commit` or `push`. It uses the ordinary current-policy
+resolver and `decideAction`, observed harness identity, locked permits/state and
+deduplicated delivery IDs. Require EPIC-006's verified I relation, the named
+release record, current policy and internally observed branch/head/diff. The
+event returns a scoped decision for the harness; it runs no caller command and
+grants no new tool permission. Missing policy, stale permit or another epic fails.
+The initial positive decision must be `authorized-routine` under the active
+policy, not a bootstrap override or replay of a legacy denial.
+
+Extend `review.ready` and `merge.eligible` only for this registered verification
+record. Resolve its own current open PR2/head from authenticated host facts,
+never use PR0 as its publication PR or pretend policy adoption is finalization.
+Preserve exact-head role gates and existing claim/ack/reconciliation semantics.
+Local prepublication review and later publication of its verdict are distinct
+operations; do not dispatch a second review merely to publish the same verdict.
+Persist local role/head review identity before dispatch, then bind the observed
+PR2 identity for hosted publication claims. Uncertain dispatch must reconcile.
+
+Release verification states are prepared -> active -> local-review-ready ->
+locally-reviewed -> published -> integrated. Active supports authorized report commits and
+pushes without routine human/Staff authorization. A push invalidates previous
+head readiness and final release reviews; it never launches reviewers. A changed
+published head stays on PR2, returns review eligibility to active, and requires
+independent Staff then AppSec final review again on the new head. No local
+approval can be supplied by the developer or by merely editing the report.
+
+The same three evidence boundaries apply: CI runs pure committed-provenance
+checks without requiring its own result or local runtime; the observed controller
+enforces local reviews before publication; trusted integrated host enforcement
+requires live current-head independent roles and checks before merge. Do not
+require all post-merge facts before opening this evidence PR: initial reports
+may truthfully mark future observations pending. Before merge, every pre-merge
+QA-GOV-010 obligation must be observed and independently accepted; only actual
+final integration, revalidation and cleanup remain later release observations.
+
+### Actual-session observation sequence
+
+1. Load verified I in the actual session, resolve identical accepted policy in
+   root/worktree, and bind a genuine current-policy release permit. Record the
+   successful `release.verify prepare` decision and loaded revision/digest.
+2. Record real activation observations in the report; authorize, commit and push
+   them. Independently collect the existing smoke/restart/admission observations,
+   then authorize, commit and push that second useful evidence increment. Record
+   both actual Git heads, push results and zero pre-readiness review dispatches.
+   Do not split an empty/artificial change just to increase the counter.
+3. At readiness, dispatch each independently assigned role once for the actual
+   eligible head, persist claim/ack identity and reconcile uncertainty. Obtain
+   Staff then AppSec before PR2 publication, and publish verified verdicts against
+  the actual PR2 head. Observe real current-head checks and host reviews.
+   Local readiness must be explicitly recorded before any pre-PR reviewer
+   dispatch, with the release identity and head, never an invented PR number.
+   Hosted publication readiness is separate and uses the actual PR2 identity.
+   Verify zero pre-readiness dispatches at both boundaries. Before the first
+   local readiness, require at least two nonempty, independently meaningful
+   commits and pushes under actual active authorization; no empty counter work.
+4. Newly available host/readiness/dedup facts now replace genuine pending report
+   entries on the same open PR2. An independent reviewer must identify the actual
+   required completion/correction before merge; the pending report must not have
+   been claimed complete. Authorize this necessary evidence correction,
+   commit/push, invalidate stale readiness, and obtain fresh required reviews for
+   the resulting head. Do not manufacture a bug or intentionally inaccurate
+   report. The transcript must describe evidence corrections, not claim a code
+   defect was observed when none was. Record actual commit/push, confirmation,
+   routine Staff-authorization, review dispatch and claim/ack counts and IDs;
+   required final Code Reviewer work is distinct from routine Staff authorization.
+   QA must explicitly assess this same-PR evidence-correction trace against the
+   acceptance requirement.
+5. Merge the fully observed, reviewed PR2 to J through current-head gates. Add a
+   separate typed `releaseVerification` relation proving PR2's submitted head
+   and I->J evidence-only diff, actual merged host identity and unchanged policy.
+   Support squash/rebase through both submitted and integrated snapshot checks.
+   Reject arbitrary main advancement or another release-verification PR.
+6. Reload J, rerun current checks/smoke and revalidate real activation under the
+   unchanged accepted policy. Persist J-bound activation, cleanup and admission
+   observations in the locked runtime store. The report describes actual I-stage
+   observations; it does not need a commit that names its own future merge SHA.
+   Completion now binds J while preserving PR0/M, F and adoption I as distinct
+   verified links. EPIC-007 stays blocked until that current receipt passes.
+
+This sequence supersedes the earlier trace's direct I-to-completion shortcut.
+It adds one useful reviewed documentation/evidence PR and one narrowly checked
+integration relation; it does not broaden status-only finalization or migration.
+Extend the adoption/completion helpers and adapter stage routing accordingly.
+Keep the report schema/renderer pure and the runtime/host observers authoritative.
+Test real entrypoints in order through I, both active release actions, PR2 head
+changes and J; test missing actor/permit, early/double review, stale head, extra
+paths, dishonest/unavailable observations, wrong PR, direct push, missing local
+state, policy drift and premature admission. Fixture success is not live QA.
