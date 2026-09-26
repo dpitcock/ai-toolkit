@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {assertSameHead,evaluateReviews} from '../scripts/lib/review-evidence.mjs';
+import {assertSameHead,evaluateChecks,evaluateReviews} from '../scripts/lib/review-evidence.mjs';
 
 const head='a'.repeat(40);
 const oldHead='b'.repeat(40);
@@ -59,4 +59,12 @@ test('stage order and plan receipts fail closed on invalid scope or unresolved r
 
 test('a head race fails before a host verdict can be used',()=>{
   assert.throws(()=>assertSameHead(oldHead,head),/head changed/i);
+});
+
+test('pending or failed current checks cannot accompany an approval',()=>{
+  assert.throws(()=>evaluateChecks({head,checks:[{id:1,name:'gate',status:'in_progress',conclusion:null}]}),/pending/i);
+  assert.throws(()=>evaluateChecks({head,checks:[{id:1,name:'gate',status:'completed',conclusion:'failure'}]}),/did not pass/i);
+  assert.deepEqual(evaluateChecks({head,checks:[{id:1,name:'gate',status:'completed',conclusion:'success'}]}),[
+    {id:'1',name:'gate',status:'completed',conclusion:'success',head},
+  ]);
 });

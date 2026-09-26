@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import {execFileSync} from 'node:child_process';
-import {assertSameHead,evaluateReviews} from './lib/review-evidence.mjs';
+import {assertSameHead,evaluateChecks,evaluateReviews} from './lib/review-evidence.mjs';
 
 function fail(message) { throw new Error(`Host review gate failed: ${message}`); }
 function argument(name) {
@@ -46,7 +46,8 @@ const reviews=paginated(gh([`repos/${repository}/pulls/${pr}/reviews?per_page=10
 const checkPages=json(gh([`repos/${repository}/commits/${expectedHead}/check-runs?per_page=100`],{paginated:true}),'check runs');
 if(!Array.isArray(checkPages) || checkPages.some(page=>!Array.isArray(page?.check_runs))) fail('check runs did not return paginated data');
 const checks=checkPages.flatMap(page=>page.check_runs);
+const checkReceipts=evaluateChecks({head:expectedHead,checks});
 assertSameHead(pull(repository,pr),expectedHead);
 const result=evaluateReviews({stage,head:expectedHead,requiredRoles,identities,reviews,plan});
 assertSameHead(pull(repository,pr),expectedHead);
-process.stdout.write(`${JSON.stringify({repository,pr:Number(pr),head:expectedHead.toLowerCase(),checks:checks.map(check=>({id:check.id,name:check.name,status:check.status,conclusion:check.conclusion})),receipts:result.receipts})}\n`);
+process.stdout.write(`${JSON.stringify({repository,pr:Number(pr),head:expectedHead.toLowerCase(),checks:checkReceipts,receipts:result.receipts})}\n`);

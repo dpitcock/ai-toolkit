@@ -117,3 +117,18 @@ export function assertSameHead(observed,expected) {
   if(sha(observed,'observed head')!==sha(expected,'expected head')) fail('head changed during host review verification');
   return true;
 }
+
+/** Current check-run records are host evidence too; pending or failed runs
+ * cannot be carried forward as an approval for a later merge. */
+export function evaluateChecks({head,checks}={}) {
+  const currentHead=sha(head);
+  if(!Array.isArray(checks)) fail('checks must be a complete paginated array');
+  return checks.map(check=>{
+    if(!object(check) || (typeof check.id!=='string' && !Number.isInteger(check.id)) || typeof check.name!=='string' || !check.name.trim()
+      || typeof check.status!=='string') fail('check record is malformed');
+    if(check.status.toLowerCase()!=='completed') fail(`check ${check.name} is pending`);
+    const conclusion=typeof check.conclusion==='string'?check.conclusion.toLowerCase():'';
+    if(!['success','neutral','skipped'].includes(conclusion)) fail(`check ${check.name} did not pass`);
+    return {id:String(check.id),name:check.name,status:'completed',conclusion,head:currentHead};
+  });
+}
