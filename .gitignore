@@ -6,3 +6,4 @@ skills/upstream/
 .agents/skills/
 .claude/skills/
 .cline/skills/
+/project/workspace-config-history.jsonl.lock

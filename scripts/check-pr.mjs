@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import {check,readDocument} from './check-gate.mjs';
 import {validateTier2Assessment} from './check-tier2.mjs';
 import {observeMergedEpic,assertFinalizationSnapshots,localSnapshot} from './lib/epic-finalization.mjs';
+import {provePolicyAdoption,policyAdoptionStage,materializePolicyAdoptionHistory} from './lib/epic-policy-adoption.mjs';
 function canonicalCommit(value,label) {
  if(!/^[a-f0-9]{40}$/i.test(value??'')) throw new Error(`${label} must be a full commit SHA`);
  const canonical=execFileSync('git',['rev-parse',`${value}^{commit}`],{encoding:'utf8'}).trim();
@@ -21,12 +22,25 @@ const branchId=branch.match(/^epic\/(EPIC-\d+)$/)?.[1]; if(branchId) ids.add(bra
 const templateFile=/^(?:docs\/|project\/|scripts\/|tests\/|skills\/|\.github\/|\.clinerules\/|epics\/EPIC-XXX\/|project\/project-plan\.md\.template$|(?:README\.md|AGENTS\.md|CLAUDE\.md|package(?:-lock)?\.json|skills-lock\.json|\.gitignore)$)/;
 const planOnlyFile=/^(?:docs\/[^/]+\.md|project\/[^/]+\.md|epics\/.+\.md|README\.md)$/;
 const assessmentPaths=changed.filter(file=>/^project\/task-assessments\/.+\.yaml$/.test(file));
+const policyChanged=changed.some(name=>['config/workspace-config.yaml','project/workspace-config-history.jsonl'].includes(name));
+const adoptionStage=policyChanged?policyAdoptionStage({root:process.cwd(),baseSha:base}):null;
+if(adoptionStage==='pending') {
+ if(branch!=='epic/EPIC-006') throw new Error('Policy adoption requires the canonical epic branch');
+ ids.add('EPIC-006');
+}
 if(ids.size===0 && assessmentPaths.length===0 && changed.some(f=>!templateFile.test(f))) throw new Error('Application changes require an epic branch, changed epic plan, or task assessment');
 const validatedEpicPlans=new Map();
 for(const id of ids) {
  const file=`epics/${id}/epic-plan.md`;
  if(!fs.existsSync(file)) throw new Error(`Missing epic plan: ${file}`);
  const {data}=readDocument(file);
+ if(id==='EPIC-006' && policyChanged && adoptionStage) {
+  if(assessmentPaths.length || ids.size!==1) throw new Error('Policy adoption cannot authorize a new assessment or another epic');
+  materializePolicyAdoptionHistory({root:process.cwd(),baseSha:base,headSha});
+  provePolicyAdoption({root:process.cwd(),baseSha:base,headSha,headRef:branch});
+  console.log(`${data.id}: policy-adoption-pr committed provenance verified (not publication or merge authority)`);
+  continue;
+ }
  if(data.status==='merged') {
   if(assessmentPaths.length || ids.size!==1) throw new Error('Postmerge finalization cannot authorize a Tier 3 assessment or another epic');
   const merged=observeMergedEpic({root:process.cwd(),epic:id,plan:data,reviews:false,working:false,revision:headSha});

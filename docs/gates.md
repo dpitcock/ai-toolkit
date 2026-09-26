@@ -90,6 +90,33 @@ Tier 3 preflight is available only to a registered isolated worktree, distinct f
 
 ## Enforcement boundary
 
+EPIC-006 policy adoption is a separate non-status-mutating gate after its
+original PR and status-only finalization integrate. `policy-adoption-pr` requires
+the pinned original assessment proof at H0, exact original reviewed candidate,
+unchanged canonical plan and assessment, and an F-to-H1 diff restricted to the
+two regular policy files in every commit. Final history preserves F byte for
+byte and appends one derived revision-3 acceptance. This does not relax ordinary
+assessment validation or `assertFinalizationSnapshots`.
+
+Three boundaries remain separate. CI validates committed provenance without a
+runtime store or PR1's own unfinished checks. The local controller requires a
+clean registered isolated worktree, out-of-band owner authority and distinct
+observed Staff then AppSec sessions reviewing H1. Its locked runtime record
+binds `prepared`, `locally-reviewed`, `published` and `integrated` states.
+The trusted base publisher repeats the candidate proof under original authority
+and fetches live current-head native reviews/checks; it cannot rely solely on
+candidate CI. Changed heads invalidate local reviews; missing/corrupt state
+requires explicit recovery. Cooperative JSON cannot authenticate any actor.
+
+The publisher installs only trusted default-branch dependencies through the
+reviewed native-lock installer, before its publishing step receives GH_TOKEN.
+It may fetch the pinned original and candidate Git objects as data, but never
+checks out or executes candidate code. Same-epic policy changes always enter
+the narrow proof even when the candidate also changes forbidden paths or plan
+status. Submitted and integrated policy snapshots must both pass for I; the
+separate typed relation preserves PR0/M and F. Adoption alone cannot authorize
+epic completion or next-epic admission; the approved J evidence stage remains.
+
 These are cooperative file gates, wired into required skill wrappers and a PR CI check. They cannot authenticate handwritten identities, prove that a test log is true, detect an undisclosed boundary, or prevent an arbitrary shell command from opening a PR. YAML editing can bypass local state history; dates only establish day-level order. The repository is PR-only, but no local validator can push or merge. Do not claim this is a tamper-proof access control system.
 
 For enforced merge policy, configure the host to require the actual check name

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import {execFileSync} from 'node:child_process';
 import {assertSameHead,evaluateChecks,evaluateReviews} from './lib/review-evidence.mjs';
+import {trustedPolicyAdoptionGate} from './lib/epic-policy-adoption.mjs';
 
 function fail(message) { throw new Error(`Host review gate failed: ${message}`); }
 function argument(name,args=process.argv) {
@@ -160,12 +161,14 @@ function publishGate(repository,args,{verifyMerged=false}={}) {
         const trusted=blob(integration?.mainSha??defaultBranch);
         if(typeof trusted!=='string' || trusted!==blob(head)) fail('candidate workflow differs from trusted default branch');
       }
-      const result=evaluateHostReviewGate({repository,pr,head,stage:'final',requiredRoles:roles,
+      const adoption=verifyMerged?null:trustedPolicyAdoptionGate({root:process.cwd(),repository,pull:current});
+      const result=adoption??evaluateHostReviewGate({repository,pr,head,stage:'final',requiredRoles:roles,
         identities:jsonArgument('--identities',args),requiredChecks:['gates'],api:trustedApi()});
       if(integration) recheckIntegration(repository,pr,head,integration);
       publish('success');
       // Close a head change during publication by revoking this snapshot.
       assertSameHead(pull(repository,pr),head);
+      if(adoption) trustedPolicyAdoptionGate({root:process.cwd(),repository,pull:json(gh([`repos/${repository}/pulls/${pr}`]),'pull request')});
       if(integration) recheckIntegration(repository,pr,head,integration);
       const receipt=integration?{...result,kind:'integrated-host-gate-verification',diagnostic:true,
         submittedHead:head,...integration,statusContext:'host-review-gate',workflowRunId:process.env.GITHUB_RUN_ID??null}:result;

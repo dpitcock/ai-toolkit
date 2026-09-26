@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import fsExt from 'fs-ext';
+import {validateAdoptionRecord} from './policy-adoption-record.mjs';
 
 const STATE_FILE='workflow-state.json';
 const VERSION=1;
@@ -28,6 +29,10 @@ function validate(state) {
  if(keys.length!==expected.length || keys.some((key,index)=>key!==expected[index])) fail('has an unexpected schema');
  for(const name of COLLECTIONS) {
   if(!isObject(state[name])) fail(`${name} records must be an object`);
+ }
+ for(const [epic,record] of Object.entries(state.epics)) if(record?.policyAdoption!==undefined) {
+  if(epic!=='EPIC-006') fail('policy adoption is restricted to EPIC-006');
+  validateAdoptionRecord(record.policyAdoption);
  }
  return state;
 }

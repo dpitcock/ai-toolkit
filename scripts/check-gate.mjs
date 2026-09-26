@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { execFileSync } from 'node:child_process';
 import {observeMergedEpic} from './lib/epic-finalization.mjs';
+import {controlPolicyAdoption} from './lib/epic-policy-adoption.mjs';
 
 const roles = ['principal_engineer', 'appsec', 'qa_lead', 'code_review', 'appsec_review', 'accessibility', 'accessibility_review'];
 const graphs = {
@@ -165,8 +166,14 @@ export function checkWorkflowReadiness(file,{root=process.cwd(),task}={}) {
  return {roles:[role]};
 }
 
-export function check(file,target,{root=process.cwd(),write=false,changedFiles=[],head,hostEvidence,mergedEvidence}={}) {
+export function check(file,target,{root=process.cwd(),write=false,changedFiles=[],head,hostEvidence,mergedEvidence,adoptionController}={}) {
   const ctx={...readDocument(file),root}; const d=ctx.data;
+  if(target==='policy-adoption-pr') {
+    requireThat(!write,'Policy adoption gate never changes canonical status');
+    requireThat(d.kind==='epic-plan' && d.id==='EPIC-006-PLAN' && d.status==='merged','Policy adoption requires the original merged plan');
+    controlPolicyAdoption({root,operation:'gate',actor:adoptionController?.actor,observers:adoptionController?.observers});
+    return `${d.id}: policy-adoption-pr permitted`;
+  }
   if(target==='draft') {
     requireThat(!['merged','done'].includes(d.status),'Completed documents cannot be reset');
     if(write) {

@@ -24,10 +24,11 @@ configuration still derives from the coordination root.
 Both candidates bind shared definition version 1, digest
 `ba44a5e2fa64ca62d8b7c845bf468fb101eed7538f8453957f29575365569435`.
 These are normalized policy digests, not file-byte hashes or Git revisions.
-After both acceptances the effective digest should equal the root candidate;
-the worktree's raw digest remains distinct because its override marker is
-included in raw acceptance. Never use the raw overlay digest as the effective
-policy digest in authorization records.
+The old two-acceptance rollout is superseded by the independently approved
+release-continuation design. The root candidate is adopted once against the
+integrated raw revision-2 ledger, producing canonical revision 3. The linked
+candidate remains historical staged material and is not applied. After I, root
+and linked config/history bytes must match exactly, without an override marker.
 
 Exact changes for each corresponding baseline:
 
@@ -56,35 +57,37 @@ outputs immediately before applying; if a baseline or definition changed,
 stop and review a refreshed candidate. Never substitute a newly observed base
 digest into an earlier authorization silently.
 
-Run from the integrated coordination checkout using its integrated scripts.
+First integrate original PR0/H0 as M and its status-only finalization PR as F.
+Preserve PR0 in the merged canonical markers. Prepare the clean, registered
+epic checkout at F. Run its integrated initializer only after actual owner
+authority covers F, old root/raw digests, the exact candidate and subsequent
+coordination-root reconciliation. Preserve unrelated root changes.
 Set `ROLLOUT_ACCEPTOR` to the actual observed policy acceptor; the variable is
 not an invented identity or a substitute for authorization.
 
 ```sh
 ROLLOUT_ROOT=/Users/dpitcock/Code/agent-canvas
 ROLLOUT_WORKTREE=/Users/dpitcock/Code/agent-canvas/.worktrees/EPIC-006
-node scripts/init-workspace.mjs propose-change --root "$ROLLOUT_ROOT" --candidate project/EPIC-006-root-migration.yaml
-node scripts/init-workspace.mjs apply-change --root "$ROLLOUT_ROOT" --candidate project/EPIC-006-root-migration.yaml --by "$ROLLOUT_ACCEPTOR" --reason 'Adopt reviewed EPIC-006 integrated policy' --digest 7911a503ec901d38f0696ebaf333cdfa552f01482dbd393ac142eb41c46398fd --base-digest a9008f1f352e53a0d39bf66a8b1376d09914ff0523da25b6dbbc45f34643cf5a
-node scripts/init-workspace.mjs propose-change --root "$ROLLOUT_WORKTREE" --candidate project/EPIC-006-worktree-migration.yaml
-node scripts/init-workspace.mjs apply-change --root "$ROLLOUT_WORKTREE" --candidate project/EPIC-006-worktree-migration.yaml --by "$ROLLOUT_ACCEPTOR" --reason 'Align linked acceptance with reviewed EPIC-006 root policy' --digest 9d48be910d5a2745aeb870c705192b37684bd961e1bc74ea1037d2e0ef230c53 --base-digest d58b8020bf9db0f73ab1ddcbe8867106132d3a713491c906a6711373a6eab7ab
-node scripts/init-workspace.mjs status --root "$ROLLOUT_ROOT"
-node scripts/init-workspace.mjs status --root "$ROLLOUT_WORKTREE"
+node scripts/init-workspace.mjs propose-change --root "$ROLLOUT_WORKTREE" --candidate project/EPIC-006-root-migration.yaml
+node scripts/init-workspace.mjs apply-change --root "$ROLLOUT_WORKTREE" --candidate project/EPIC-006-root-migration.yaml --by "$ROLLOUT_ACCEPTOR" --reason 'Adopt reviewed EPIC-006 policy and canonical root representation' --digest 7911a503ec901d38f0696ebaf333cdfa552f01482dbd393ac142eb41c46398fd --base-digest d58b8020bf9db0f73ab1ddcbe8867106132d3a713491c906a6711373a6eab7ab
 ```
 
-Accept root first, then the linked candidate. They are separate locked
-transactions; the interval between them is not ready for event dispatch.
-With these unchanged baselines, expected new acceptance revisions are root 2
-and linked 3. Verify each raw acceptance/history record as well as effective
-status. Preserve every historic record and recover interrupted transactions
-through the initializer; never hand-edit history or a transaction journal.
-Policy and history changes cannot travel through the status-only finalization
-exception. A permitted ordinary PR route for committing postintegration
-adoption while EPIC-007 remains blocked has not been exercised or established.
-This is a release-boundary decision/gap for final reviewers and the controller:
-resolve and verify that route before applying either transaction. These CLI
-commands prove the configuration transaction interface, not admissibility of
-a subsequent policy/history PR. Do not weaken finalization checks or claim
-the staged candidates establish a usable release PR route.
+Commit only the two policy files as H1. Preserve every historical ledger byte;
+recover interrupted transactions through the initializer. This is staged release
+acceptance, not activation. The separate `policy-adoption-pr` controller gate
+requires the exact candidate proof and observed independent Staff then AppSec
+reviews on H1 before any draft PR1. Standalone CLI/CI success cannot supply
+missing local owner or reviewer authority. CI proves provenance; the trusted
+F publisher independently requires native H1 reviews/checks and unchanged F.
+
+Record PR1 publication and H1-to-I integration with the bounded controller.
+Validate both submitted and integrated snapshots, then reconcile the authorized
+root and owned release checkout to I without overwriting unrelated work. Verify
+identical accepted revision-3 config/history and current definition at both ends.
+The exact canonical mirror resolver supplies inherited root authority without
+creating another acceptance or restoring the old linked marker. Policy changes
+still cannot use status-only finalization. I is not epic completion: the approved
+finite activation-evidence stage through J, actual QA-GOV-010 and cleanup remain.
 
 Revoke or supersede stale permits and bind new narrowly scoped authorization
 to the real observed owner/session, current branch and scope, accepted root

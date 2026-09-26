@@ -41,11 +41,13 @@ jobs:
           # The default-branch version supplies both the workflow and the
           # gate code. A PR cannot relax this run by editing its own files.
           ref: ${{ github.event.repository.default_branch }}
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Prepare trusted validator dependencies
+        run: node scripts/install-native-lock.mjs
       - name: Revalidate current host reviews
         env:
           REPOSITORY: ${{ github.repository }}

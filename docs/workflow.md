@@ -117,6 +117,44 @@ Arbitrary main advancement, direct pushes and policy migration cannot use this
 finalization relation. Recheck actual activation and cleanup for the resulting
 integrated revision before admitting the next epic.
 
+EPIC-006 has a separate bounded `policy-adoption-pr` continuation after original
+PR0/H0 integrates as M and the status-only marker PR integrates as F. Its pure
+`provePolicyAdoption` validator rechecks the original pinned bootstrap assessment
+at H0, the exact reviewed root candidate, and every F-to-H1 commit's paths and
+regular file modes. The final config must equal the reviewed candidate byte for
+byte; the ledger must preserve F and append exactly one normal acceptance from
+raw revision 2 to canonical revision 3. Only the two policy files may change.
+This does not reopen the merged plan or change its original PR URL or reviews.
+
+CI uses this committed-provenance proof without local runtime state or its own
+pending checks. Before publication, the trusted harness calls
+`controlPolicyAdoption` with operation `prepare`, then separately observed Staff
+and AppSec `review` operations, then the `policy-adoption-pr` gate through
+`check(..., {adoptionController: {actor, observers}})`. A standalone CLI fails
+closed. The harness must supply actual owner authority for the exact F/candidate,
+old root/raw digests and eventual root update; JSON references cannot mint it.
+Preparation requires a clean registered isolated epic checkout. Stored reviews
+bind distinct observed sessions and identities to H1. `recover` reacquires owner
+authority and clears reviews; a changed head requires new preparation/reviews.
+
+The `publish` operation records an actually observed open PR1 after local
+reviews; it does not create it. Trusted F publisher code independently repeats
+the pure proof and obtains current native H1 reviews/checks under owner-managed
+old authority. It fetches Git objects only as data and never executes candidate
+code. `integrate` verifies both submitted H1 and integrated I, including squash
+or rebase, preserving PR0/M and F in a separate typed adoption relation. Runtime
+records live under the existing Git-common lock with schema checks and atomic
+replacement. Missing or corrupt records require recovery, never assumed consent.
+
+After authorized reconciliation to I, a registered linked checkout inherits
+the coordination policy without an override marker only when its complete
+config and accepted-history bytes exactly match the canonical Git-common root.
+Both acceptances and current definition provenance must validate. Existing
+marked overlays retain their prior semantics. The old linked migration candidate
+is historical staged material; the continuation uses the root candidate once.
+I does not complete this epic: the independently approved finite evidence stage
+through J remains required by the release-continuation design and QA-GOV-010.
+
 ## Native workspace lock dependency
 
 Workspace-policy mutations use the native `fs-ext` advisory-lock dependency so

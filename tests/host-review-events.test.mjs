@@ -58,6 +58,10 @@ test('trusted workflow runs only base code with scoped permissions',()=>{
   assert.equal(candidate.jobs.gates.name,"${{ github.event_name == 'pull_request_review' && 'review-relay-placeholder' || 'gates' }}");
   assert.equal(trusted.jobs['host-review-gate'].steps[0].with.ref,'${{ github.event.repository.default_branch }}');
   assert.equal(trusted.jobs['host-review-gate'].steps[0].with['persist-credentials'],false);
+  assert.equal(trusted.jobs['host-review-gate'].steps[0].with['fetch-depth'],0);
+  const preparation=trusted.jobs['host-review-gate'].steps.find(step=>step.name==='Prepare trusted validator dependencies');
+  assert.equal(preparation.run,'node scripts/install-native-lock.mjs');
+  assert.equal(preparation.env,undefined);
   assert.equal(trusted.jobs['host-review-gate'].steps.at(-1).env.GH_TOKEN,'${{ github.token }}');
   assert.deepEqual(trusted.on.workflow_dispatch?.inputs?.bootstrap_pr,{description:'Merged bootstrap PR to verify (diagnostic only)',required:true,type:'string'});
   assert.equal(trusted.jobs['host-review-gate'].name,'Publish host review status');

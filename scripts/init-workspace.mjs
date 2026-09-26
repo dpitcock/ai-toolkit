@@ -144,7 +144,7 @@ function existingConfig(root) {
   return parseWorkspaceConfig(fs.readFileSync(file,'utf8'));
 }
 
-function candidateConfig(root,candidate) {
+function candidateSnapshot(root,candidate) {
   if(!candidate) throw new Error('Policy change requires --candidate');
   const requested=path.resolve(root,candidate);
   const stat=fs.lstatSync(requested);
@@ -152,8 +152,10 @@ function candidateConfig(root,candidate) {
   if(!file.startsWith(root+path.sep) || !stat.isFile() || stat.isSymbolicLink() || stat.size>1024*1024) {
     throw new Error('Candidate config must be a regular file inside the repository under 1 MB');
   }
-  return parseWorkspaceConfig(fs.readFileSync(file,'utf8'));
+  const text=fs.readFileSync(file,'utf8');
+  return {config:parseWorkspaceConfig(text),text};
 }
+function candidateConfig(root,candidate) {return candidateSnapshot(root,candidate).config;}
 
 function readLegacy(root) {
   const file=path.join(root,'config','slack-workspace.example.yml');
@@ -335,7 +337,7 @@ function applyChange(root,args) {
   if(!by || !reason || !/^[a-f0-9]{64}$/.test(expected ?? '') || !/^[a-f0-9]{64}$/.test(base ?? '')) {
     throw new Error('Policy change requires --by, --reason, --digest, and --base-digest');
   }
-  const candidate=candidateConfig(root,args['--candidate']);
+  const {config:candidate,text:next}=candidateSnapshot(root,args['--candidate']);
   assertCurrentUiPolicy(root,candidate);
   const digest=workspaceConfigDigest(candidate);
   if(expected!==digest) throw new Error('Candidate digest differs from the reviewed policy change');
@@ -347,7 +349,6 @@ function applyChange(root,args) {
     const previous=fs.readFileSync(file,'utf8');
     const historyFile=path.join(root,'project','workspace-config-history.jsonl');
     const journal=transactionPath(root);
-    const next=YAML.stringify(candidate);
     const oldHistory=fs.readFileSync(historyFile,'utf8');
     const entry={phase:'prepared',oldConfig:previous,oldHistory,oldHistoryLength:Buffer.byteLength(oldHistory),newConfig:next,newDigest:digest,record};
     writeTransaction(journal,entry);

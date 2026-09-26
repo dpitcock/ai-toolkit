@@ -33,6 +33,18 @@ function run(root,...args) {
   return execFileSync(process.execPath,[cli,...args,'--root',root],{encoding:'utf8',stdio:['ignore','pipe','pipe']});
 }
 
+test('policy adoption preserves the exact validated reviewed candidate bytes transactionally',t=>{
+ const root=fixture(t),proposal=JSON.parse(run(root,'propose'));
+ run(root,'accept','--by','Dennis','--reason','Reviewed fixture proposal','--digest',proposal.digest);
+ const file=path.join(root,'config/workspace-config.yaml'),candidate=path.join(root,'candidate.yaml');
+ const raw='# Exact reviewed candidate formatting\n'+fs.readFileSync(file,'utf8').replace('environment: local','environment: staging');
+ fs.writeFileSync(candidate,raw);
+ const change=JSON.parse(run(root,'propose-change','--candidate',candidate));
+ run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','Preserve inspected bytes','--digest',change.digest,'--base-digest',change.base_digest);
+ assert.equal(fs.readFileSync(file,'utf8'),raw);
+ assert.doesNotThrow(()=>assertAcceptedWorkspaceConfig(root,parseWorkspaceConfig(raw)));
+});
+
 function runWithEnv(root,env,...args) {
   return execFileSync(process.execPath,[cli,...args,'--root',root],{
     encoding:'utf8',stdio:['ignore','pipe','pipe'],env:{...process.env,...env},

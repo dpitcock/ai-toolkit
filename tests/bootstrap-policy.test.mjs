@@ -11,6 +11,9 @@ import {recognizeBootstrapPolicy} from '../scripts/lib/bootstrap-policy.mjs';
 import {createTaskAssessment} from '../scripts/lib/task-assessment.mjs';
 
 const source=fileURLToPath(new URL('..',import.meta.url));
+// Historical evidence stays fixed after real F/I change the current checkout.
+// The validators and CLI above still execute the current source implementation.
+const historicalImplementation='b2b742b066615a860bc82c74c430778a56b676d8';
 const B='553daf9fb49df58e55c3c5a6fbb68df6a0be0a41';
 const P='74c7c7f66924f43319e1850ad6728708a5adc96b';
 const S='a91beb92f858c4be00e09f23de39de3ccee3c17f';
@@ -22,7 +25,7 @@ function fixture(t) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'bootstrap-policy-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   git(root,'clone','--quiet','--shared','--no-checkout',source,'.');
-  git(root,'checkout','--quiet','--detach',git(source,'rev-parse','HEAD'));
+  git(root,'checkout','--quiet','--detach',historicalImplementation);
   git(root,'remote','set-url','origin','git@github.com:dpitcock/ai-toolkit.git');
   git(root,'config','user.name','Bootstrap QA');git(root,'config','user.email','bootstrap@example.test');
   return {root,repoRoot:root,baseSha:B,headSha:git(root,'rev-parse','HEAD'),headRef:'epic/EPIC-006',assessmentPath};
