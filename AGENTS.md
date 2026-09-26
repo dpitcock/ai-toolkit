@@ -19,6 +19,20 @@ Each epic has an isolated worktree and branch; this is the standing worktree pre
 
 Do not open even a draft PR before both final reviews pass. Only PR-based merge is permitted. Files are cooperative governance, not authenticated authorization: see docs/gates.md for host enforcement and limitations.
 
+## Proportional task routes
+
+Before changing source for an ordinary bounded task, confirm the workspace policy is accepted with `node scripts/init-workspace.mjs status --root .`; resolve any pending policy review first. Run preflight in a clean, registered worktree with explicit scope, all risk answers, UI status, intended paths, and accessibility evidence:
+
+```sh
+node scripts/preflight.mjs --id quick-fix --coordination-root . --worktree-root . < answers.json
+git add project/task-assessments/quick-fix.yaml
+git commit -m "evidence: classify quick-fix"
+```
+
+That initial assessment commit must be the sole changed path and a direct child of its recorded `startingHead`, before implementation. Tier 1 excludes UI and is limited to a low-risk, single-file change; after implementation run `node scripts/check-tier1.mjs --assessment project/task-assessments/quick-fix.yaml`. The final diff may raise the tier, never lower the preflight tier. Tier 1 direct merge is disabled by default; direct merge is never allowed for this template repository. An adopter may consider enabling it only through an explicitly accepted policy and compatible host rules. `check-tier1.mjs` can report `Direct merge eligible: yes` when accepted config enables it; that generic result does not enforce this template's PR-only rule, so host protections must prevent bypass.
+
+Tier 2 changes use the PR route. Record valid self-check or independent review evidence, plus every configured role approval from a reviewer independent of the developer, against the exact reviewed implementation commit. Then rely on the existing PR check (`BASE_SHA` and `HEAD_REF` are supplied by `.github/workflows/workflow.yml`, which runs `node scripts/check-pr.mjs`). UI is never Tier 1: Tier 2 UI requires independent accessibility triage and plan evidence before implementation, plus independent final accessibility review on the reviewed commit. High risk, unknown answers, uncertainty, or a final diff that reclassifies as Tier 3 must use the governed epic/plan/task route and its required signoffs. Local checks validate supplied evidence and diff history; they do not authenticate reviewers or enforce repository-host policy.
+
 ## Tool execution and handoffs
 
 The Cline adapter has an explicit handoff boundary because it lacks native Superpowers session hooks and subagent dispatch. When Cline reaches work it cannot safely complete in its session—such as an external authorization, credentials, a missing product decision, or an independent approval—it must provide a concise handoff naming the current document/state, completed evidence, blocker, and exact next action. It must not silently bypass a gate or infer authorization.
