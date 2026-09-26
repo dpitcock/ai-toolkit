@@ -2,12 +2,24 @@
 kind: task
 id: TASK-007
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 10
 depends_on: [ tasks/TASK-008.md ]
-evidence: { red: null, green: null, qa: null, commit: null }
+evidence:
+  red: "node --test tests/workspace-config.test.mjs tests/gates.test.mjs failed as
+    expected with ERR_MODULE_NOT_FOUND for scripts/lib/tier3-policy.mjs; the
+    review-fix cycle also produced the expected missing plan-owner rejection and
+    missing provenance-contract failures."
+  green: "node --test tests/workspace-config.test.mjs tests/gates.test.mjs passed:
+    27 tests, 0 failures."
+  qa: "Bounded full-suite groups passed: 61 and 58 tests, 0 failures. Independent
+    TASK-007 review approved 99050ccc after verifying normalized plan/epic-owner
+    independence, final-review commit binding, four-role provenance, and
+    mandatory principal/QA/AppSec/code/AppSec/UI floors under false or exempt
+    policy values. git show --check HEAD passed."
+  commit: "99050ccc70978662c751aa0f9ca21c5b4075b75a"
 approvals:
   {
     principal_engineer: null,
