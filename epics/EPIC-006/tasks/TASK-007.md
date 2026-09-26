@@ -2,16 +2,25 @@
 kind: task
 id: TASK-007
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: [ tasks/TASK-006.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-26: node --test tests/review-scheduling.test.mjs failed as
+    expected before implementation because scripts/lib/review-scheduling.mjs did
+    not exist."
+  green: "2026-09-26: node --test tests/review-scheduling.test.mjs passed: 7
+    tests, 0 failed."
+  qa: "QA-GOV-007 verified: review records are keyed by repository, PR, role, and
+    head; ready events create one immutable queued claim per key; push
+    invalidates only old-head readiness and produces no dispatch. A claim can
+    move queued to claimed, then acknowledged or uncertain; uncertain claims
+    reconcile only after matching observed operation ID, reviewer identity,
+    role, and head. Wrong, replayed, stale-head, missing, and corrupt inputs
+    fail closed, so no stale acknowledgement can advance a new head."
+  commit: 267eec0c40dbaad043a34e6e540ace4f01f680f5
 approvals:
   principal_engineer: null
   appsec: null
