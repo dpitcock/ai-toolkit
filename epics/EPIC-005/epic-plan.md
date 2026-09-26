@@ -2,7 +2,7 @@
 kind: epic-plan
 id: EPIC-005-PLAN
 owner: "Codex"
-status: in-review
+status: in-appsec-review
 revision: 10
 parent: epic.md
 parent_revision: 2
@@ -45,7 +45,7 @@ tasks:
   - tasks/TASK-007.md
   - tasks/TASK-008.md
 review_comments: []
-review_commit: null
+review_commit: "e0070c2c85521efecdfa462dfb6f66ea9ad285da"
 pr_url: null
 approvals:
   principal_engineer:
@@ -82,7 +82,29 @@ approvals:
       local registration, and retains host protections as the enforcement
       boundary. No plan-level AppSec blockers found."
   qa_lead: null
-  code_review: null
+  code_review:
+    by: "Codex Staff reviewer /root/epic005_final_code_review"
+    date: "2026-09-26"
+    revision: 10
+    commit: "e0070c2c85521efecdfa462dfb6f66ea9ad285da"
+    notes: "Renewed independent final five-axis review of all EPIC-005
+      implementation through e0070c2c85521efecdfa462dfb6f66ea9ad285da.
+      Correctness: the generated-adopter Tier 3 end-to-end route continues to
+      pass locally, while CI-mode coverage confirms the narrowly scoped skip and
+      all other scaffold coverage still executes. Readability: the skip is
+      attached directly to the single environment-dependent test with a concrete
+      reason rather than hidden in workflow control flow. Architecture: CI
+      remains responsible for the normal suite and PR gate; the local-only
+      condition does not duplicate policy or alter validator routing. Security:
+      the change adds no privilege, credential, or workflow capability and
+      preserves PR-context validation and the cooperative host-protection
+      boundary. Performance: CI avoids only the fixture that requires locally
+      installed upstream skills; no application or validation hot path changes.
+      Previous worktree-identity remediation remains covered. No unresolved
+      review findings remain. Fresh verification: local scaffold 8/8; CI-mode
+      scaffold 5 passed with exactly one named skip; prior renewed final focused
+      suites passed 30/30 and 43/43; complete implementation diff checks
+      passed."
   appsec_review: null
   accessibility: null
   accessibility_review: null
