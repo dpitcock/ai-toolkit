@@ -7,6 +7,7 @@ import YAML from 'yaml';
 import {classifyTask} from './lib/task-tier.mjs';
 import {parseWorkspaceConfig,workspaceConfigDigest} from './lib/workspace-config.mjs';
 import {parseWorkspaceHistory,readWorkspaceHistory,assertAcceptedWorkspaceConfig} from './lib/workspace-history.mjs';
+import {resolveTier3Policy} from './lib/tier3-policy.mjs';
 
 const INITIAL_FIELDS=['kind','id','startingHead','acceptedConfig','developer','scope','risks','userFacingUI','intendedFiles','claimedTier','selectedTier','reasons'];
 const RISK_KEYS=['auth','secrets','schema','publicApi','financial','userData','criticalInfrastructure','hardToRevert'];
@@ -101,6 +102,12 @@ function assertInitialFactsUnchanged(current,initial) {
   for(const [key,value] of Object.entries(original)) {
     if(!Object.hasOwn(initial,key) || !Object.hasOwn(current,key) || !isDeepStrictEqual(value,latest[key])) {
       fail(`current ${key} differs from the first committed assessment evidence`);
+    }
+  }
+  if(Object.hasOwn(initial,'tier3Binding') || Object.hasOwn(current,'tier3Binding')) {
+    if(!Object.hasOwn(initial,'tier3Binding') || !Object.hasOwn(current,'tier3Binding')
+      || !isDeepStrictEqual(initial.tier3Binding,current.tier3Binding)) {
+      fail('current tier3Binding differs from the first committed assessment evidence');
     }
   }
 }
@@ -239,14 +246,39 @@ function validateTier2Evidence(record,config,reviewedCommit) {
 }
 
 function assertInitialClassification(record) {
+  const {tier3Binding,...classificationRecord}=record;
   const result=classifyTask({
-    stage:'preflight',developer:record.developer,scope:record.scope,risks:record.risks,
-    userFacingUI:record.userFacingUI,claimedTier:record.claimedTier,intendedFiles:record.intendedFiles,
-    accessibilityEvidence:record.accessibilityEvidence,
+    stage:'preflight',developer:classificationRecord.developer,scope:classificationRecord.scope,risks:classificationRecord.risks,
+    userFacingUI:classificationRecord.userFacingUI,claimedTier:classificationRecord.claimedTier,intendedFiles:classificationRecord.intendedFiles,
+    accessibilityEvidence:classificationRecord.accessibilityEvidence,
+    ...(tier3Binding===undefined?{}:{tier3Binding}),
   });
-  if(result.tier!==record.selectedTier || !isDeepStrictEqual(result.reasons,record.reasons)) {
+  if(result.tier!==classificationRecord.selectedTier || !isDeepStrictEqual(result.reasons,classificationRecord.reasons)) {
     fail('first committed assessment classification is internally inconsistent; use the Tier 3 route');
   }
+}
+
+function tier3Binding(record,config,headRef) {
+  const binding=record.tier3Binding;
+  if(!isObject(binding) || Object.keys(binding).length!==8
+    || !['planPath','planId','planRevision','taskPath','taskId','branch','worktreePath','policy'].every(key=>Object.hasOwn(binding,key))
+    || typeof binding.planPath!=='string' || typeof binding.taskPath!=='string' || typeof binding.planId!=='string'
+    || typeof binding.taskId!=='string' || typeof binding.branch!=='string' || typeof binding.worktreePath!=='string'
+    || !Number.isInteger(binding.planRevision) || binding.planRevision<1 || !isObject(binding.policy)) {
+    fail('Tier 3 binding is missing or malformed');
+  }
+  const epicId=binding.branch.match(/^epic\/(EPIC-\d+)$/)?.[1];
+  if(!epicId || binding.branch!==headRef || binding.planPath!==`epics/${epicId}/epic-plan.md`
+    || binding.planId!==`${epicId}-PLAN` || binding.taskPath!==`epics/${epicId}/tasks/${binding.taskId}.md`) {
+    fail('Tier 3 binding must name the current epic branch, plan, and task');
+  }
+  const policy=resolveTier3Policy({config});
+  const provenance=binding.policy;
+  if(!isObject(provenance.coordination) || !isObject(provenance.worktree)
+    || provenance.effectiveDigest!==policy.effectiveDigest || !isDeepStrictEqual(provenance.roles,policy.roles)) {
+    fail('Tier 3 policy provenance is stale or malformed');
+  }
+  return {binding,policy};
 }
 
 function assertPreflightBeforeIntendedChanges(root,baseSha,baseline) {
@@ -326,8 +358,11 @@ export function validateTier2Assessment({assessmentPath,repoRoot:rootValue,baseS
     if(baseline.record.selectedTier!==3) {
       fail(`actual PR diff reclassifies to Tier 3 (${classified.reasons.join(', ')||'higher recorded tier'}); use the governed Tier 3 review route`);
     }
+    const tier3=baseline.record.selectedTier===3 && Object.hasOwn(record,'tier3Binding')
+      ? tier3Binding(record,config,headRef)
+      : null;
     return {assessmentPath:relative,tier:3,status:'epic-gate-required',actualFiles,initialEvidenceCommit:baseline.commit,
-      route:'Tier 3 governed epic/task workflow'};
+      route:'Tier 3 governed epic/task workflow',...(tier3===null?{}:{tier3Binding:tier3.binding,tier3Policy:tier3.policy,developer:record.developer})};
   }
   if(tier===1) {
     const finalCheck=record.finalChecks?.at(-1);

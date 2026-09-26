@@ -143,6 +143,61 @@ function runCheckPr(state) {
   });
 }
 
+function governanceApprovals() {
+  return {principal_engineer:null,appsec:null,qa_lead:null,code_review:null,appsec_review:null,accessibility:null,accessibility_review:null};
+}
+
+function writeGovernance(root,id,{status='approved',reviewedCommit=null,frontmatter=false}={}) {
+  const approval=(by,commit=null)=>({by,date:'2026-09-25',notes:'Independent governance review.',revision:1,...(commit===null?{}:{commit})});
+  const project={kind:'project',id:'PROJECT',owner:'project-owner',status:'approved',revision:1,approvals:governanceApprovals()};
+  project.approvals.principal_engineer=approval('project-principal');
+  const epic={kind:'epic',id,owner:'epic-owner',status:'approved',revision:1,parent:'../../project/project-plan.md',parent_revision:1,
+    security:{auth:false,data:false,external:false,concerns:[],rationale:'Local test fixture.'},accessibility:{ui:false,rationale:'No UI.'},qa_requirements:['unit'],approvals:governanceApprovals()};
+  epic.approvals.qa_lead=approval('qa-reviewer');epic.approvals.appsec='not-required';
+  const task={kind:'task',id:'TASK-001',owner:'developer',status:reviewedCommit===null?'approved':'done',revision:1,parent:'../epic-plan.md',parent_revision:1,depends_on:[],
+    evidence:reviewedCommit===null?{red:null,green:null,qa:null,commit:null}:{red:'RED',green:'GREEN',qa:'QA',commit:reviewedCommit},approvals:governanceApprovals()};
+  const plan={kind:'epic-plan',id:`${id}-PLAN`,owner:'developer',status:reviewedCommit===null?'approved':'ready-for-pr',revision:1,parent:'epic.md',parent_revision:1,
+    security:{auth:false,data:false,external:false,concerns:[],rationale:'Local test fixture.'},accessibility:{ui:false,rationale:'No UI.'},touches_concerns:[],tasks:['tasks/TASK-001.md'],review_comments:[],review_commit:reviewedCommit,approvals:governanceApprovals()};
+  plan.approvals.principal_engineer=approval('plan-principal');plan.approvals.appsec='not-required';
+  if(reviewedCommit!==null) {
+    plan.approvals.code_review=approval('code-reviewer',reviewedCommit);
+    plan.approvals.appsec_review=approval('appsec-reviewer',reviewedCommit);
+  }
+  const write=(relative,value)=>{const target=path.join(root,relative);fs.mkdirSync(path.dirname(target),{recursive:true});const serialized=YAML.stringify(value,{lineWidth:0});fs.writeFileSync(target,frontmatter?`---\n${serialized}\n---\n` : serialized);};
+  write('project/project-plan.md',project);write(`epics/${id}/epic.md`,epic);write(`epics/${id}/epic-plan.md`,plan);write(`epics/${id}/tasks/TASK-001.md`,task);
+}
+
+function tier3Fixture(t,{boundPlanId='EPIC-043'}={}) {
+  const coordination=fs.mkdtempSync(path.join(os.tmpdir(),'check-tier3-coordination-'));
+  const linked=path.join(os.tmpdir(),`check-tier3-linked-${path.basename(coordination)}`);
+  t.after(()=>{try { git(coordination,'worktree','remove','--force',linked); } catch {} fs.rmSync(coordination,{recursive:true,force:true});fs.rmSync(linked,{recursive:true,force:true});});
+  const config={workspace:{repository:'tier3-fixture',environment:'test',provider:'codex',slack_channel_name:'ws-tier3-fixture-codex',timezone:'UTC'},approvals_required:{principal:true,qa:true,appsec:true,accessibility_reviewer:false,ui_designer:false},approvals_overrides:{reason:'No UI',exempt:['accessibility_reviewer','ui_designer']},daily_summary:{local_time:'09:00'},task_tiers:{tier_1_direct_merge:false}};
+  fs.mkdirSync(path.join(coordination,'config'),{recursive:true});fs.mkdirSync(path.join(coordination,'project'),{recursive:true});
+  fs.writeFileSync(path.join(coordination,'README.md'),'fixture\n');fs.writeFileSync(path.join(coordination,'config/workspace-config.yaml'),YAML.stringify(config));fs.writeFileSync(path.join(coordination,'project/workspace-config-history.jsonl'),history(config));
+  git(coordination,'init','-q');git(coordination,'config','user.email','qa@example.test');git(coordination,'config','user.name','QA');git(coordination,'add','.');git(coordination,'commit','-qm','accepted coordination policy');
+  git(coordination,'worktree','add','-q','-b','epic/EPIC-043',linked);
+  const overlay={...config,workspace:{...config.workspace,provider:'claude'},worktree_overrides:['workspace.provider']};
+  fs.writeFileSync(path.join(linked,'config/workspace-config.yaml'),YAML.stringify(overlay));fs.writeFileSync(path.join(linked,'project/workspace-config-history.jsonl'),history(overlay));
+  git(linked,'add','--','config/workspace-config.yaml','project/workspace-config-history.jsonl');git(linked,'commit','-qm','accepted linked policy');
+  const baseSha=git(linked,'rev-parse','HEAD');
+  writeGovernance(linked,'EPIC-043');
+  if(boundPlanId!=='EPIC-043') writeGovernance(linked,boundPlanId);
+  git(linked,'add','--','project','epics');git(linked,'commit','-qm','add governed plans');
+  const input={developer:'developer',scope:'cross-cutting',risks:{...risks,auth:true},userFacingUI:false,claimedTier:3,intendedFiles:['scripts/tier3-change.mjs'],accessibilityEvidence:null,tier3Binding:{planPath:'epics/EPIC-043/epic-plan.md',taskPath:'epics/EPIC-043/tasks/TASK-001.md'}};
+  createTaskAssessment({id:'tier3-change',answers:input,coordinationRoot:coordination,worktreeRoot:linked,enforceTier3Binding:true});
+  if(boundPlanId!=='EPIC-043') {
+    const assessmentFile=path.join(linked,'project/task-assessments/tier3-change.yaml');const record=YAML.parse(fs.readFileSync(assessmentFile,'utf8'));
+    record.tier3Binding.planPath=`epics/${boundPlanId}/epic-plan.md`;record.tier3Binding.planId=`${boundPlanId}-PLAN`;record.tier3Binding.taskPath=`epics/${boundPlanId}/tasks/TASK-001.md`;
+    fs.writeFileSync(assessmentFile,YAML.stringify(record,{lineWidth:0}));
+  }
+  git(linked,'add','--','project/task-assessments/tier3-change.yaml');git(linked,'commit','-qm','initial Tier 3 assessment');
+  fs.mkdirSync(path.join(linked,'scripts'),{recursive:true});fs.writeFileSync(path.join(linked,'scripts/tier3-change.mjs'),'export const tier3 = true;\n');git(linked,'add','--','scripts/tier3-change.mjs');git(linked,'commit','-qm','implement Tier 3 change');
+  const reviewedCommit=git(linked,'rev-parse','HEAD');
+  writeGovernance(linked,'EPIC-043',{reviewedCommit,frontmatter:true});if(boundPlanId!=='EPIC-043') writeGovernance(linked,boundPlanId,{reviewedCommit,frontmatter:true});
+  git(linked,'add','--','project','epics');git(linked,'commit','-qm','record final Tier 3 reviews');
+  return {root:linked,baseSha,headRef:'epic/EPIC-043'};
+}
+
 function linkedFixture(t) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'check-tier2-coordination-'));
   const linked=path.join(os.tmpdir(),`check-tier2-linked-${path.basename(root)}`);
@@ -365,4 +420,18 @@ test('check-pr keeps the existing epic-plan PR gate before Tier 2 validation',t=
   assert.notEqual(result.status,0);
   assert.match(result.stderr,/PR requires ready-for-pr epic plan/);
   assert.doesNotMatch(result.stdout,/Tier 2 passed/);
+});
+
+test('check-pr accepts its exact ready-for-PR Tier 3 plan',t=>{
+  const state=tier3Fixture(t);
+  const result=runCheckPr(state);
+  assert.equal(result.status,0,result.stderr);
+  assert.match(result.stdout,/tier3-change\.yaml: Tier 3 epic-gate-required/);
+});
+
+test('check-pr rejects a Tier 3 assessment bound to another valid plan',t=>{
+  const state=tier3Fixture(t,{boundPlanId:'EPIC-044'});
+  const result=runCheckPr(state);
+  assert.notEqual(result.status,0);
+  assert.match(result.stderr,/Tier 3.*(branch|named plan|binding)/i);
 });
