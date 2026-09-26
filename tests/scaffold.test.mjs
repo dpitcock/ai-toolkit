@@ -27,6 +27,22 @@ test('pull-request workflow passes immutable PR context to the unified validator
  assert.doesNotMatch(fs.readFileSync(path.join(source,'.github/workflows/workflow.yml'),'utf8'),/\b(?:gh\s+pr|git\s+(?:push|merge|branch\s+-d))\b/i);
 });
 
+test('Tier 3 guidance preserves the registered-worktree, evidence, and PR-only contract',()=>{
+ const tier3Guidance={
+  'AGENTS.md':[/Tier 3[\s\S]*registered[\s\S]*isolated worktree/i,/principal[\s\S]*qa[\s\S]*appsec[\s\S]*accessibility_reviewer/i,/PR-only[\s\S]*host/i],
+  'docs/workflow.md':[/Tier 3[\s\S]*registered[\s\S]*isolated worktree/i,/plan[\s\S]*task[\s\S]*branch[\s\S]*provenance/i,/accessibility[\s\S]*ui[\s\S]*final review/i,/PR-only[\s\S]*host/i],
+  'docs/gates.md':[/Tier 3[\s\S]*registered[\s\S]*isolated worktree/i,/plan[\s\S]*task[\s\S]*branch[\s\S]*provenance/i,/principal[\s\S]*qa[\s\S]*appsec[\s\S]*accessibility_reviewer/i,/cooperative[\s\S]*host/i],
+  'docs/verification.md':[/Tier 3[\s\S]*registered[\s\S]*isolated worktree/i,/plan[\s\S]*task[\s\S]*branch[\s\S]*provenance/i,/conditional[\s\S]*accessibility[\s\S]*ui/i,/PR-only[\s\S]*host/i],
+  'skills/governed-build/SKILL.md':[/Tier 3[\s\S]*registered[\s\S]*isolated worktree/i,/plan[\s\S]*task[\s\S]*branch[\s\S]*provenance/i,/principal[\s\S]*qa[\s\S]*appsec[\s\S]*accessibility_reviewer/i,/PR-only[\s\S]*host/i],
+  'skills/governed-ship/SKILL.md':[/Tier 3[\s\S]*reviewed[\s\S]*commit/i,/PR-only[\s\S]*host/i,/do not[\s\S]*(?:push|merge)/i],
+ };
+ for(const [file,patterns] of Object.entries(tier3Guidance)) {
+  const text=fs.readFileSync(path.join(source,file),'utf8');
+  assert.doesNotMatch(text,/ui_designer/i,`${file} must not make forward ui_designer claims`);
+  for(const pattern of patterns) assert.match(text,pattern,`${file} is missing ${pattern}`);
+ }
+});
+
 test('init is idempotent; real epic worktree is isolated and refuses collisions',t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'blueprint-scaffold-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  for(const item of ['scripts','project','tests','package.json','package-lock.json','.gitignore']) fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
