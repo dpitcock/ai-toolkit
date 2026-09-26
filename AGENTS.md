@@ -15,9 +15,9 @@ Before every status transition run `node scripts/check-gate.mjs DOCUMENT TARGET 
 
 Read upstream skills from `skills/upstream/{superpowers,agent-skills}/skills/NAME/SKILL.md` when native discovery is unavailable. Read agent-skills personas from its `agents/` directory; resolve missing shared references from that upstream checkout. Superpowers owns TDD, worktrees and task execution. Local gates override upstream workflow shortcuts. Use a fresh task context with only its plan, relevant interfaces, and QA requirements.
 
-Each epic has an isolated worktree and branch; this is the standing worktree preference. Load Superpowers using-git-worktrees before scripts/new-epic.sh. Do not fall back to shared-checkout implementation on a worktree failure. One task at a time per epic, separate commit per task. Concurrent epics are allowed; independent tasks across those epics can run simultaneously. Within-epic parallelism requires separate task worktrees, explicit dependency/file ownership, and developer-controlled integration.
+Each epic has an isolated worktree and branch; this is the standing worktree preference. Load Superpowers using-git-worktrees before scripts/new-epic.sh. Do not fall back to shared-checkout implementation on a worktree failure. One task at a time per epic, separate commit per task with local RED/GREEN/QA evidence. Task completion does not require staff code-review approval. Concurrent epics are allowed; independent tasks across those epics can run simultaneously. Within-epic parallelism requires separate task worktrees, explicit dependency/file ownership, and developer-controlled integration.
 
-Do not open even a draft PR before both final reviews pass. Only PR-based merge is permitted. Files are cooperative governance, not authenticated authorization: see docs/gates.md for host enforcement and limitations.
+After all tasks and the full QA bar, obtain independent five-axis staff code review on the final implementation revision, followed by mandatory AppSec review of that same revision. Later implementation changes require both final reviews again. Do not open even a draft PR before both final reviews pass. Only PR-based merge is permitted. Files are cooperative governance, not authenticated authorization: see docs/gates.md for host enforcement and limitations.
 
 ## Proportional task routes
 

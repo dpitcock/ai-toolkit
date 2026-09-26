@@ -31,6 +31,21 @@ test('UI plans require final accessibility review of the reviewed commit',t=>{co
 test('QA, project, revision, and independent reviewer gates fail closed',t=>{for(const mutation of [d=>d['epic.md'].approvals.qa_lead=null,d=>d['project.md'].status='draft',d=>d['plan.md'].revision=2,d=>d['plan.md'].approvals.principal_engineer={by:'developer',date:'2026-09-07',notes:'Self',revision:1},d=>d['epic.md'].revision=2]) {const f=fixture(t);mutation(f.docs);f.save();assert.throws(()=>f.run('plan.md','in-progress'));}});
 test('cannot skip statuses, use malformed YAML, or unknown target',t=>{const f=fixture(t);assert.throws(()=>f.run('plan.md','merged'));assert.throws(()=>f.run('plan.md','bogus'));fs.appendFileSync(path.join(f.root,'task.md'),'');fs.writeFileSync(path.join(f.root,'task.md'),'---\nkind: task\nkind: epic\n---\n');assert.throws(()=>f.run('task.md','approved'),/unique|map|key/i);});
 test('task needs started plan and evidence; status write preserves body',t=>{const f=fixture(t);f.run('task.md','approved',true);assert.throws(()=>f.run('task.md','in-progress'),/Start/);f.run('plan.md','in-progress',true);f.run('task.md','in-progress',true);assert.throws(()=>f.run('task.md','in-review'),/evidence/);assert.match(fs.readFileSync(path.join(f.root,'task.md'),'utf8'),/Body/);});
+test('task completion needs local evidence and a commit, not staff code review',t=>{
+ const f=fixture(t);
+ f.docs['plan.md'].status='in-progress';
+ f.docs['task.md'].evidence={red:'Expected test failure',green:'Focused test passed',qa:'Full QA passed',commit:'abcdef1'};
+ f.save();
+ f.run('task.md','approved',true);
+ f.run('task.md','in-progress',true);
+ f.run('task.md','in-review',true);
+ f.run('task.md','done',true);
+ const task=readDocument(path.join(f.root,'task.md')).data;
+ assert.equal(task.status,'done');
+ assert.equal(task.approvals.code_review,null);
+ f.run('plan.md','in-review',true);
+ assert.throws(()=>f.run('plan.md','in-appsec-review'),/code_review/);
+});
 test('all tasks and both final reviews are required even when low risk',t=>{const f=fixture(t);f.docs['plan.md'].status='in-progress';f.save();assert.throws(()=>f.run('plan.md','in-review'),/done/);f.docs['task.md'].status='done';f.docs['task.md'].evidence={red:'test failed as expected',green:'tests passed',qa:'integration passed',commit:'abcdef1'};f.save();f.run('plan.md','in-review',true);assert.throws(()=>f.run('plan.md','in-appsec-review'),/code_review/);f.docs['plan.md'].status='in-review';f.docs['plan.md'].review_commit='a'.repeat(40);f.docs['plan.md'].approvals.code_review={...f.approval,commit:'a'.repeat(40)};f.save();f.run('plan.md','in-appsec-review',true);assert.throws(()=>f.run('plan.md','ready-for-pr'),/appsec_review/);f.docs['plan.md'].status='in-appsec-review';f.docs['plan.md'].approvals.appsec_review={...f.approval,commit:'b'.repeat(40)};f.save();assert.throws(()=>f.run('plan.md','ready-for-pr'),/same implementation/);f.docs['plan.md'].approvals.appsec_review.commit='a'.repeat(40);f.save();f.run('plan.md','ready-for-pr',true);});
 test('code reviewer verifies every finding on the final review commit',t=>{const f=fixture(t);const commit='a'.repeat(40);f.docs['task.md'].status='done';f.docs['task.md'].evidence={red:'Expected failure',green:'Tests pass',qa:'QA passes',commit:'abcdef1'};f.docs['plan.md'].status='in-review';f.docs['plan.md'].review_commit=commit;f.docs['plan.md'].approvals.code_review={...f.approval,commit};f.docs['plan.md'].review_comments=[{id:'CR-001',status:'open'}];f.save();assert.throws(()=>f.run('plan.md','in-appsec-review'),/review comments/);f.docs['plan.md'].review_comments=[{id:'CR-001',status:'resolved',resolution_commit:commit,verified_by:'reviewer',verified_date:'2026-09-07',verified_commit:commit}];f.save();f.run('plan.md','in-appsec-review',true);});
 test('rework clears both final approvals',t=>{const f=fixture(t);f.docs['plan.md'].status='in-appsec-review';f.docs['plan.md'].approvals.code_review=f.approval;f.docs['plan.md'].approvals.appsec_review=f.approval;f.save();f.run('plan.md','in-progress',true);const d=readDocument(path.join(f.root,'plan.md')).data;assert.equal(d.approvals.code_review,null);assert.equal(d.approvals.appsec_review,null);});
