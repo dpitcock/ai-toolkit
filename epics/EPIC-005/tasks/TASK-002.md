@@ -2,12 +2,22 @@
 kind: task
 id: TASK-002
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 10
 depends_on: [ tasks/TASK-007.md ]
-evidence: { red: null, green: null, qa: null, commit: null }
+evidence:
+  red: "Focused preflight tests first failed because tier3Binding was unknown;
+    review remediation then reproduced the lifecycle gap when a draft plan
+    preflight succeeded."
+  green: "node --test tests/task-assessment.test.mjs tests/preflight.test.mjs
+    passed: 16 tests, 0 failures."
+  qa: "Bounded full-suite groups passed: 74 and 35 tests, 0 failures (125 total).
+    Independent TASK-002 review approved 0f0db5a after confirming
+    approved/in-progress plan and approved-task binding plus wrong-branch,
+    stale, unlisted, and symlink rejection coverage. git diff --check passed."
+  commit: "0f0db5a"
 approvals:
   {
     principal_engineer: null,
