@@ -2,7 +2,7 @@
 kind: task
 id: TASK-005
 owner: "Codex"
-status: draft
+status: done
 revision: 2
 parent: ../epic-plan.md
 parent_revision: 2
@@ -11,15 +11,35 @@ depends_on:
   - tasks/TASK-002.md
   - tasks/TASK-003.md
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "RED — the missing validator export failed as expected (exit 1). The four
+    original review regressions, two follow-up regressions, and forked-branch
+    chronology regression failed before fixes: merge-commit code, preflight
+    chronology, linked override digest, Tier 3 without a checked epic gate,
+    earlier intended-file code, a merged-plan skip, and an implementation branch
+    merged after preflight, plus an orphan-root implementation merged after
+    preflight."
+  green: "GREEN — node --test tests/check-tier2.test.mjs tests/gates.test.mjs:
+    37/37 passed after fixes."
+  qa: "QA — npm test: 113/113 passed. git diff --check and git diff --cached
+    --check were clean. Coverage includes parent-relative merge changes,
+    sequential, forked, and orphan-root implementation-before-preflight
+    histories, linked accepted overrides, Tier 3 with no checked epic plan or
+    only a merged-plan skip, and preservation of the existing epic gate."
+  commit: 43ceb6c7238a100662b4b6c6f31b55276f09d337
 approvals:
   principal_engineer: null
   appsec: null
   qa_lead: null
-  code_review: null
+  code_review:
+    by: "/root/review_task005"
+    date: "2026-09-25"
+    notes: "Initial review findings and follow-up Git-history edge cases were fixed
+      in separate commits. Final read-only review approved the merge and root
+      commit checks, Tier 3 gate requirement, linked override handling, and
+      preflight ancestry enforcement with no remaining Critical or Required
+      findings."
+    revision: 2
+    commit: "43ceb6c7238a100662b4b6c6f31b55276f09d337"
   appsec_review: null
   accessibility: null
   accessibility_review: null
