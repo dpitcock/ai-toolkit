@@ -4,8 +4,8 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {isDeepStrictEqual} from 'node:util';
 import YAML from 'yaml';
-import {classifyTask} from './lib/task-tier.mjs';
-import {parseWorkspaceConfig,workspaceConfigDigest} from './lib/workspace-config.mjs';
+import {classifyTask,selectEffectiveTier} from './lib/task-tier.mjs';
+import {parseWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from './lib/workspace-config.mjs';
 import {assertAcceptedWorkspaceConfig,readWorkspaceHistory} from './lib/workspace-history.mjs';
 import {pathToFileURL} from 'node:url';
 
@@ -154,7 +154,8 @@ function acceptedEffectivePolicy(root,assessment,adapter) {
     if(recorded.revision!==policy.revision) fail('Accepted config revision is stale; rerun preflight');
   }
   if(workspaceConfigDigest(effective)!==recorded.effectiveDigest) fail('Effective accepted config digest is stale; rerun preflight');
-  return {config:effective,accepted:policy,coordinationRoot,directMergeEnabled:effective.task_tiers?.tier_1_direct_merge??false};
+  return {config:effective,accepted:policy,coordinationRoot,directMergeEnabled:effective.task_tiers?.tier_1_direct_merge??false,
+    tierPolicy:effectiveTierPolicy(effective)};
 }
 
 function assertInitialClassification(record) {
@@ -164,6 +165,32 @@ function assertInitialClassification(record) {
     accessibilityEvidence:record.accessibilityEvidence,
   });
   if(result.tier!==record.selectedTier || !isDeepStrictEqual(result.reasons,record.reasons)) fail('Initial assessment classification is internally inconsistent');
+}
+
+function effectiveTierPolicy(config) {
+  const definition=workspaceTierDefinition(config);
+  return {configuredMinimum:definition===null ? 1 : Number(config.task_tier.slice(-1)),definition};
+}
+
+function assertEffectiveInitialTier(record,initial,config) {
+  const currentHasPolicy=Object.hasOwn(record,'tierPolicy');
+  const initialHasPolicy=Object.hasOwn(initial,'tierPolicy');
+  if(currentHasPolicy!==initialHasPolicy || (currentHasPolicy && !isDeepStrictEqual(record.tierPolicy,initial.tierPolicy))) {
+    fail('Initial tier policy evidence differs from the committed assessment');
+  }
+  if(!currentHasPolicy) {
+    assertInitialClassification(record);
+    return;
+  }
+  const policy=effectiveTierPolicy(config);
+  if(!isDeepStrictEqual(record.tierPolicy,policy)) fail('Tier policy definition provenance is invalid or stale');
+  const result=classifyTask({
+    stage:'preflight',developer:record.developer,scope:record.scope,risks:record.risks,
+    userFacingUI:record.userFacingUI,claimedTier:record.claimedTier,intendedFiles:record.intendedFiles,
+    accessibilityEvidence:record.accessibilityEvidence,
+  });
+  const selected=selectEffectiveTier({configuredMinimum:policy.configuredMinimum,riskTier:result.tier,earlierPreflightTier:1});
+  if(selected!==record.selectedTier || !isDeepStrictEqual(result.reasons,record.reasons)) fail('Initial assessment tier policy is internally inconsistent');
 }
 
 function committedInitialRecord(relative,currentHead,adapter) {
@@ -187,7 +214,6 @@ function assertInitialFieldsMatch(current,initial) {
       fail(`Current ${field} differs from the committed initial assessment evidence`);
     }
   }
-  assertInitialClassification(current);
 }
 
 function changedFiles(start,head,assessmentPath,adapter) {
@@ -294,6 +320,7 @@ export function checkTier1({assessmentPath,repoRoot=process.cwd(),gitAdapter=cre
   const baseline=committedInitialRecord(relative,currentHead,gitAdapter);
   assertInitialFieldsMatch(record,baseline.record);
   const policy=acceptedEffectivePolicy(root,record,gitAdapter);
+  assertEffectiveInitialTier(record,baseline.record,policy.config);
   const actualFiles=changedFiles(record.startingHead,currentHead,relative,gitAdapter);
   if(!actualFiles.length) fail('No implementation diff exists after the initial assessment; Tier 1 check requires a non-empty diff');
   const classified=classifyTask({
@@ -301,12 +328,13 @@ export function checkTier1({assessmentPath,repoRoot=process.cwd(),gitAdapter=cre
     claimedTier:record.claimedTier,intendedFiles:record.intendedFiles,actualFiles,
     accessibilityEvidence:record.accessibilityEvidence,reviewedCommit:currentHead,
   });
-  const route=routeFor(classified.tier,policy.directMergeEnabled);
-  const directMergeEligible=record.selectedTier===1 && classified.tier===1 && policy.directMergeEnabled;
+  const tier=selectEffectiveTier({configuredMinimum:policy.tierPolicy?.configuredMinimum??1,riskTier:classified.tier,earlierPreflightTier:record.selectedTier});
+  const route=routeFor(tier,policy.directMergeEnabled);
+  const directMergeEligible=record.selectedTier===1 && tier===1 && policy.directMergeEnabled;
   const check={
-    status:record.selectedTier===1&&classified.tier===1?'passed':'escalated',
+    status:record.selectedTier===1&&tier===1?'passed':'escalated',
     checkedHead:currentHead,initialEvidenceCommit:baseline.commit,actualFiles,
-    tier:classified.tier,reasons:classified.reasons,directMergeEligible,route,
+    tier,reasons:classified.reasons,directMergeEligible,route,
   };
   const updated=appendCheck(root,relative,record,check);
   return {record:updated,check,policy,tier:check.tier,directMergeEligible:check.directMergeEligible,route:check.route,output:formatResult({check,policy})};

@@ -4,8 +4,8 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {isDeepStrictEqual} from 'node:util';
 import YAML from 'yaml';
-import {classifyTask} from './lib/task-tier.mjs';
-import {parseWorkspaceConfig,workspaceConfigDigest} from './lib/workspace-config.mjs';
+import {classifyTask,selectEffectiveTier} from './lib/task-tier.mjs';
+import {parseWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from './lib/workspace-config.mjs';
 import {parseWorkspaceHistory,readWorkspaceHistory,assertAcceptedWorkspaceConfig} from './lib/workspace-history.mjs';
 import {resolveTier3Policy} from './lib/tier3-policy.mjs';
 
@@ -245,7 +245,16 @@ function validateTier2Evidence(record,config,reviewedCommit) {
   }
 }
 
-function assertInitialClassification(record) {
+function effectiveTierPolicy(config) {
+  const definition=workspaceTierDefinition(config);
+  return {configuredMinimum:definition===null ? 1 : Number(config.task_tier.slice(-1)),definition};
+}
+
+function assertInitialClassification(record,config) {
+  const policy=effectiveTierPolicy(config);
+  if(Object.hasOwn(record,'tierPolicy')) {
+    if(!isDeepStrictEqual(record.tierPolicy,policy)) fail('tier policy definition provenance is invalid or stale');
+  }
   const {tier3Binding,...classificationRecord}=record;
   const result=classifyTask({
     stage:'preflight',developer:classificationRecord.developer,scope:classificationRecord.scope,risks:classificationRecord.risks,
@@ -253,7 +262,10 @@ function assertInitialClassification(record) {
     accessibilityEvidence:classificationRecord.accessibilityEvidence,
     ...(tier3Binding===undefined?{}:{tier3Binding}),
   });
-  if(result.tier!==classificationRecord.selectedTier || !isDeepStrictEqual(result.reasons,classificationRecord.reasons)) {
+  const selected=Object.hasOwn(record,'tierPolicy')
+    ? selectEffectiveTier({configuredMinimum:policy.configuredMinimum,riskTier:result.tier,earlierPreflightTier:1})
+    : result.tier;
+  if(selected!==classificationRecord.selectedTier || !isDeepStrictEqual(result.reasons,classificationRecord.reasons)) {
     fail('first committed assessment classification is internally inconsistent; use the Tier 3 route');
   }
 }
@@ -356,9 +368,13 @@ export function validateTier2Assessment({assessmentPath,repoRoot:rootValue,baseS
   const record=readAssessment(root,relative);
   const baseline=firstAssessmentCommit(relative,head,root);
   assertPreflightBeforeIntendedChanges(root,base,baseline);
-  assertInitialClassification(baseline.record);
   assertInitialFactsUnchanged(record,baseline.record);
   const config=acceptedPolicy(root,record,base);
+  assertInitialClassification(baseline.record,config);
+  if(Object.hasOwn(record,'tierPolicy')!==Object.hasOwn(baseline.record,'tierPolicy')
+    || (Object.hasOwn(record,'tierPolicy') && !isDeepStrictEqual(record.tierPolicy,baseline.record.tierPolicy))) {
+    fail('current tier policy differs from the first committed assessment evidence');
+  }
   const actualFiles=[...new Set(changed.filter(file=>!/^project\/task-assessments\/[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.yaml$/.test(file)))].sort();
   const classified=classifyTask({
     stage:'final',developer:record.developer,scope:record.scope,risks:record.risks,
@@ -366,7 +382,8 @@ export function validateTier2Assessment({assessmentPath,repoRoot:rootValue,baseS
     actualFiles,accessibilityEvidence:record.accessibilityEvidence,
     reviewedCommit:record.reviewEvidence?.commit,
   });
-  const tier=Math.max(baseline.record.selectedTier,classified.tier);
+  const policy=effectiveTierPolicy(config);
+  const tier=selectEffectiveTier({configuredMinimum:policy.configuredMinimum,riskTier:classified.tier,earlierPreflightTier:baseline.record.selectedTier});
   if(tier===3) {
     if(baseline.record.selectedTier!==3) {
       fail(`actual PR diff reclassifies to Tier 3 (${classified.reasons.join(', ')||'higher recorded tier'}); use the governed Tier 3 review route`);

@@ -7,7 +7,7 @@ import {execFileSync,spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import YAML from 'yaml';
 import {createTaskAssessment} from '../scripts/lib/task-assessment.mjs';
-import {parseWorkspaceConfig,workspaceConfigDigest} from '../scripts/lib/workspace-config.mjs';
+import {parseWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from '../scripts/lib/workspace-config.mjs';
 import {validateTier2Assessment} from '../scripts/check-tier2.mjs';
 
 const assessmentPath='project/task-assessments/tier2-change.yaml';
@@ -20,9 +20,10 @@ function git(root,...args) { return execFileSync('git',['-C',root,...args],{enco
 
 function history(config) {
   const digest=workspaceConfigDigest(config);
+  const definition=workspaceTierDefinition(config);
   return [
-    {kind:'proposal',revision:1,date:'2026-09-25',digest,config,reasons:{}},
-    {kind:'acceptance',revision:1,date:'2026-09-25',digest,by:'Dennis',reason:'Accepted fixture policy',changes:[]},
+    {kind:'proposal',revision:1,date:'2026-09-25',digest,config,reasons:{},...(definition?{definition}:{})},
+    {kind:'acceptance',revision:1,date:'2026-09-25',digest,by:'Dennis',reason:'Accepted fixture policy',changes:[],...(definition?{definition}:{})},
   ].map(record=>JSON.stringify(record)).join('\n')+'\n';
 }
 
@@ -33,14 +34,14 @@ function makeReview(commit,by,revision=1) {
 function fixture(t,{input=answers,missingRoles=[],review={},roleEdits={},assessmentEdits={},extraActualFiles=[],extraAfterReview=[],
   policyDrift=false,accessibilityFinalReview=false,accessibilityFinalReviewEdits={},multipleAssessments=false,
   secondAssessmentEdits={},initialEvidenceEdits={},beforeAssessmentFiles=[],implementationOnSideBranch=false,
-  implementationOnOrphanRoot=false,mergeCodeAfterReview=false,headRef='feature/tier2-check'}={}) {
+  implementationOnOrphanRoot=false,mergeCodeAfterReview=false,headRef='feature/tier2-check',taskTier=null}={}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'check-tier2-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   const config={
     workspace:{repository:'tier2-fixture',environment:'test',provider:'codex',slack_channel_name:'ws-tier2-fixture-codex',timezone:'UTC'},
     approvals_required:{principal:true,qa:true,appsec:true,accessibility_reviewer:false,ui_designer:false},
     approvals_overrides:{reason:'No UI in fixture',exempt:['accessibility_reviewer','ui_designer']},
-    daily_summary:{local_time:'09:00'},task_tiers:{tier_1_direct_merge:false},
+    daily_summary:{local_time:'09:00'},...(taskTier?{task_tier:taskTier,tier_overrides:{direct_merge:false}}:{task_tiers:{tier_1_direct_merge:false}}),
   };
   fs.mkdirSync(path.join(root,'config'),{recursive:true});fs.mkdirSync(path.join(root,'project'),{recursive:true});
   fs.writeFileSync(path.join(root,'README.md'),'fixture\n');
@@ -354,6 +355,14 @@ test('accepts a linked-worktree task with an accepted nontrivial policy override
 test('refuses a Tier 2 assessment when the actual diff reclassifies to Tier 3',t=>{
   const state=fixture(t,{extraActualFiles:['src/expanded-scope.js']});
   assert.throws(()=>validate(state),/reclassifies to Tier 3/);
+});
+
+test('keeps a configured Tier 2 preflight floor and rejects forged shared-tier provenance',t=>{
+  const minimum=fixture(t,{taskTier:'tier_2'});
+  assert.equal(validate(minimum).tier,2);
+
+  const forged=fixture(t,{taskTier:'tier_2',initialEvidenceEdits:{tierPolicy:{configuredMinimum:1,definition:{version:1,digest:'0'.repeat(64)}}}});
+  assert.throws(()=>validate(forged),/tier policy|definition|provenance/i);
 });
 
 test('accepts UI evidence only when preflight and final review evidence are independent and current',t=>{

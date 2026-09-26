@@ -6,7 +6,7 @@ import path from 'node:path';
 import {execFileSync,spawnSync} from 'node:child_process';
 import YAML from 'yaml';
 import {createTaskAssessment} from '../scripts/lib/task-assessment.mjs';
-import {workspaceConfigDigest} from '../scripts/lib/workspace-config.mjs';
+import {workspaceConfigDigest,workspaceTierDefinition} from '../scripts/lib/workspace-config.mjs';
 import {checkTier1} from '../scripts/check-tier1.mjs';
 
 const cli=path.resolve(import.meta.dirname,'../scripts/check-tier1.mjs');
@@ -16,12 +16,16 @@ const lowRisk={developer:'implementer-session',scope:'single-file',risks:noRisks
 function git(root,...args) { return execFileSync('git',['-C',root,...args],{encoding:'utf8'}).trim(); }
 function history(config) {
   const digest=workspaceConfigDigest(config);
-  return [{kind:'proposal',revision:1,date:'2026-09-25',digest,config,reasons:{}},{kind:'acceptance',revision:1,date:'2026-09-25',digest,by:'Dennis',reason:'Accepted fixture policy',changes:[]}].map(record=>JSON.stringify(record)).join('\n')+'\n';
+  const definition=workspaceTierDefinition(config);
+  return [
+    {kind:'proposal',revision:1,date:'2026-09-25',digest,config,reasons:{},...(definition?{definition}:{})},
+    {kind:'acceptance',revision:1,date:'2026-09-25',digest,by:'Dennis',reason:'Accepted fixture policy',changes:[],...(definition?{definition}:{})},
+  ].map(record=>JSON.stringify(record)).join('\n')+'\n';
 }
-function fixture(t,{tier1=true,omitTier1=false,answers=lowRisk,commitTogether=false,sourceBeforeEvidence=false}={}) {
+function fixture(t,{tier1=true,omitTier1=false,taskTier=null,answers=lowRisk,commitTogether=false,sourceBeforeEvidence=false,initialEvidenceEdits={}}={}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'check-tier1-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
-  const config={workspace:{repository:'tier1-fixture',environment:'test',provider:'codex',slack_channel_name:'ws-tier1-fixture-codex',timezone:'UTC'},approvals_required:{principal:true,qa:true,appsec:true,accessibility_reviewer:false,ui_designer:false},approvals_overrides:{reason:'No UI in fixture',exempt:['accessibility_reviewer','ui_designer']},daily_summary:{local_time:'09:00'},...(omitTier1?{}:{task_tiers:{tier_1_direct_merge:tier1}})};
+  const config={workspace:{repository:'tier1-fixture',environment:'test',provider:'codex',slack_channel_name:'ws-tier1-fixture-codex',timezone:'UTC'},approvals_required:{principal:true,qa:true,appsec:true,accessibility_reviewer:false,ui_designer:false},approvals_overrides:{reason:'No UI in fixture',exempt:['accessibility_reviewer','ui_designer']},daily_summary:{local_time:'09:00'},...(taskTier?{task_tier:taskTier,tier_overrides:{direct_merge:false}}:(omitTier1?{}:{task_tiers:{tier_1_direct_merge:tier1}}))};
   fs.mkdirSync(path.join(root,'config'),{recursive:true});fs.mkdirSync(path.join(root,'project'),{recursive:true});
   fs.writeFileSync(path.join(root,'README.md'),'fixture\n');
   fs.writeFileSync(path.join(root,'config/workspace-config.yaml'),YAML.stringify(config));
@@ -29,6 +33,11 @@ function fixture(t,{tier1=true,omitTier1=false,answers=lowRisk,commitTogether=fa
   git(root,'init','-q');git(root,'config','user.email','qa@example.test');git(root,'config','user.name','QA');git(root,'add','.');git(root,'commit','-qm','accepted fixture policy');
   const startingHead=git(root,'rev-parse','HEAD');
   const preflight=createTaskAssessment({id:'quick-fix',answers,coordinationRoot:root,worktreeRoot:root});
+  if(Object.keys(initialEvidenceEdits).length) {
+    const record=YAML.parse(fs.readFileSync(path.join(root,assessmentPath),'utf8'));
+    Object.assign(record,initialEvidenceEdits);
+    fs.writeFileSync(path.join(root,assessmentPath),YAML.stringify(record,{lineWidth:0}));
+  }
   if(sourceBeforeEvidence || commitTogether) {
     const source=path.join(root,answers.intendedFiles[0]);
     fs.mkdirSync(path.dirname(source),{recursive:true});fs.writeFileSync(source,'export const notify = () => true;\n');
@@ -109,6 +118,22 @@ test('a false or omitted accepted Tier 1 policy preserves the PR route',t=>{
     assert.equal(result.directMergeEligible,false);
     assert.match(result.output,/pull request/i);
   }
+});
+
+test('reconstructs a configured Tier 2 minimum and rejects forged shared-tier provenance',t=>{
+  const minimum=assessmentFixture(t,{taskTier:'tier_2'});
+  fs.mkdirSync(path.join(minimum.root,'src'),{recursive:true});
+  fs.writeFileSync(path.join(minimum.root,'src/notify.js'),'export const notify = () => true;\n');
+  git(minimum.root,'add','src/notify.js');git(minimum.root,'commit','-qm','implement notification fix');
+  const routed=checkTier1({assessmentPath:minimum.assessmentPath,repoRoot:minimum.root});
+  assert.equal(routed.tier,2);
+  assert.equal(routed.directMergeEligible,false);
+
+  const forged=assessmentFixture(t,{taskTier:'tier_2',initialEvidenceEdits:{tierPolicy:{configuredMinimum:1,definition:{version:1,digest:'0'.repeat(64)}}}});
+  fs.mkdirSync(path.join(forged.root,'src'),{recursive:true});
+  fs.writeFileSync(path.join(forged.root,'src/notify.js'),'export const notify = () => true;\n');
+  git(forged.root,'add','src/notify.js');git(forged.root,'commit','-qm','implement notification fix');
+  assert.throws(()=>checkTier1({assessmentPath:forged.assessmentPath,repoRoot:forged.root}),/tier policy|definition|provenance/i);
 });
 
 test('resolves current accepted policy through a registered coordination worktree',t=>{
