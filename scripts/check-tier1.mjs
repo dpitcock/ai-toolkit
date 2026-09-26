@@ -6,14 +6,13 @@ import {isDeepStrictEqual} from 'node:util';
 import YAML from 'yaml';
 import {classifyTask,selectEffectiveTier} from './lib/task-tier.mjs';
 import {resolveTierDefaults} from './lib/tier-defaults.mjs';
-import {parseWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from './lib/workspace-config.mjs';
+import {applyWorktreeOverlay,parseWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from './lib/workspace-config.mjs';
 import {assertAcceptedWorkspaceConfig,readWorkspaceHistory} from './lib/workspace-history.mjs';
 import {pathToFileURL} from 'node:url';
 
 const READ_ONLY_COMMANDS=new Set(['rev-parse','worktree','status','rev-list','diff','diff-tree','show','log','ls-files','ls-tree','merge-base']);
 const INITIAL_FIELDS=['kind','id','startingHead','acceptedConfig','developer','scope','risks','userFacingUI','intendedFiles','claimedTier','selectedTier','reasons','accessibilityEvidence'];
 const RISK_KEYS=['auth','secrets','schema','publicApi','financial','userData','criticalInfrastructure','hardToRevert'];
-const CONFIG_ROLES=['principal','qa','appsec','accessibility_reviewer','ui_designer'];
 
 function fail(message) { throw new Error(message); }
 function isObject(value) { return value!==null && typeof value==='object' && !Array.isArray(value); }
@@ -101,25 +100,6 @@ function readAcceptedConfig(root) {
   return {config,accepted};
 }
 
-function applyWorktreeOverlay(rootConfig,overlay) {
-  if(Object.hasOwn(rootConfig,'worktree_overrides')) fail('Coordination config cannot declare worktree_overrides');
-  if(Object.hasOwn(overlay,'task_tiers') && JSON.stringify(overlay.task_tiers)!==JSON.stringify(rootConfig.task_tiers)) {
-    fail('Accepted Tier 1 policy cannot be overridden by a worktree');
-  }
-  const markers=overlay.worktree_overrides;
-  if(!markers) fail('Linked worktree config has no accepted override markers');
-  const effective=structuredClone(rootConfig);
-  for(const marker of markers) {
-    if(marker==='workspace.provider') effective.workspace.provider=overlay.workspace.provider;
-    else if(marker==='approvals_overrides') effective.approvals_overrides=overlay.approvals_overrides;
-    else if(CONFIG_ROLES.some(role=>marker===`approvals_required.${role}`)) {
-      const role=marker.slice('approvals_required.'.length);
-      effective.approvals_required[role]=overlay.approvals_required[role];
-    } else fail(`Unknown worktree override marker: ${marker}`);
-  }
-  return parseWorkspaceConfig(YAML.stringify(effective));
-}
-
 function acceptedEffectivePolicy(root,assessment,adapter) {
   const recorded=assessment.acceptedConfig;
   if(!/^[a-f0-9]{64}$/.test(recorded.effectiveDigest) || !Number.isInteger(recorded.revision)
@@ -146,7 +126,7 @@ function acceptedEffectivePolicy(root,assessment,adapter) {
         const rootConfig=readAcceptedConfig(candidate);
         if(Object.hasOwn(rootConfig.config,'worktree_overrides') || rootConfig.accepted.digest!==recorded.coordination.digest
           || rootConfig.accepted.revision!==recorded.coordination.revision) continue;
-        const combined=applyWorktreeOverlay(rootConfig.config,currentWorktree.config);
+        const {config:combined}=applyWorktreeOverlay(rootConfig.config,currentWorktree.config);
         if(workspaceConfigDigest(combined)===recorded.effectiveDigest) matches.push({root:candidate,config:combined,accepted:rootConfig.accepted});
       } catch { /* Other registered roots are not candidates for this assessment. */ }
     }

@@ -5,7 +5,7 @@ import {execFileSync} from 'node:child_process';
 import {isDeepStrictEqual} from 'node:util';
 import YAML from 'yaml';
 import {classifyTask,selectEffectiveTier} from './lib/task-tier.mjs';
-import {parseWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from './lib/workspace-config.mjs';
+import {applyWorktreeOverlay,parseWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from './lib/workspace-config.mjs';
 import {parseWorkspaceHistory,readWorkspaceHistory,assertAcceptedWorkspaceConfig} from './lib/workspace-history.mjs';
 import {resolveTier3Policy} from './lib/tier3-policy.mjs';
 
@@ -122,25 +122,6 @@ function acceptedConfigAt(root,sha) {
   return {config,accepted};
 }
 
-function applyWorktreeOverlay(rootConfig,overlay) {
-  if(Object.hasOwn(rootConfig,'worktree_overrides')) fail('coordination config cannot declare worktree_overrides');
-  if(Object.hasOwn(overlay,'task_tiers') && JSON.stringify(overlay.task_tiers)!==JSON.stringify(rootConfig.task_tiers)) {
-    fail('linked worktree cannot override Tier 1 policy');
-  }
-  const effective=structuredClone(rootConfig),markers=overlay.worktree_overrides;
-  if(!Array.isArray(markers)) fail('linked worktree has no accepted override markers');
-  const roles=['principal','qa','appsec','accessibility_reviewer','ui_designer'];
-  for(const marker of markers) {
-    if(marker==='workspace.provider') effective.workspace.provider=overlay.workspace.provider;
-    else if(marker==='approvals_overrides') effective.approvals_overrides=overlay.approvals_overrides;
-    else if(roles.some(role=>marker===`approvals_required.${role}`)) {
-      const role=marker.slice('approvals_required.'.length);
-      effective.approvals_required[role]=overlay.approvals_required[role];
-    } else fail(`unknown linked worktree override: ${marker}`);
-  }
-  return parseWorkspaceConfig(YAML.stringify(effective));
-}
-
 function acceptedPolicy(root,record,baseSha) {
   const provenance=record.acceptedConfig;
   if(!isObject(provenance) || !/^[a-f0-9]{64}$/.test(provenance.effectiveDigest??'')
@@ -171,8 +152,8 @@ function acceptedPolicy(root,record,baseSha) {
         const accepted=assertAcceptedWorkspaceConfig(candidate,config);
         if(!Object.hasOwn(config,'worktree_overrides') && accepted.digest===provenance.coordination.digest
           && accepted.revision===provenance.coordination.revision
-          && workspaceConfigDigest(applyWorktreeOverlay(config,currentConfig))===provenance.effectiveDigest) {
-          matches.push({config,accepted,effective:applyWorktreeOverlay(config,currentConfig)});
+          && workspaceConfigDigest(applyWorktreeOverlay(config,currentConfig).config)===provenance.effectiveDigest) {
+          matches.push({config,accepted,effective:applyWorktreeOverlay(config,currentConfig).config});
         }
       } catch { /* Other registered worktrees are not coordination candidates. */ }
     }
@@ -185,7 +166,7 @@ function acceptedPolicy(root,record,baseSha) {
         fail('accepted coordination policy is stale or unavailable in PR context');
       }
       coordinationPolicy=basePolicy.accepted;
-      effective=applyWorktreeOverlay(basePolicy.config,currentConfig);
+      effective=applyWorktreeOverlay(basePolicy.config,currentConfig).config;
     }
   }
   if(provenance.revision!==coordinationPolicy.revision || workspaceConfigDigest(effective)!==provenance.effectiveDigest) {

@@ -160,20 +160,7 @@ export function workspaceTierDefinition(config) {
   return resolveTierDefaults({tier,overrides:normalized.tier_overrides,templateRepository:false}).definition;
 }
 
-export function resolveWorkspaceConfig({coordinationRoot,worktreeRoot=coordinationRoot}) {
-  if(!coordinationRoot || !worktreeRoot) throw new Error('A repository root is required');
-  const root=fs.realpathSync(coordinationRoot);
-  const readConfig=base=>{
-    const file=path.join(base,'config','workspace-config.yaml');
-    const actual=fs.realpathSync(file);
-    if(!actual.startsWith(base+path.sep) || fs.lstatSync(file).isSymbolicLink() || !fs.statSync(actual).isFile()) {
-      throw new Error('Workspace config must be a regular file inside the repository');
-    }
-    return parseWorkspaceConfig(fs.readFileSync(actual,'utf8'));
-  };
-  const config=readConfig(root);
-  if(Object.hasOwn(config,'worktree_overrides')) throw new Error('Coordination config cannot declare worktree_overrides');
-  const worktree=fs.realpathSync(worktreeRoot);
+function rootSources(config) {
   const sources={};
   for(const [section,entries] of Object.entries(config)) {
     if(entries && typeof entries==='object' && !Array.isArray(entries)) {
@@ -182,13 +169,14 @@ export function resolveWorkspaceConfig({coordinationRoot,worktreeRoot=coordinati
       sources[section]='root';
     }
   }
-  if(worktree===root) return {config,sources};
-  const registered=execFileSync('git',['-C',worktree,'worktree','list','--porcelain'],{encoding:'utf8'})
-    .split('\n').filter(line=>line.startsWith('worktree ')).map(line=>fs.realpathSync(line.slice(9)));
-  if(!registered.includes(root) || !registered.includes(worktree)) {
-    throw new Error('Worktree and coordination root must be linked Git worktrees');
-  }
-  const overlay=readConfig(worktree);
+  return sources;
+}
+
+/** Pure overlay semantics shared by preflight and committed-policy final checks. */
+export function applyWorktreeOverlay(rootConfig,worktreeConfig) {
+  const config=normalize(rootConfig),overlay=normalize(worktreeConfig);
+  if(Object.hasOwn(config,'worktree_overrides')) throw new Error('Coordination config cannot declare worktree_overrides');
+  const sources=rootSources(config);
   for(const field of ['task_tiers','task_tier','tier_overrides']) {
     if(JSON.stringify(overlay[field])!==JSON.stringify(config[field])) {
       throw new Error('Tier policy is defined by the accepted coordination root; worktrees cannot override it');
@@ -221,4 +209,27 @@ export function resolveWorkspaceConfig({coordinationRoot,worktreeRoot=coordinati
     throw new Error('workflow.autopilot changes require a worktree_overrides marker');
   }
   return {config:parseWorkspaceConfig(YAML.stringify(effective)),sources};
+}
+
+export function resolveWorkspaceConfig({coordinationRoot,worktreeRoot=coordinationRoot}) {
+  if(!coordinationRoot || !worktreeRoot) throw new Error('A repository root is required');
+  const root=fs.realpathSync(coordinationRoot);
+  const readConfig=base=>{
+    const file=path.join(base,'config','workspace-config.yaml');
+    const actual=fs.realpathSync(file);
+    if(!actual.startsWith(base+path.sep) || fs.lstatSync(file).isSymbolicLink() || !fs.statSync(actual).isFile()) {
+      throw new Error('Workspace config must be a regular file inside the repository');
+    }
+    return parseWorkspaceConfig(fs.readFileSync(actual,'utf8'));
+  };
+  const config=readConfig(root);
+  if(Object.hasOwn(config,'worktree_overrides')) throw new Error('Coordination config cannot declare worktree_overrides');
+  const worktree=fs.realpathSync(worktreeRoot);
+  if(worktree===root) return {config,sources:rootSources(config)};
+  const registered=execFileSync('git',['-C',worktree,'worktree','list','--porcelain'],{encoding:'utf8'})
+    .split('\n').filter(line=>line.startsWith('worktree ')).map(line=>fs.realpathSync(line.slice(9)));
+  if(!registered.includes(root) || !registered.includes(worktree)) {
+    throw new Error('Worktree and coordination root must be linked Git worktrees');
+  }
+  return applyWorktreeOverlay(config,readConfig(worktree));
 }

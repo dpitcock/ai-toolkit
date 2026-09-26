@@ -168,24 +168,45 @@ function writeGovernance(root,id,{status='approved',reviewedCommit=null,frontmat
   write('project/project-plan.md',project);write(`epics/${id}/epic.md`,epic);write(`epics/${id}/epic-plan.md`,plan);write(`epics/${id}/tasks/TASK-001.md`,task);
 }
 
-function tier3Fixture(t,{boundPlanId='EPIC-043',policyEdit=null,bindingEdit=null,loadedPlanId=null,loadedPlanRevision=null}={}) {
+function tier3Fixture(t,{boundPlanId='EPIC-043',policyEdit=null,bindingEdit=null,loadedPlanId=null,loadedPlanRevision=null,autopilot,invalidOverlay}={}) {
   const coordination=fs.mkdtempSync(path.join(os.tmpdir(),'check-tier3-coordination-'));
   const linked=path.join(coordination,'.worktrees',`EPIC-043-${path.basename(coordination)}`);
   t.after(()=>{try { git(coordination,'worktree','remove','--force',linked); } catch {} fs.rmSync(coordination,{recursive:true,force:true});fs.rmSync(linked,{recursive:true,force:true});});
   const config={workspace:{repository:'tier3-fixture',environment:'test',provider:'codex',slack_channel_name:'ws-tier3-fixture-codex',timezone:'UTC'},approvals_required:{principal:true,qa:true,appsec:true,accessibility_reviewer:false,ui_designer:false},approvals_overrides:{reason:'No UI',exempt:['accessibility_reviewer','ui_designer']},daily_summary:{local_time:'09:00'},task_tiers:{tier_1_direct_merge:false}};
+  if(autopilot!==undefined || invalidOverlay) {
+    delete config.task_tiers;
+    Object.assign(config,{task_tier:'tier_3',tier_overrides:{direct_merge:false},workflow:{autopilot:autopilot??false}});
+  }
   fs.mkdirSync(path.join(coordination,'config'),{recursive:true});fs.mkdirSync(path.join(coordination,'project'),{recursive:true});
   fs.writeFileSync(path.join(coordination,'README.md'),'fixture\n');fs.writeFileSync(path.join(coordination,'config/workspace-config.yaml'),YAML.stringify(config));fs.writeFileSync(path.join(coordination,'project/workspace-config-history.jsonl'),history(config));
   git(coordination,'init','-q');git(coordination,'config','user.email','qa@example.test');git(coordination,'config','user.name','QA');git(coordination,'add','.');git(coordination,'commit','-qm','accepted coordination policy');
+  const coordinationBase=git(coordination,'rev-parse','HEAD');
   git(coordination,'worktree','add','-q','-b','epic/EPIC-043',linked);
   const overlay={...config,workspace:{...config.workspace,provider:'claude'},worktree_overrides:['workspace.provider']};
+  if(autopilot!==undefined) {
+    overlay.workflow={autopilot:!autopilot};overlay.worktree_overrides.push('workflow.autopilot');
+  }
   fs.writeFileSync(path.join(linked,'config/workspace-config.yaml'),YAML.stringify(overlay));fs.writeFileSync(path.join(linked,'project/workspace-config-history.jsonl'),history(overlay));
   git(linked,'add','--','config/workspace-config.yaml','project/workspace-config-history.jsonl');git(linked,'commit','-qm','accepted linked policy');
-  const baseSha=git(linked,'rev-parse','HEAD');
+  const baseSha=autopilot!==undefined || invalidOverlay?coordinationBase:git(linked,'rev-parse','HEAD');
   writeGovernance(linked,'EPIC-043');
   if(boundPlanId!=='EPIC-043') writeGovernance(linked,boundPlanId);
   git(linked,'add','--','project','epics');git(linked,'commit','-qm','add governed plans');
   const input={developer:'developer',scope:'cross-cutting',risks:{...risks,auth:true},userFacingUI:false,claimedTier:3,intendedFiles:['scripts/tier3-change.mjs'],accessibilityEvidence:null,tier3Binding:{planPath:'epics/EPIC-043/epic-plan.md',taskPath:'epics/EPIC-043/tasks/TASK-001.md'}};
   createTaskAssessment({id:'tier3-change',answers:input,coordinationRoot:coordination,worktreeRoot:linked,enforceTier3Binding:true});
+  if(invalidOverlay) {
+    invalidOverlay(overlay);
+    fs.writeFileSync(path.join(linked,'config/workspace-config.yaml'),YAML.stringify(overlay));
+    fs.writeFileSync(path.join(linked,'project/workspace-config-history.jsonl'),history(overlay));
+    git(linked,'add','config/workspace-config.yaml','project/workspace-config-history.jsonl');
+    git(linked,'commit','-qm','invalid linked policy before assessment');
+    const file=path.join(linked,'project/task-assessments/tier3-change.yaml');
+    const record=YAML.parse(fs.readFileSync(file,'utf8'));
+    record.startingHead=git(linked,'rev-parse','HEAD');
+    record.acceptedConfig.worktree.digest=workspaceConfigDigest(overlay);
+    record.tier3Binding.policy.worktree.digest=workspaceConfigDigest(overlay);
+    fs.writeFileSync(file,YAML.stringify(record));
+  }
   if(boundPlanId!=='EPIC-043') {
     const assessmentFile=path.join(linked,'project/task-assessments/tier3-change.yaml');const record=YAML.parse(fs.readFileSync(assessmentFile,'utf8'));
     record.tier3Binding.planPath=`epics/${boundPlanId}/epic-plan.md`;record.tier3Binding.planId=`${boundPlanId}-PLAN`;record.tier3Binding.taskPath=`epics/${boundPlanId}/tasks/TASK-001.md`;
@@ -209,7 +230,7 @@ function tier3Fixture(t,{boundPlanId='EPIC-043',policyEdit=null,bindingEdit=null
   return {root:linked,baseSha,headSha:git(linked,'rev-parse','HEAD'),headRef:'epic/EPIC-043'};
 }
 
-function linkedFixture(t) {
+function linkedFixture(t,{autopilot}={}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'check-tier2-coordination-'));
   const linked=path.join(os.tmpdir(),`check-tier2-linked-${path.basename(root)}`);
   t.after(()=>{try { git(root,'worktree','remove','--force',linked); } catch {} fs.rmSync(root,{recursive:true,force:true});fs.rmSync(linked,{recursive:true,force:true});});
@@ -219,6 +240,10 @@ function linkedFixture(t) {
     approvals_overrides:{reason:'No UI in fixture',exempt:['accessibility_reviewer','ui_designer']},
     daily_summary:{local_time:'09:00'},task_tiers:{tier_1_direct_merge:false},
   };
+  if(autopilot!==undefined) {
+    delete config.task_tiers;
+    Object.assign(config,{task_tier:'tier_2',tier_overrides:{direct_merge:false},workflow:{autopilot}});
+  }
   fs.mkdirSync(path.join(root,'config'),{recursive:true});fs.mkdirSync(path.join(root,'project'),{recursive:true});
   fs.writeFileSync(path.join(root,'README.md'),'fixture\n');
   fs.writeFileSync(path.join(root,'config/workspace-config.yaml'),YAML.stringify(config));
@@ -227,6 +252,9 @@ function linkedFixture(t) {
   git(root,'add','.');git(root,'commit','-qm','accepted coordination policy');
   git(root,'worktree','add','-q','-b','linked-policy',linked);
   const overlay={...parseWorkspaceConfig(YAML.stringify(config)),workspace:{...config.workspace,provider:'claude'},worktree_overrides:['workspace.provider']};
+  if(autopilot!==undefined) {
+    overlay.workflow.autopilot=!autopilot;overlay.worktree_overrides.push('workflow.autopilot');
+  }
   fs.writeFileSync(path.join(linked,'config/workspace-config.yaml'),YAML.stringify(overlay));
   fs.writeFileSync(path.join(linked,'project/workspace-config-history.jsonl'),history(overlay));
   git(linked,'add','--','config/workspace-config.yaml','project/workspace-config-history.jsonl');
@@ -247,6 +275,46 @@ function linkedFixture(t) {
   git(linked,'add','--',assessmentPath);git(linked,'commit','-qm','record Tier 2 reviews');
   return {root:linked,coordinationRoot:root,config,baseSha,headSha:git(linked,'rev-parse','HEAD'),headRef:'feature/tier2-check',reviewedCommit,assessment:assessment.record};
 }
+
+function singleCheckout(t,state) {
+  const clone=fs.mkdtempSync(path.join(os.tmpdir(),'check-policy-ci-'));
+  t.after(()=>fs.rmSync(clone,{recursive:true,force:true}));
+  git(clone,'clone','--quiet','--no-local',state.root,'.');
+  git(clone,'checkout','--quiet','--detach',state.headSha);
+  assert.equal(git(clone,'worktree','list','--porcelain').split('\n').filter(line=>line.startsWith('worktree ')).length,1);
+  return {...state,root:clone};
+}
+
+test('Tier 2 PR CLI accepts both marked autopilot directions through registered coordination',t=>{
+  for(const autopilot of [false,true]) {
+    const state=linkedFixture(t,{autopilot});
+    const result=runCheckPr(state);
+    assert.equal(result.status,0,result.stderr);
+    assert.match(result.stdout,/Tier 2 passed/);
+  }
+});
+
+test('PR CLI reconstructs both marked autopilot directions from committed root policy in single-checkout CI',t=>{
+  for(const autopilot of [false,true]) {
+    // Policy setup is in the PR diff, so this fixture uses the governed Tier 3
+    // route, with source implementation strictly after its initial assessment.
+    const state=singleCheckout(t,tier3Fixture(t,{autopilot}));
+    const result=runCheckPr(state);
+    assert.equal(result.status,0,result.stderr);
+    assert.match(result.stdout,/Tier 3 epic-gate-required/);
+  }
+});
+
+test('PR CLI rejects unmarked autopilot and tier weakening locally and in single-checkout CI',t=>{
+  for(const invalidOverlay of [overlay=>{overlay.workflow={autopilot:true};},overlay=>{overlay.task_tier='tier_1';},overlay=>{overlay.tier_overrides={direct_merge:true};}]) {
+    const linked=tier3Fixture(t,{invalidOverlay});
+    for(const state of [linked,singleCheckout(t,linked)]) {
+      const result=runCheckPr(state);
+      assert.notEqual(result.status,0,result.stdout);
+      assert.match(result.stderr,/worktree_overrides marker|worktrees cannot override/i);
+    }
+  }
+});
 
 test('accepts a valid Tier 2 PR with exact reviewed commit and required role evidence',t=>{
   const state=fixture(t);
