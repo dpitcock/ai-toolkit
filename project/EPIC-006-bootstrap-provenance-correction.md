@@ -83,3 +83,18 @@ release adoption/activation and host gates remain required. No PR, host write,
 policy acceptance, coordination-root change, status transition or review
 resolution was performed. CR-006-004 and canonical mirror work remain outside
 this bounded task; the parent session owns subsequent verification and release.
+
+## Independent controller verification
+
+On 2026-09-26 `/root` independently reran the four-file focused command:
+121 passed, zero failed/cancelled/skipped/todo, 103116.528875 ms. Log:
+`/tmp/epic006-bootstrap-independent.log`. Source inspection also identified and
+verified the ordinary same-assessment-name regression described above.
+
+The controller separately cloned the exact source revision into the single
+detached checkout `/tmp/epic006-root-pr-check-lgPKaq`, retaining actual Git
+objects and canonical origin. That candidate's own `check-pr.mjs` exited zero
+with the real base and source SHA above and `HEAD_REF=epic/EPIC-006`, producing
+the two admission lines recorded above. No source or historical evidence was
+changed to obtain the pass. This is independent stage verification, not final
+Staff resolution or permission to open a PR.
