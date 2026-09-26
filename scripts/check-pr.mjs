@@ -1,6 +1,7 @@
 import {execFileSync} from 'node:child_process';
 import fs from 'node:fs';
 import {check,readDocument} from './check-gate.mjs';
+import {validateTier2Assessment} from './check-tier2.mjs';
 const base=process.env.BASE_SHA;
 if(!/^[a-f0-9]{40}$/.test(base??'')) throw new Error('BASE_SHA must be a full commit SHA');
 const changed=execFileSync('git',['diff','--name-only','-z',`${base}...HEAD`],{encoding:'utf8'}).split('\0').filter(Boolean);
@@ -17,4 +18,9 @@ for(const id of ids) {
  const metadataOnly=changed.every(f=>/^(epics|project)\//.test(f));
  if(data.status==='merged' && metadataOnly && /^https:\/\//.test(data.pr_url??'')) continue;
  console.log(check(file,'pr'));
+}
+const headSha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+for(const assessmentPath of changed.filter(file=>/^project\/task-assessments\/.+\.yaml$/.test(file))) {
+ const result=validateTier2Assessment({assessmentPath,repoRoot:process.cwd(),baseSha:base,headSha,headRef:process.env.HEAD_REF});
+ console.log(`${result.assessmentPath}: Tier ${result.tier} ${result.status}${result.route?` (${result.route})`:''}`);
 }
