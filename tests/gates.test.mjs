@@ -74,3 +74,32 @@ test('PR gate rejects implementation changes since approved commit',async t=>{
  fs.writeFileSync(path.join(f.root,'app.js'),'export const value = 2;\n');
  assert.throws(()=>check(planPath,'pr',{root:f.root}),/Implementation changed/);
 });
+
+test('implementation PR admission does not require final review, while plan-only PRs reject source files',async t=>{
+ const {execFileSync}=await import('node:child_process');const f=fixture(t);
+ const git=(args)=>execFileSync('git',args,{cwd:f.root,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+ git(['init']);git(['config','user.email','test@example.invalid']);git(['config','user.name','Test']);
+ f.docs['plan.md'].status='in-progress';f.save();git(['add','.']);git(['commit','-m','Start implementation']);
+ assert.doesNotThrow(()=>check(path.join(f.root,'plan.md'),'implementation-pr',{root:f.root}));
+ assert.throws(()=>check(path.join(f.root,'plan.md'),'plan-pr',{root:f.root,changedFiles:['src/app.mjs']}),/plan PR.*source/i);
+ assert.doesNotThrow(()=>check(path.join(f.root,'plan.md'),'plan-pr',{root:f.root,changedFiles:['project/plan.md','epics/EPIC-001/epic-plan.md']}));
+});
+
+test('merge requires fresh exact-current-head live host receipts, not metadata approvals',async t=>{
+ const {execFileSync}=await import('node:child_process');const f=fixture(t);
+ const git=(args)=>execFileSync('git',args,{cwd:f.root,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+ git(['init']);git(['config','user.email','test@example.invalid']);git(['config','user.name','Test']);
+ fs.writeFileSync(path.join(f.root,'app.mjs'),'export const value = 1;\n');git(['add','.']);git(['commit','-m','Implementation']);
+ const head=git(['rev-parse','HEAD']);
+ f.docs['task.md'].status='done';f.docs['task.md'].evidence={red:'Expected failure',green:'Focused suite passed',qa:'QA passed',commit:head};
+ f.docs['plan.md'].status='ready-for-pr';f.docs['plan.md'].pr_url='https://github.com/example/repo/pull/1';f.docs['plan.md'].review_commit=head;
+ for(const role of ['code_review','appsec_review']) f.docs['plan.md'].approvals[role]={...f.approval,commit:head};
+ f.save();
+ assert.throws(()=>check(path.join(f.root,'plan.md'),'merged',{root:f.root,head}),/live host evidence/i);
+ const hostEvidence={head,receipts:[
+  {stage:'final',role:'code_reviewer',reviewedSha:head,verdict:'APPROVED'},
+  {stage:'final',role:'appsec',reviewedSha:head,verdict:'APPROVED'},
+ ]};
+ assert.doesNotThrow(()=>check(path.join(f.root,'plan.md'),'merged',{root:f.root,head,hostEvidence}));
+ assert.throws(()=>check(path.join(f.root,'plan.md'),'merged',{root:f.root,head:'b'.repeat(40),hostEvidence}),/current head|exact/i);
+});

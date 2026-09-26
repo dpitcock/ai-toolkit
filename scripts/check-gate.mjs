@@ -110,6 +110,21 @@ function reviewComments(d, reviewer) {
     requireThat(comment.verified_commit===d.review_commit,'Resolved review comments must be verified on the final review commit');
   }
 }
+function planOnlyPath(file) {
+  return /^(?:docs\/[^/]+\.md|project\/[^/]+\.md|epics\/.+\.md|README\.md)$/.test(file);
+}
+function liveMergeEvidence(ctx, {root,head,hostEvidence}={}) {
+  requireThat(typeof head==='string' && /^[a-f0-9]{40}$/i.test(head),'Merge requires an exact current HEAD SHA');
+  const current=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim().toLowerCase();
+  requireThat(current===head.toLowerCase(),'Merge evidence must name the exact current HEAD');
+  requireThat(hostEvidence && typeof hostEvidence==='object' && !Array.isArray(hostEvidence),'Merge requires live host evidence');
+  requireThat(hostEvidence.head?.toLowerCase?.()===current && Array.isArray(hostEvidence.receipts),'Live host evidence must bind the exact current HEAD');
+  const required=ctx.data.accessibility?.ui ? ['code_reviewer','appsec','accessibility_reviewer'] : ['code_reviewer','appsec'];
+  for(const role of required) {
+    const receipt=hostEvidence.receipts.find(value=>value && value.stage==='final' && value.role===role);
+    requireThat(receipt && receipt.reviewedSha?.toLowerCase?.()===current && receipt.verdict==='APPROVED',`Live host evidence is missing current ${role} approval`);
+  }
+}
 function writeDocument(ctx, parsed) {
   const lock=fs.openSync(`${ctx.file}.lock`,'wx');
   try {
@@ -117,7 +132,7 @@ function writeDocument(ctx, parsed) {
     fs.writeFileSync(ctx.file,`---\n${parsed.toString()}---\n${ctx.raw.slice(ctx.match[0].length)}`);
   } finally {fs.closeSync(lock); fs.unlinkSync(`${ctx.file}.lock`);}
 }
-export function check(file,target,{root=process.cwd(),write=false}={}) {
+export function check(file,target,{root=process.cwd(),write=false,changedFiles=[],head,hostEvidence}={}) {
   const ctx={...readDocument(file),root}; const d=ctx.data;
   if(target==='draft') {
     requireThat(!['merged','done'].includes(d.status),'Completed documents cannot be reset');
@@ -131,6 +146,15 @@ export function check(file,target,{root=process.cwd(),write=false}={}) {
   }
   if(target==='pr') {
     requireThat(d.kind==='epic-plan' && d.status==='ready-for-pr','PR requires ready-for-pr epic plan');
+  } else if(target==='plan-pr') {
+    requireThat(d.kind==='epic-plan','Plan PR requires an epic plan');
+    requireThat(Array.isArray(changedFiles) && changedFiles.every(file=>typeof file==='string' && planOnlyPath(file)),'Plan PR cannot contain source or workflow files');
+    planApproved(ctx); tasks(ctx);
+    requireThat(['approved','in-progress'].includes(d.status),'Plan PR requires an approved or started plan');
+  } else if(target==='implementation-pr') {
+    requireThat(d.kind==='epic-plan','Implementation PR requires an epic plan');
+    planApproved(ctx); tasks(ctx);
+    requireThat(['in-progress','in-review','in-appsec-review','in-accessibility-review','ready-for-pr'].includes(d.status),'PR requires ready-for-pr epic plan or a started implementation plan');
   } else requireThat(graphs[d.kind][d.status]?.includes(target),`Illegal transition ${d.kind}: ${d.status} -> ${target}`);
   if(d.kind==='project' && ['approved','in-progress'].includes(target)) approval(d,'principal_engineer');
   if(d.kind==='epic') {
@@ -175,7 +199,10 @@ export function check(file,target,{root=process.cwd(),write=false}={}) {
       requireThat(!git(['diff','--name-only',d.review_commit,'--','.',':(exclude)epics/**',':(exclude)project/**']),'Implementation changed after reviews; repeat both reviews');
       requireThat(!git(['ls-files','--others','--exclude-standard']),'Commit untracked files before PR');
     }
-    if(target==='merged') requireThat(meaningful(d.pr_url) && /^https:\/\//.test(d.pr_url),'Record merged PR URL');
+    if(target==='merged') {
+      requireThat(meaningful(d.pr_url) && /^https:\/\//.test(d.pr_url),'Record merged PR URL');
+      liveMergeEvidence(ctx,{root,head,hostEvidence});
+    }
   }
   if(d.kind==='task') {
     const p=related(ctx,d.parent,'epic-plan'); planApproved(p);
