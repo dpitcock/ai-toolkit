@@ -23,3 +23,4 @@ git worktree add ".worktrees/$id" -b "epic/$id"
  sed 's/TASK-XXX/TASK-001/g' epics/EPIC-XXX/tasks/TASK-XXX.md.template > "epics/$id/tasks/TASK-001.md"
 )
 printf '%s\n' "Worktree .worktrees/$id ready for epic triage. Run scripts/install-skills.sh there before agent work. Implementation remains gated."
+printf '%s\n' "After the trusted harness assigns authority, admit this epic through: node scripts/workflow-event.mjs epic.start --root .worktrees/$id"
