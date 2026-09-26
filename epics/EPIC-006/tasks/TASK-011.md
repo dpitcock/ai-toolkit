@@ -2,16 +2,22 @@
 kind: task
 id: TASK-011
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: [ tasks/TASK-010.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-26: node --test tests/workflow-event.test.mjs
+    tests/preflight.test.mjs failed as expected because
+    scripts/workflow-event.mjs did not exist."
+  green: "2026-09-26: node --test tests/workflow-event.test.mjs
+    tests/preflight.test.mjs passed 11/11 after implementation."
+  qa: "QA-GOV-004/009: the focused sequence proves internal policy/repository
+    resolution, trusted harness-only identity, exact branch/scope binding,
+    idempotent deliveries, serialized epic admission, completion fail-closed
+    behavior, and both autopilot modes without shell execution or credentials."
+  commit: "bd54a02e12d90075064a634653bf15868af8a6c9"
 approvals:
   principal_engineer: null
   appsec: null
