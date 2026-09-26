@@ -5,7 +5,7 @@ owner: "Codex"
 status: done
 revision: 2
 parent: ../epic-plan.md
-parent_revision: 2
+parent_revision: 3
 depends_on: []
 evidence:
   red: "node --test tests/task-tier.test.mjs failed before implementation with

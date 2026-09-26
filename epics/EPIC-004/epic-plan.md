@@ -7,8 +7,8 @@
 kind: epic-plan
 id: EPIC-004-PLAN
 owner: "Codex"
-status: in-progress
-revision: 2
+status: ready-for-pr
+revision: 3
 parent: epic.md
 parent_revision: 2
 security:
@@ -32,40 +32,80 @@ tasks:
   - tasks/TASK-004.md
   - tasks/TASK-005.md
   - tasks/TASK-006.md
-review_comments: []
-review_commit: null
+  - tasks/TASK-007.md
+review_comments:
+  - id: CR-001
+    status: resolved
+    finding: "Independent final review by /root/epic004_final_code_review on
+      2026-09-26 found that check-pr rejects ordinary src/* changes before Tier
+      2 assessment validation, leaving the intended application PR route
+      untested end to end."
+    resolution_commit: "b8081a9f47177604c59901317175e855cad0f22d"
+    verified_by: "/root/epic004_revision3_final_review"
+    verified_date: "2026-09-26"
+    verified_commit: "2bb030369d5aef34f2ff1c0f999ec796d9932612"
+  - id: CR-002
+    status: resolved
+    finding: "Independent final review by /root/epic004_final_code_review on
+      2026-09-26 found that check-tier2 accepts Tier 1 assessments without
+      committed passing final-check evidence bound to the reviewed
+      implementation."
+    resolution_commit: "b8081a9f47177604c59901317175e855cad0f22d"
+    verified_by: "/root/epic004_revision3_final_review"
+    verified_date: "2026-09-26"
+    verified_commit: "2bb030369d5aef34f2ff1c0f999ec796d9932612"
+review_commit: "2bb030369d5aef34f2ff1c0f999ec796d9932612"
 pr_url: null
 approvals:
   principal_engineer:
-    by: "/root/epic004_principal_plan"
-    date: "2026-09-25"
-    notes: "Approved plan revision 2: scope matches the approved epic, task
-      dependencies are acyclic, and acceptance/TDD requirements cover the
-      revised security and QA concerns. No blockers."
-    revision: 2
+    by: "/root/epic004_principal_revision3"
+    date: "2026-09-26"
+    notes: "Independent Principal review approved revision 3: TASK-007 is a bounded
+      policy/regression slice, completed tasks are reconciled without changing
+      evidence, and final code/AppSec/PR safeguards remain intact."
+    revision: 3
   appsec:
-    by: "/root/epic004_appsec_triage"
-    date: "2026-09-25"
-    notes: "Approved AppSec plan revision 2: SEC-TIER-DOWNGRADE mapping,
-      sensitive-path escalation, committed baseline validation, Tier-2 evidence
-      checks, and cooperative-control limits are adequate. No blockers."
-    revision: 2
+    by: "/root/epic004_appsec_revision3"
+    date: "2026-09-26"
+    notes: "Independent AppSec plan review approved revision 3. TASK-007 retains
+      SEC-TIER-DOWNGRADE protections, exact-commit final reviews, and mandatory
+      final AppSec review; governance-directory metadata remains a cooperative
+      exception requiring host protections."
+    revision: 3
   qa_lead: null
-  code_review: null
-  appsec_review: null
+  code_review:
+    by: "/root/epic004_revision3_final_review"
+    date: "2026-09-26"
+    notes: "Independent final review of
+      7d7c7fb3817017762889997a564cfea17ec4a7ea..2bb030369d5aef34f2ff1c0f999ec79\
+      6d9932612 approved all five axes. CR-001 and CR-002 were reverified on the
+      final review commit; no findings remain. Fresh npm test passed 117/117 and
+      review-range diff checks were clean."
+    revision: 3
+    commit: "2bb030369d5aef34f2ff1c0f999ec796d9932612"
+  appsec_review:
+    by: "/root/epic004_revision3_final_appsec"
+    date: "2026-09-26"
+    notes: "Independent final AppSec review of
+      7d7c7fb3817017762889997a564cfea17ec4a7ea..2bb030369d5aef34f2ff1c0f999ec79\
+      6d9932612 found no Critical, High, Medium, or Low findings. Fresh npm test
+      passed 117/117; npm audit against the committed lockfile found 0
+      vulnerabilities; review-range diff checks were clean."
+    revision: 3
+    commit: "2bb030369d5aef34f2ff1c0f999ec796d9932612"
   accessibility: null
   accessibility_review: null
 ---
 
 # EPIC-004 Epic Plan
 
-**Goal:** Add fail-closed task classification and proportional Tier 1/Tier 2 checks to adopting repositories without changing this template's PR-only merge rule.
+**Goal:** Add fail-closed task classification and proportional Tier 1/Tier 2 checks to adopting repositories, while requiring independent staff code review only for the final PR implementation revision.
 
 **Architecture:** A pure classifier combines explicit scope/risk answers with intended or actual changed files and never lowers a claimed tier. It conservatively escalates conventional sensitive path patterns even when supplied risk booleans say false; classification remains cooperative and does not claim to prove semantic risk absent from those inputs. The accepted workspace config holds the Tier 1 direct-merge opt-in (default false); preflight records a branch-local assessment with config provenance and digest. The initial evidence record must be committed before implementation; final checks compare its immutable facts against the first committed record and reject edits, while treating Git history and handwritten evidence as cooperative rather than authenticated controls. Tier 2 stays on PRs and validates applicable review evidence in the existing PR workflow. Tier 3 continues through the existing epic/task gates; its configured-role enforcement is EPIC-005.
 
 **Tech Stack:** Node.js 22+, ESM, built-in node:test, existing yaml/fs-ext dependencies, Git CLI in local scripts and GitHub Actions.
 
-**Spec:** docs/superpowers/specs/2026-09-24-task-tiering-workspace-config-design.md; approved project scope: project/project-plan.md revision 2.
+**Spec:** docs/superpowers/specs/2026-09-24-task-tiering-workspace-config-design.md and docs/superpowers/specs/2026-09-26-final-pr-code-review-design.md; approved project scope: project/project-plan.md revision 2.
 
 ## Global constraints
 - The template repository itself remains PR-only; no Tier 1 command merges or pushes.
@@ -90,17 +130,17 @@ Preflight requires an accepted config and a clean linked worktree, writes the as
 - scripts/check-pr.mjs and existing .github/workflows/workflow.yml: invoke Tier 2 validation without weakening epic-plan checks.
 - tests/task-tier.test.mjs, tests/task-assessment.test.mjs, tests/preflight.test.mjs, tests/check-tier1.test.mjs, tests/check-tier2.test.mjs: unit and integration coverage.
 - tests/workspace-config.test.mjs and tests/init-workspace.test.mjs: accepted-policy parsing, proposal, and digest coverage.
-- AGENTS.md, docs/workflow.md, docs/verification.md, skills/governed-build/SKILL.md: adopter workflow and safe escalation instructions.
+- AGENTS.md, docs/roles.md, docs/workflow.md, docs/gates.md, skills/governed-build/SKILL.md, and skills/governed-ship/SKILL.md: adopter workflow, final-PR-only code-review policy, and safe escalation instructions.
 
 ## Security mapping
-- SEC-TIER-DOWNGRADE is touched by classifier rules, known-sensitive-path escalation, assessment persistence and committed baseline verification, final diff reclassification, Tier 1 policy opt-in, Tier 2 evidence validation, and agent instructions. Tests prove malformed/unknown inputs, known sensitive paths falsely labeled low-risk, and modified initial assessment facts cannot silently reduce the tier. These remain cooperative checks and do not authenticate the author or make branch history immutable.
+- SEC-TIER-DOWNGRADE is touched by classifier rules, known-sensitive-path escalation, assessment persistence and committed baseline verification, final diff reclassification, Tier 1 policy opt-in, Tier 2 evidence validation, and agent instructions. TASK-007 preserves the final-review requirement on the final implementation revision while avoiding a per-task staff-review mandate. Tests prove malformed/unknown inputs, known sensitive paths falsely labeled low-risk, and modified initial assessment facts cannot silently reduce the tier. These remain cooperative checks and do not authenticate the author or make branch history immutable.
 - Auth, data, and external-service boundaries are unaffected: these tasks read local repository/config/assessment files and Git metadata only. Assessment records contain no secrets.
 
 ## Accessibility mapping
 The plan changes no user-facing interface. Tier 1 rejects UI work. For Tier 2 UI, preflight requires independent accessibility triage and plan evidence before work; the final PR check additionally requires final evidence on the reviewed commit. Missing staged evidence escalates to Tier 3. No UI implementation or WCAG visual testing is in scope.
 
 ## Small tasks
-1. TASK-001 builds and tests the classifier. 2. TASK-002 adds the default-off accepted policy field. 3. TASK-003 adds accepted-config-aware preflight and durable assessment records. 4. TASK-004 adds Tier 1 final-diff checks. 5. TASK-005 validates Tier 2 PR evidence through check-pr. 6. TASK-006 updates workflow instructions and scaffold coverage. Each task is listed in its task document with exact files, dependencies, QA IDs, RED/GREEN commands, and a separate implementation commit; tasks execute sequentially.
+1. TASK-001 builds and tests the classifier. 2. TASK-002 adds the default-off accepted policy field. 3. TASK-003 adds accepted-config-aware preflight and durable assessment records. 4. TASK-004 adds Tier 1 final-diff checks. 5. TASK-005 validates Tier 2 PR evidence through check-pr. 6. TASK-006 updates proportional-workflow instructions and scaffold coverage. 7. TASK-007 clarifies that staff code review is final-PR-only and verifies the retained final-review gate. Each task is listed in its task document with exact files, dependencies, QA IDs, RED/GREEN commands, and a separate implementation commit; tasks execute sequentially.
 
 ## Review evidence
 Staff review: correctness, readability, architecture, security, performance. Record every finding in `review_comments`. A finding is resolved only after its fix is committed and the independent code reviewer verifies it on the final `review_commit`. Mandatory AppSec final review follows.

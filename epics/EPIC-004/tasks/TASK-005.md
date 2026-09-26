@@ -5,7 +5,7 @@ owner: "Codex"
 status: done
 revision: 2
 parent: ../epic-plan.md
-parent_revision: 2
+parent_revision: 3
 depends_on:
   - tasks/TASK-001.md
   - tasks/TASK-002.md
