@@ -11,6 +11,20 @@ const lowRiskAnswers={developer:'fixture-implementer',scope:'single-file',risks:
 const tier2Answers={developer:'fixture-implementer',scope:'one-subsystem',risks:noRisks,userFacingUI:false,claimedTier:2,intendedFiles:['project/src/notify.js','project/src/format.js'],accessibilityEvidence:null};
 function git(root,...args) { return execFileSync('git',['-C',root,...args],{encoding:'utf8'}).trim(); }
 function commitAll(root,message) { git(root,'add','-A');git(root,'commit','-m',message);return git(root,'rev-parse','HEAD'); }
+function copyAdopterSeed(root,items) {
+ const instancePaths=new Set([
+  'config/workspace-config.yaml',
+  'project/workspace-config-history.jsonl',
+  'project/workspace-config-history.jsonl.lock',
+  'project/workspace-config-transaction.json',
+  'project/task-assessments',
+ ]);
+ for(const item of items) fs.cpSync(path.join(source,item),path.join(root,item),{
+  recursive:true,filter:file=>!instancePaths.has(path.relative(source,file).split(path.sep).join('/')),
+ });
+ for(const relative of instancePaths) assert.ok(!fs.existsSync(path.join(root,relative)),`${relative} must not seed an adopter`);
+ assert.ok(fs.existsSync(path.join(root,'project/project-plan.md.template')));
+}
 
 test('pull-request workflow passes immutable PR context to the unified validator without irreversible operations',()=>{
  const workflow=YAML.parse(fs.readFileSync(path.join(source,'.github/workflows/workflow.yml'),'utf8'));
@@ -45,11 +59,14 @@ test('Tier 3 guidance preserves the registered-worktree, evidence, and PR-only c
 
 test('init is idempotent; real epic worktree is isolated and refuses collisions',t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'blueprint-scaffold-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
- for(const item of ['scripts','project','tests','package.json','package-lock.json','.gitignore']) fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
+ copyAdopterSeed(root,['scripts','project','tests','package.json','package-lock.json','.gitignore']);
  fs.mkdirSync(path.join(root,'epics'));fs.cpSync(path.join(source,'epics','EPIC-XXX'),path.join(root,'epics','EPIC-XXX'),{recursive:true});
  fs.symlinkSync(path.join(source,'node_modules'),path.join(root,'node_modules'),'dir');
  const run=(cmd,args)=>execFileSync(cmd,args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']});
- run('bash',['scripts/init-project.sh','--offline']);
+ const initialized=run('bash',['scripts/init-project.sh','--offline']);
+ const proposal=JSON.parse(initialized.split('\n')[0]);assert.equal(proposal.status,'pending');
+ run('node',['scripts/init-workspace.mjs','accept','--root',root,'--by','Fixture policy reviewer','--reason','Accept isolated scaffold fixture','--digest',proposal.digest]);
+ assert.match(run('node',['scripts/init-workspace.mjs','status','--root',root]),/"status":"accepted"/);
  const plan=path.join(root,'project/project-plan.md');fs.appendFileSync(plan,'Preserve this user edit\n');
  run('bash',['scripts/init-project.sh','--offline']);assert.match(fs.readFileSync(plan,'utf8'),/Preserve this user edit/);
  const text=fs.readFileSync(plan,'utf8');const match=text.match(/^---\n([\s\S]*?)\n---\n/);const d=YAML.parse(match[1]);
@@ -74,9 +91,7 @@ test('init is idempotent; real epic worktree is isolated and refuses collisions'
 
 test('generated adopter executes accepted Tier 1 and Tier 2 routes and documents their gates',t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'blueprint-tier-routes-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
- for(const item of ['scripts','project','docs','skills','package.json','package-lock.json','.gitignore','AGENTS.md']) {
-  fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
- }
+ copyAdopterSeed(root,['scripts','project','docs','skills','package.json','package-lock.json','.gitignore','AGENTS.md']);
  fs.symlinkSync(path.join(source,'node_modules'),path.join(root,'node_modules'),'dir');
  const run=(cmd,args,options={})=>execFileSync(cmd,args,{
   cwd:root,encoding:'utf8',stdio:options.input===undefined?['ignore','pipe','pipe']:['pipe','pipe','pipe'],...options,
@@ -162,7 +177,7 @@ test('generated adopter Tier 3 route',
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'blueprint-tier3-adopter-'));
  const linked=path.join(root,'.worktrees/EPIC-043');
  t.after(()=>{try { git(root,'worktree','remove','--force',linked); } catch {} fs.rmSync(root,{recursive:true,force:true});fs.rmSync(linked,{recursive:true,force:true});});
- for(const item of ['scripts','project','docs','skills','tests','package.json','package-lock.json','.gitignore','AGENTS.md']) fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
+ copyAdopterSeed(root,['scripts','project','docs','skills','tests','package.json','package-lock.json','.gitignore','AGENTS.md']);
  fs.mkdirSync(path.join(root,'epics'));fs.cpSync(path.join(source,'epics','EPIC-XXX'),path.join(root,'epics','EPIC-XXX'),{recursive:true});
  fs.rmSync(path.join(root,'project','project-plan.md'));
  fs.symlinkSync(path.join(source,'node_modules'),path.join(root,'node_modules'),'dir');
