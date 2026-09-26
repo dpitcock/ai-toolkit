@@ -2,12 +2,21 @@
 kind: task
 id: TASK-008
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 10
 depends_on: [ tasks/TASK-001.md ]
-evidence: { red: null, green: null, qa: null, commit: null }
+evidence:
+  red: "node --test tests/gates.test.mjs failed as expected: legacy ui_designer
+    value was null, not undefined."
+  green: "node --test tests/gates.test.mjs passed: 16 tests, 0 failures."
+  qa: "All test files passed in bounded groups because the full-suite command
+    exceeds the executor's 30-second window; npm test is unchanged and its
+    complete 10-file suite was covered, including gates, Tier 1/2, preflight,
+    task assessment, workspace config, init-workspace, and scaffold tests. git
+    diff --check passed."
+  commit: "345e480ca2b7b4534564966f738562d95eb61c73"
 approvals:
   {
     principal_engineer: null,
