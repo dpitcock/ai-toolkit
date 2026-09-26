@@ -85,10 +85,10 @@ deploying Slack or weakening independent accessibility review where required.
   template and Codex-first adapter guidance.
 - EPIC-002 (merged under revision 1): conditional accessibility governance for
   UI epics, including triage, plan approval, final review, and regression tests.
-- EPIC-003 (proposed): unified workspace configuration, human acceptance and
+- EPIC-003 (merged): unified workspace configuration, human acceptance and
   change log, greenfield/legacy initialization, root/worktree resolution, and
   Slack descriptor migration. Supplies the config API to later epics.
-- EPIC-004 (proposed, depends on EPIC-003): scope/risk classification, Tier 1
+- EPIC-004 (merged, depended on EPIC-003): scope/risk classification, Tier 1
   pre-merge check, Tier 2 PR/review check, and proportional agent workflow.
 - EPIC-005 (proposed, depends on EPIC-003 and EPIC-004): Tier 3 configured
   approvals, worktree and PR enforcement, CI integration, and end-to-end
