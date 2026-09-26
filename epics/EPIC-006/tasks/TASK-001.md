@@ -2,16 +2,20 @@
 kind: task
 id: TASK-001
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: [ tasks/TASK-000.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "node --test tests/tier-defaults.test.mjs: failed with ERR_MODULE_NOT_FOUND
+    for scripts/lib/tier-defaults.mjs before the resolver existed."
+  green: "node --test tests/tier-defaults.test.mjs: 6 passed, 0 failed."
+  qa: "QA-GOV-001/002: every selected tier preserves its floor; unknown tier,
+    override key, and type fail closed; Tier 2/3 and template direct merge
+    remain disabled; versioned definition provenance changes when its definition
+    changes."
+  commit: "943e16c"
 approvals:
   principal_engineer: null
   appsec: null
