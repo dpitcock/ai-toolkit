@@ -5,6 +5,7 @@ import {execFileSync} from 'node:child_process';
 import {isDeepStrictEqual} from 'node:util';
 import YAML from 'yaml';
 import {classifyTask,selectEffectiveTier} from './lib/task-tier.mjs';
+import {resolveTierDefaults} from './lib/tier-defaults.mjs';
 import {parseWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from './lib/workspace-config.mjs';
 import {assertAcceptedWorkspaceConfig,readWorkspaceHistory} from './lib/workspace-history.mjs';
 import {pathToFileURL} from 'node:url';
@@ -154,7 +155,11 @@ function acceptedEffectivePolicy(root,assessment,adapter) {
     if(recorded.revision!==policy.revision) fail('Accepted config revision is stale; rerun preflight');
   }
   if(workspaceConfigDigest(effective)!==recorded.effectiveDigest) fail('Effective accepted config digest is stale; rerun preflight');
-  return {config:effective,accepted:policy,coordinationRoot,directMergeEnabled:effective.task_tiers?.tier_1_direct_merge??false,
+  // This generic policy result does not authorize bypassing template or host PR rules.
+  const directMergeEnabled=Object.hasOwn(effective,'task_tier')
+    ? resolveTierDefaults({tier:Number(effective.task_tier.slice(-1)),overrides:effective.tier_overrides,templateRepository:false}).rules.direct_merge
+    : effective.task_tiers?.tier_1_direct_merge??false;
+  return {config:effective,accepted:policy,coordinationRoot,directMergeEnabled,
     tierPolicy:effectiveTierPolicy(effective)};
 }
 

@@ -22,10 +22,10 @@ function history(config) {
     {kind:'acceptance',revision:1,date:'2026-09-25',digest,by:'Dennis',reason:'Accepted fixture policy',changes:[],...(definition?{definition}:{})},
   ].map(record=>JSON.stringify(record)).join('\n')+'\n';
 }
-function fixture(t,{tier1=true,omitTier1=false,taskTier=null,answers=lowRisk,commitTogether=false,sourceBeforeEvidence=false,initialEvidenceEdits={}}={}) {
+function fixture(t,{tier1=true,omitTier1=false,taskTier=null,tierOverrides={direct_merge:false},answers=lowRisk,commitTogether=false,sourceBeforeEvidence=false,initialEvidenceEdits={}}={}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'check-tier1-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
-  const config={workspace:{repository:'tier1-fixture',environment:'test',provider:'codex',slack_channel_name:'ws-tier1-fixture-codex',timezone:'UTC'},approvals_required:{principal:true,qa:true,appsec:true,accessibility_reviewer:false,ui_designer:false},approvals_overrides:{reason:'No UI in fixture',exempt:['accessibility_reviewer','ui_designer']},daily_summary:{local_time:'09:00'},...(taskTier?{task_tier:taskTier,tier_overrides:{direct_merge:false}}:(omitTier1?{}:{task_tiers:{tier_1_direct_merge:tier1}}))};
+  const config={workspace:{repository:'tier1-fixture',environment:'test',provider:'codex',slack_channel_name:'ws-tier1-fixture-codex',timezone:'UTC'},approvals_required:{principal:true,qa:true,appsec:true,accessibility_reviewer:false,ui_designer:false},approvals_overrides:{reason:'No UI in fixture',exempt:['accessibility_reviewer','ui_designer']},daily_summary:{local_time:'09:00'},...(taskTier?{task_tier:taskTier,tier_overrides:tierOverrides}:(omitTier1?{}:{task_tiers:{tier_1_direct_merge:tier1}}))};
   fs.mkdirSync(path.join(root,'config'),{recursive:true});fs.mkdirSync(path.join(root,'project'),{recursive:true});
   fs.writeFileSync(path.join(root,'README.md'),'fixture\n');
   fs.writeFileSync(path.join(root,'config/workspace-config.yaml'),YAML.stringify(config));
@@ -117,6 +117,34 @@ test('a false or omitted accepted Tier 1 policy preserves the PR route',t=>{
     assert.equal(result.tier,1);
     assert.equal(result.directMergeEligible,false);
     assert.match(result.output,/pull request/i);
+  }
+});
+
+test('final CLI resolves omitted, false and true merge selections in new and legacy policy',t=>{
+  for(const syntax of ['legacy','new']) for(const selection of [undefined,false,true]) {
+    const options=syntax==='new'
+      ? {taskTier:'tier_1',tierOverrides:selection===undefined?{}:{direct_merge:selection}}
+      : {omitTier1:selection===undefined,tier1:selection};
+    const {root}=fixture(t,options);
+    fs.mkdirSync(path.join(root,'src'),{recursive:true});
+    fs.writeFileSync(path.join(root,'src/notify.js'),'export const notify = () => true;\n');
+    git(root,'add','src/notify.js');git(root,'commit','-qm','implement notification fix');
+    const result=spawnSync(process.execPath,[cli,'--assessment',assessmentPath],{cwd:root,encoding:'utf8'});
+    assert.equal(result.status,0,result.stderr);
+    assert.match(result.stdout,new RegExp(`Direct merge eligible: ${selection===true?'yes':'no'}`),`${syntax} ${selection}`);
+  }
+});
+
+test('final CLI keeps higher configured tiers in the governed PR routes despite direct merge true',t=>{
+  for(const tier of [2,3]) {
+    const {root}=fixture(t,{taskTier:`tier_${tier}`,tierOverrides:{direct_merge:true}});
+    fs.mkdirSync(path.join(root,'src'),{recursive:true});
+    fs.writeFileSync(path.join(root,'src/notify.js'),'export const notify = () => true;\n');
+    git(root,'add','src/notify.js');git(root,'commit','-qm','implement notification fix');
+    const result=spawnSync(process.execPath,[cli,'--assessment',assessmentPath],{cwd:root,encoding:'utf8'});
+    assert.equal(result.status,1,result.stderr);
+    assert.match(result.stdout,new RegExp(`Selected tier: ${tier}`));
+    assert.match(result.stdout,/Direct merge eligible: no/);
   }
 });
 
