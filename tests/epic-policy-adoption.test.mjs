@@ -352,6 +352,22 @@ test('release effects reject missing identity, arbitrary operations, stale decis
  assert.throws(()=>withWorkflowState(f.root,state=>{state.epics['EPIC-006'].releaseVerification.actions.first.snapshot=['f'.repeat(64)];}),/malformed/);
 });
 
+test('release commit authorization rejects hidden index source and mismatched staged evidence',t=>{
+ const f=liveVerificationFixture(t);f.run(f.event('prepare'));f.write();
+ fs.mkdirSync(path.join(f.root,' docs'));fs.writeFileSync(path.join(f.root,' docs/verification.md'),'forbidden');
+ assert.throws(()=>f.run(f.event('whitespace-path','release.verify','commit')),/unauthorized/);
+ fs.rmSync(path.join(f.root,' docs'),{recursive:true});
+ edit(f,'README.md',text=>text+'\nhidden source\n');git(f.root,'add','README.md');git(f.root,'restore','--worktree','--source=HEAD','README.md');
+ assert.throws(()=>f.run(f.event('hidden-index','release.verify','commit')),/index|staged/);
+ git(f.root,'reset','--','README.md');git(f.root,'add','docs/verification.md','project/EPIC-006-activation-evidence.json');
+ f.report.observations.push({kind:'smoke',status:'pending',at:null,head:null,references:[]});f.write();
+ assert.throws(()=>f.run(f.event('partial-index','release.verify','commit')),/index|staged/);
+ git(f.root,'add','docs/verification.md','project/EPIC-006-activation-evidence.json');
+ assert.equal(f.run(f.event('valid-index','release.verify','commit')).reason,'authorized-routine');
+ const activation=f.observers.activation;f.observers.activation=()=>{git(f.root,'switch','--quiet','-c','epic/EPIC-999');return activation();};
+ assert.throws(()=>releaseRuntime.controlReleaseVerification({root:f.root,operation:'dispatch',deliveryId:'valid-index',actor:f.actor,observers:f.observers}),/branch|changed/);
+});
+
 test('fresh-checkout real CI entrypoint succeeds without runtime or PR1 reviews while standalone publication gate denies',t=>{
  const f=fixture(t),responses={};
  adoption.provePolicyAdoption({...f.options(),api:(endpoint,options)=>{const value=f.api(endpoint,options);responses[endpoint]=value;return value;}});

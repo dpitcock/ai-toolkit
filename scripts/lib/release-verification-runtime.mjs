@@ -13,7 +13,7 @@ import {validateReleaseRecord,releaseFailure as fail} from './release-verificati
 
 const EPIC='EPIC-006',REPOSITORY='dpitcock/ai-toolkit',BRANCH='epic/EPIC-006';
 const POLICY=['config/workspace-config.yaml','project/workspace-config-history.jsonl'];
-function git(root,args) {return execFileSync('git',['--no-replace-objects','-C',root,...args],{encoding:'utf8',stdio:'pipe',maxBuffer:16*1024*1024}).trim();}
+function git(root,args) {const output=execFileSync('git',['--no-replace-objects','-C',root,...args],{encoding:'utf8',stdio:'pipe',maxBuffer:16*1024*1024});return args.includes('-z')?output:output.trim();}
 function hash(text) {return createHash('sha256').update(text).digest('hex');}
 function blob(text) {return createHash('sha1').update(`blob ${Buffer.byteLength(text)}\0`).update(text).digest('hex');}
 function observed(observers,name,context) {
@@ -39,6 +39,11 @@ function snapshot(root,record,{dirty=false}={}) {
  assertActivationSnapshot({before:localSnapshot(root,base),after,base,digest:record.adoption.policy.canonical.digest});
  if(dirty && !names.length) fail('commit requires a nonempty evidence change');
  const index=git(root,['diff','--cached','--raw','--no-renames','HEAD']);
+ const staged=git(root,['diff','--cached','--name-only','--no-renames','-z','HEAD']).split('\0').filter(Boolean);
+ if(staged.some(name=>!ACTIVATION_PATHS.includes(name))) fail('index contains unauthorized staged paths');
+ if(staged.length) for(const name of ACTIVATION_PATHS) {
+  if(git(root,['ls-files','--stage','--',name])!==`100644 ${blobs[name]} 0\t${name}`) fail('index must match the complete evidence snapshot');
+ }
  return {head,blobs,fingerprint:hash(JSON.stringify({head,names,index,blobs}))};
 }
 function mirrors(resolved,i) {
@@ -49,6 +54,8 @@ function revalidate(resolved,record,observers,current,{dirty=false}={}) {
  const i=record.adoption.adoption.integrationSha,api=observers?.api??githubJSON;
  if(api(`repos/${REPOSITORY}/git/ref/heads/main`)?.object?.sha!==i) fail('current main changed during effect observation');
  mirrors(resolved,i);
+ const fresh=acceptedPolicy(resolved.worktree);
+ if(fresh.branch!==BRANCH || fresh.repository!==resolved.repository || !equal(fresh.policy.provenance,resolved.policy.provenance)) fail('registered branch or policy changed during observation');
  if(snapshot(resolved.worktree,record,{dirty}).fingerprint!==current.fingerprint) fail('snapshot changed during effect observation');
 }
 function context(state,resolved,actor,observers,{empty=false}={}) {
@@ -110,9 +117,9 @@ export function applyReleaseVerification(state,input,resolved,actor,observers) {
  * pushes, grants tool permissions or writes to the coordination checkout.
  */
 export function controlReleaseVerification({root,operation,deliveryId,actor,observers}={}) {
- trustedActor(actor);const resolved=acceptedPolicy(root);
- root=resolved.worktree;
- return withWorkflowState(resolved.worktree,state=>{
+ trustedActor(actor);root=fs.realpathSync(root);
+ return withWorkflowState(root,state=>{
+  const resolved=acceptedPolicy(root);
   const record=state.epics[EPIC]?.releaseVerification;if(!record) fail('runtime release record is missing');
   validateReleaseRecord(record);authorize(state,resolved,actor,record);
   const effect=record.actions[deliveryId];if(!effect) fail('authorized effect delivery is absent');

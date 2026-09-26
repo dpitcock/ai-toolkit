@@ -5,7 +5,7 @@ import {ACTIVATION_REPORT,ACTIVATION_DOCUMENT,validateActivationReport,replaceAc
 
 export const ACTIVATION_PATHS=[ACTIVATION_DOCUMENT,ACTIVATION_REPORT];
 function fail(message) {throw new Error(`Activation history ${message}`);}
-function git(root,args) {return execFileSync('git',['--no-replace-objects','-C',root,...args],{encoding:'utf8',stdio:'pipe',maxBuffer:16*1024*1024}).trim();}
+function git(root,args) {const output=execFileSync('git',['--no-replace-objects','-C',root,...args],{encoding:'utf8',stdio:'pipe',maxBuffer:16*1024*1024});return args.includes('-z')?output:output.trim();}
 function regular(snapshot,name) {
  const entry=snapshot.tree.get(name);
  if(entry?.mode!=='100644' || entry.type!=='blob') fail(`${name} must be a regular non-executable file`);
