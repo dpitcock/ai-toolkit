@@ -52,8 +52,57 @@ tasks:
   - tasks/TASK-015.md
   - tasks/TASK-016.md
   - tasks/TASK-013.md
-review_comments: []
-review_commit: null
+review_comments:
+  - id: CR-006-001
+    status: open
+    severity: Required
+    by: "Codex Staff reviewer /root/final_staff_review"
+    date: "2026-09-26"
+    revision: 1
+    commit: "379cba3d027b4c9c8fa2770564ff6c10c46e1ac2"
+    file: "scripts/check-tier2.mjs"
+    line: 309
+    notes: "P1: Exact candidate check-pr fails config-before-preflight history.
+      Establish a bounded independently approved bootstrap provenance route;
+      preserve immutable evidence. See project/EPIC-006-final-staff-review.md."
+  - id: CR-006-002
+    status: open
+    severity: Required
+    by: "Codex Staff reviewer /root/final_staff_review"
+    date: "2026-09-26"
+    revision: 1
+    commit: "379cba3d027b4c9c8fa2770564ff6c10c46e1ac2"
+    file: "scripts/check-tier1.mjs"
+    line: 157
+    notes: "P2: New accepted direct_merge true is ignored. Use shared effective
+      rules while preserving legacy behavior and template PR-only floors;
+      add final-check coverage. See independent final Staff report."
+  - id: CR-006-003
+    status: open
+    severity: Required
+    by: "Codex Staff reviewer /root/final_staff_review"
+    date: "2026-09-26"
+    revision: 1
+    commit: "379cba3d027b4c9c8fa2770564ff6c10c46e1ac2"
+    file: "scripts/check-tier2.mjs"
+    line: 133
+    notes: "P1: Both final checker overlay copies reject valid marked autopilot
+      overrides accepted by preflight. Share resolver semantics and test
+      linked and single-checkout CI paths. See independent final Staff report."
+  - id: CR-006-004
+    status: open
+    severity: Required
+    by: "Codex Staff reviewer /root/final_staff_review"
+    date: "2026-09-26"
+    revision: 1
+    commit: "379cba3d027b4c9c8fa2770564ff6c10c46e1ac2"
+    file: "scripts/lib/epic-integration.mjs"
+    line: 31
+    notes: "P1: Required postintegration policy adoption lacks a demonstrated
+      governed PR-to-completion route. Define and verify release continuation
+      without weakening status-only finalization, immutable evidence or
+      next-epic admission. See independent final Staff report."
+review_commit: "379cba3d027b4c9c8fa2770564ff6c10c46e1ac2"
 pr_url: null
 approvals:
   principal_engineer:
