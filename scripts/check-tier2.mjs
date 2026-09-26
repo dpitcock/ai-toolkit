@@ -8,6 +8,7 @@ import {classifyTask,selectEffectiveTier} from './lib/task-tier.mjs';
 import {applyWorktreeOverlay,parseWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from './lib/workspace-config.mjs';
 import {parseWorkspaceHistory,readWorkspaceHistory,assertAcceptedWorkspaceConfig} from './lib/workspace-history.mjs';
 import {resolveTier3Policy} from './lib/tier3-policy.mjs';
+import {recognizeBootstrapPolicy} from './lib/bootstrap-policy.mjs';
 
 const INITIAL_FIELDS=['kind','id','startingHead','acceptedConfig','developer','scope','risks','userFacingUI','intendedFiles','claimedTier','selectedTier','reasons'];
 const RISK_KEYS=['auth','secrets','schema','publicApi','financial','userData','criticalInfrastructure','hardToRevert'];
@@ -122,7 +123,7 @@ function acceptedConfigAt(root,sha) {
   return {config,accepted};
 }
 
-function acceptedPolicy(root,record,baseSha) {
+function acceptedPolicy(root,record,baseSha,bootstrap) {
   const provenance=record.acceptedConfig;
   if(!isObject(provenance) || !/^[a-f0-9]{64}$/.test(provenance.effectiveDigest??'')
     || !Number.isInteger(provenance.revision) || !isObject(provenance.coordination)
@@ -131,6 +132,15 @@ function acceptedPolicy(root,record,baseSha) {
   }
   const currentConfig=parseWorkspaceConfig(safeReadText(root,'config/workspace-config.yaml','Workspace config'));
   const currentPolicy=assertAcceptedWorkspaceConfig(root,currentConfig);
+  if(bootstrap) {
+    for(const [name,expected] of [['config/workspace-config.yaml',bootstrap.linked.configText],
+      ['project/workspace-config-history.jsonl',bootstrap.linked.historyText]]) {
+      if(safeReadText(root,name,'Bootstrap policy')!==expected || (fs.lstatSync(path.join(root,name)).mode&0o111)) {
+        fail('bootstrap working policy differs from proven snapshot');
+      }
+    }
+    return bootstrap.effective;
+  }
   let effective,coordinationPolicy;
   if(provenance.worktree===null) {
     coordinationPolicy=currentPolicy;effective=currentConfig;
@@ -287,9 +297,13 @@ function tier3Binding(record,config,headRef) {
   return {binding,policy};
 }
 
-function assertPreflightBeforeIntendedChanges(root,baseSha,baseline) {
-  const priorChanges=nulPaths(git(root,['diff','--name-only','--no-renames','-z',
+function priorIntendedChanges(root,baseSha,baseline) {
+  return nulPaths(git(root,['diff','--name-only','--no-renames','-z',
     `${baseSha}...${baseline.record.startingHead}`,'--',...baseline.record.intendedFiles]));
+}
+
+function assertPreflightBeforeIntendedChanges(prior,bootstrap) {
+  const priorChanges=prior.filter(name=>!bootstrap?.allowedPaths.includes(name));
   if(priorChanges.length) {
     fail(`intended source path ${priorChanges[0]} changed before initial assessment evidence relative to PR base history`);
   }
@@ -348,9 +362,15 @@ export function validateTier2Assessment({assessmentPath,repoRoot:rootValue,baseS
 
   const record=readAssessment(root,relative);
   const baseline=firstAssessmentCommit(relative,head,root);
-  assertPreflightBeforeIntendedChanges(root,base,baseline);
+  const prior=priorIntendedChanges(root,base,baseline);
+  const bootstrap=prior.some(name=>['config/workspace-config.yaml','project/workspace-config-history.jsonl'].includes(name))
+    ? recognizeBootstrapPolicy({root,baseSha:base,headSha:head,headRef,assessmentPath:relative}) : null;
+  if(bootstrap && (baseline.commit!==bootstrap.initialEvidenceCommit || !isDeepStrictEqual(baseline.record,bootstrap.initialAssessment))) {
+    fail('bootstrap initial assessment differs from proven committed snapshot');
+  }
+  assertPreflightBeforeIntendedChanges(prior,bootstrap);
   assertInitialFactsUnchanged(record,baseline.record);
-  const config=acceptedPolicy(root,record,base);
+  const config=acceptedPolicy(root,record,base,bootstrap);
   assertInitialClassification(baseline.record,config);
   if(Object.hasOwn(record,'tierPolicy')!==Object.hasOwn(baseline.record,'tierPolicy')
     || (Object.hasOwn(record,'tierPolicy') && !isDeepStrictEqual(record.tierPolicy,baseline.record.tierPolicy))) {
