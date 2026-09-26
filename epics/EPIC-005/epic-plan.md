@@ -2,7 +2,7 @@
 kind: epic-plan
 id: EPIC-005-PLAN
 owner: "Codex"
-status: ready-for-pr
+status: in-progress
 revision: 10
 parent: epic.md
 parent_revision: 2
@@ -45,7 +45,7 @@ tasks:
   - tasks/TASK-007.md
   - tasks/TASK-008.md
 review_comments: []
-review_commit: "f93a46b37c374e07a370f31eae85548ac65e4173"
+review_commit: null
 pr_url: null
 approvals:
   principal_engineer:
@@ -82,54 +82,8 @@ approvals:
       local registration, and retains host protections as the enforcement
       boundary. No plan-level AppSec blockers found."
   qa_lead: null
-  code_review:
-    by: "Codex Staff reviewer /root/epic005_final_code_review"
-    date: "2026-09-26"
-    revision: 10
-    commit: "f93a46b37c374e07a370f31eae85548ac65e4173"
-    notes: "Independent final five-axis review of all EPIC-005 implementation
-      commits through f93a46b37c374e07a370f31eae85548ac65e4173. Correctness:
-      verified exact Tier 3 plan/task/branch and policy provenance checks,
-      authoritative CI head binding, reviewed-code freshness, the conditional UI
-      accessibility floor, and the rollback of the out-of-scope ui_designer
-      feature. The prior worktree-path finding is resolved: empty, absolute,
-      traversal, backslash, control-character, and non-normalized identities now
-      fail closed with regression coverage. Readability: the focused Tier 3
-      validator keeps the path check adjacent to binding-shape validation with a
-      clear failure message. Architecture: policy/evidence logic remains in the
-      dedicated Tier 3 module and PR orchestration remains thin; no duplicated
-      lifecycle policy was added. Security: malformed immutable worktree
-      provenance is rejected while the documented cooperative-control and
-      host-protection boundary remains accurate; no credentials, external
-      writes, or unsafe workflow actions were introduced. Performance:
-      validation adds only bounded string/path checks and existing
-      repository/Git inspections, with no new hot-path or unbounded work.
-      review_comments is empty because no unresolved findings remain. Fresh
-      verification: 30/30 check-tier2, 43/43 gate/preflight/ policy, and 8/8
-      scaffold tests passed; diff checks for the complete implementation range
-      passed."
-  appsec_review:
-    by: "Codex AppSec final reviewer /root/epic005_final_appsec"
-    date: "2026-09-26"
-    revision: 10
-    commit: "f93a46b37c374e07a370f31eae85548ac65e4173"
-    notes: "Independent final AppSec review after the staff review, against exact
-      implementation commit f93a46b37c374e07a370f31eae85548ac65e4173. Reviewed
-      SEC-TIER3-001 through SEC-TIER3-005 and the final worktree-path
-      correction: Tier 3 now rejects empty, absolute, traversal, backslash,
-      control-character, and non-normalized immutable worktree identities.
-      Verified fail-closed exact plan/task/revision/branch binding,
-      accepted-policy digest and per-role provenance reconstruction, four-role
-      scope, mandatory independent final code/AppSec floors, and named-plan
-      conditional UI accessibility floors. Trust-boundary review found no new
-      credential, personal-data, network, shell-injection, or external-action
-      path: Git invocation uses fixed command arguments, workflow permissions
-      remain contents: read, and validators do not push, merge, or delete
-      branches. The PR-only and host-protection cooperative enforcement
-      limitation remains explicit. Security evidence: focused Tier 3 rejection
-      tests and generated-adopter Tier 3 route passed; npm audit --omit=dev
-      --audit-level=high reported 0 vulnerabilities. No unresolved AppSec
-      findings."
+  code_review: null
+  appsec_review: null
   accessibility: null
   accessibility_review: null
 ---
