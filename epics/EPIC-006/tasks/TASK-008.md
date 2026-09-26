@@ -2,16 +2,27 @@
 kind: task
 id: TASK-008
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: [ tasks/TASK-007.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-26: node --test tests/review-evidence.test.mjs failed as expected
+    before implementation because scripts/lib/review-evidence.mjs did not
+    exist."
+  green: "2026-09-26: node --test tests/review-evidence.test.mjs passed: 8 tests,
+    0 failed. node --check scripts/check-host-reviews.mjs also passed."
+  qa: "QA-GOV-005/006 verified: the pure evaluator accepts only mapped human
+    actors' latest effective APPROVED verdict on the exact current SHA; old,
+    dismissed, request-changes, wrong-actor, bot, duplicate-role-without-role-
+    evidence, malformed, and out-of-order evidence fails closed. Plan receipts
+    bind plan ID, revision, SHA, actor, role, verdict, and unresolved-request
+    state. The trusted CLI collects complete paginated gh API review and check
+    data, rechecks the PR head before and after collection and immediately
+    before output, records current check receipts, and refuses pending or failed
+    checks without retrieving or printing tokens."
+  commit: 3f5156e210e62d1e910e98384edba0a15a71793d
 approvals:
   principal_engineer: null
   appsec: null
