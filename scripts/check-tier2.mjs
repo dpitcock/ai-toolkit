@@ -170,7 +170,7 @@ function acceptedPolicy(root,record,baseSha) {
       } catch { /* Other registered worktrees are not coordination candidates. */ }
     }
     if(matches.length===1) {
-      ({config:effective,accepted:coordinationPolicy}=matches[0]);
+      ({effective,accepted:coordinationPolicy}=matches[0]);
     } else if(matches.length>1) fail('coordination policy is ambiguous across registered worktrees');
     else {
       const basePolicy=acceptedConfigAt(root,baseSha);
@@ -249,16 +249,32 @@ function assertInitialClassification(record) {
   }
 }
 
+function assertPreflightBeforeIntendedChanges(root,baseSha,baseline) {
+  const priorChanges=nulPaths(git(root,['diff','--name-only','--no-renames','-z',
+    `${baseSha}...${baseline.record.startingHead}`,'--',...baseline.record.intendedFiles]));
+  if(priorChanges.length) {
+    fail(`intended source path ${priorChanges[0]} changed before initial assessment evidence relative to PR base history`);
+  }
+}
+
 function assertReviewWindow(root,reviewedCommit,headSha) {
   try { git(root,['merge-base','--is-ancestor',reviewedCommit,headSha]); }
   catch { fail('reviewedCommit must be an ancestor of PR HEAD'); }
   const commits=git(root,['rev-list','--reverse',`${reviewedCommit}..${headSha}`]).trim().split('\n').filter(Boolean);
   const changed=[];
   for(const commit of commits) {
-    changed.push(...nulPaths(git(root,['diff-tree','--no-commit-id','--no-renames','--name-only','-z','-r',commit])));
+    changed.push(...nulPaths(git(root,['diff-tree','--no-commit-id','--no-renames','--name-only','-z','-r','-m',commit])));
   }
   const forbidden=changed.find(file=>!/^project\/task-assessments\/[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.yaml$/.test(file));
   if(forbidden) fail(`non-assessment change ${forbidden} occurred after reviewedCommit; only task-assessment metadata may change after review`);
+}
+
+function assertImplementationFollowsPreflight(root,baseline,reviewedCommit) {
+  try { git(root,['merge-base','--is-ancestor',baseline.commit,reviewedCommit]); }
+  catch { fail('reviewed implementation must follow the committed preflight assessment'); }
+  const intendedChanges=nulPaths(git(root,['diff','--name-only','--no-renames','-z',
+    baseline.record.startingHead,reviewedCommit,'--',...baseline.record.intendedFiles]));
+  if(!intendedChanges.length) fail('reviewed implementation must change an intended source path after preflight assessment');
 }
 
 function canonicalCommit(root,value,label) {
@@ -285,6 +301,7 @@ export function validateTier2Assessment({assessmentPath,repoRoot:rootValue,baseS
 
   const record=readAssessment(root,relative);
   const baseline=firstAssessmentCommit(relative,head,root);
+  assertPreflightBeforeIntendedChanges(root,base,baseline);
   assertInitialClassification(baseline.record);
   assertInitialFactsUnchanged(record,baseline.record);
   const config=acceptedPolicy(root,record,base);
@@ -311,6 +328,7 @@ export function validateTier2Assessment({assessmentPath,repoRoot:rootValue,baseS
   const reviewedCommit=record.reviewEvidence?.commit;
   validateTier2Evidence(record,config,reviewedCommit);
   canonicalCommit(root,reviewedCommit,'reviewEvidence.commit');
+  assertImplementationFollowsPreflight(root,baseline,reviewedCommit);
   assertReviewWindow(root,reviewedCommit,head);
   return {assessmentPath:relative,tier:2,status:'passed',actualFiles,reviewedCommit,initialEvidenceCommit:baseline.commit};
 }

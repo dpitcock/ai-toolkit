@@ -7,7 +7,7 @@ import {execFileSync,spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import YAML from 'yaml';
 import {createTaskAssessment} from '../scripts/lib/task-assessment.mjs';
-import {workspaceConfigDigest} from '../scripts/lib/workspace-config.mjs';
+import {parseWorkspaceConfig,workspaceConfigDigest} from '../scripts/lib/workspace-config.mjs';
 import {validateTier2Assessment} from '../scripts/check-tier2.mjs';
 
 const assessmentPath='project/task-assessments/tier2-change.yaml';
@@ -32,7 +32,7 @@ function makeReview(commit,by,revision=1) {
 
 function fixture(t,{input=answers,missingRoles=[],review={},roleEdits={},assessmentEdits={},extraActualFiles=[],extraAfterReview=[],
   policyDrift=false,accessibilityFinalReview=false,accessibilityFinalReviewEdits={},multipleAssessments=false,
-  secondAssessmentEdits={},initialEvidenceEdits={},headRef='feature/tier2-check'}={}) {
+  secondAssessmentEdits={},initialEvidenceEdits={},beforeAssessmentFiles=[],mergeCodeAfterReview=false,headRef='feature/tier2-check'}={}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'check-tier2-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   const config={
@@ -49,6 +49,10 @@ function fixture(t,{input=answers,missingRoles=[],review={},roleEdits={},assessm
   git(root,'add','.');git(root,'commit','-qm','accepted fixture policy');
   const baseSha=git(root,'rev-parse','HEAD');
   if(multipleAssessments) git(root,'checkout','-qb','tier2-primary');
+  for(const file of beforeAssessmentFiles) {
+    const target=path.join(root,file);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,'export const beforePreflight = true;\n');
+  }
+  if(beforeAssessmentFiles.length) { git(root,'add','--',...beforeAssessmentFiles);git(root,'commit','-qm','feature code before preflight'); }
   const assessment=createTaskAssessment({id:'tier2-change',answers:input,coordinationRoot:root,worktreeRoot:root});
   if(Object.keys(initialEvidenceEdits).length) {
     const initial=YAML.parse(fs.readFileSync(path.join(root,assessmentPath),'utf8'));
@@ -82,6 +86,18 @@ function fixture(t,{input=answers,missingRoles=[],review={},roleEdits={},assessm
     const target=path.join(root,file);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,'export const later = true;\n');
   }
   if(extraAfterReview.length) { git(root,'add','--',...extraAfterReview);git(root,'commit','-qm','change code after review'); }
+  if(mergeCodeAfterReview) {
+    const primaryBranch=git(root,'branch','--show-current');
+    git(root,'checkout','-qb','review-side',reviewedCommit);
+    fs.writeFileSync(path.join(root,'project/task-assessments/review-side.yaml'),'side metadata\n');
+    git(root,'add','--','project/task-assessments/review-side.yaml');git(root,'commit','-qm','side assessment metadata');
+    git(root,'checkout','-q',primaryBranch);
+    fs.writeFileSync(path.join(root,'project/task-assessments/primary-side.yaml'),'primary metadata\n');
+    git(root,'add','--','project/task-assessments/primary-side.yaml');git(root,'commit','-qm','primary assessment metadata');
+    git(root,'merge','--no-ff','--no-commit','review-side');
+    fs.appendFileSync(path.join(root,input.intendedFiles[0]),'export const mergeResolution = true;\n');
+    git(root,'add','--',input.intendedFiles[0]);git(root,'commit','-qm','merge resolution includes code change');
+  }
 
   const assessmentPaths=[assessmentPath,...(multipleAssessments?['project/task-assessments/tier2-second.yaml']:[])];
   for(const currentPath of assessmentPaths) {
@@ -111,6 +127,45 @@ function runCheckPr(state) {
     cwd:state.root,encoding:'utf8',
     env:{...process.env,BASE_SHA:state.baseSha,HEAD_REF:state.headRef},
   });
+}
+
+function linkedFixture(t) {
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'check-tier2-coordination-'));
+  const linked=path.join(os.tmpdir(),`check-tier2-linked-${path.basename(root)}`);
+  t.after(()=>{try { git(root,'worktree','remove','--force',linked); } catch {} fs.rmSync(root,{recursive:true,force:true});fs.rmSync(linked,{recursive:true,force:true});});
+  const config={
+    workspace:{repository:'tier2-fixture',environment:'test',provider:'codex',slack_channel_name:'ws-tier2-fixture-codex',timezone:'UTC'},
+    approvals_required:{principal:true,qa:true,appsec:true,accessibility_reviewer:false,ui_designer:false},
+    approvals_overrides:{reason:'No UI in fixture',exempt:['accessibility_reviewer','ui_designer']},
+    daily_summary:{local_time:'09:00'},task_tiers:{tier_1_direct_merge:false},
+  };
+  fs.mkdirSync(path.join(root,'config'),{recursive:true});fs.mkdirSync(path.join(root,'project'),{recursive:true});
+  fs.writeFileSync(path.join(root,'README.md'),'fixture\n');
+  fs.writeFileSync(path.join(root,'config/workspace-config.yaml'),YAML.stringify(config));
+  fs.writeFileSync(path.join(root,'project/workspace-config-history.jsonl'),history(config));
+  git(root,'init','-q');git(root,'config','user.email','qa@example.test');git(root,'config','user.name','QA');
+  git(root,'add','.');git(root,'commit','-qm','accepted coordination policy');
+  git(root,'worktree','add','-q','-b','linked-policy',linked);
+  const overlay={...parseWorkspaceConfig(YAML.stringify(config)),workspace:{...config.workspace,provider:'claude'},worktree_overrides:['workspace.provider']};
+  fs.writeFileSync(path.join(linked,'config/workspace-config.yaml'),YAML.stringify(overlay));
+  fs.writeFileSync(path.join(linked,'project/workspace-config-history.jsonl'),history(overlay));
+  git(linked,'add','--','config/workspace-config.yaml','project/workspace-config-history.jsonl');
+  git(linked,'commit','-qm','accept linked provider override');
+  const baseSha=git(linked,'rev-parse','HEAD');
+  const input={...answers,intendedFiles:['src/notify.js','src/format.js']};
+  const assessment=createTaskAssessment({id:'tier2-change',answers:input,coordinationRoot:root,worktreeRoot:linked});
+  git(linked,'add','--',assessmentPath);git(linked,'commit','-qm','initial assessment evidence');
+  for(const file of input.intendedFiles) {
+    const target=path.join(linked,file);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,`export const value = '${path.basename(file)}';\n`);
+  }
+  git(linked,'add','--',...input.intendedFiles);git(linked,'commit','-qm','implement Tier 2 change');
+  const reviewedCommit=git(linked,'rev-parse','HEAD');
+  const current=YAML.parse(fs.readFileSync(path.join(linked,assessmentPath),'utf8'));
+  current.reviewEvidence={mode:'independent',...makeReview(reviewedCommit,'reviewer-session')};
+  current.roleEvidence=Object.fromEntries(roles.map(role=>[role,makeReview(reviewedCommit,`${role}-reviewer-session`)]));
+  fs.writeFileSync(path.join(linked,assessmentPath),YAML.stringify(current,{lineWidth:0}));
+  git(linked,'add','--',assessmentPath);git(linked,'commit','-qm','record Tier 2 reviews');
+  return {root:linked,coordinationRoot:root,config,baseSha,headSha:git(linked,'rev-parse','HEAD'),headRef:'feature/tier2-check',reviewedCommit,assessment:assessment.record};
 }
 
 test('accepts a valid Tier 2 PR with exact reviewed commit and required role evidence',t=>{
@@ -177,6 +232,23 @@ test('allows only assessment metadata changes after the reviewed commit',t=>{
   assert.throws(()=>validate(state),/after reviewedCommit.*task-assessment metadata/);
 });
 
+test('rejects implementation changes introduced by a post-review merge commit',t=>{
+  const state=fixture(t,{mergeCodeAfterReview:true});
+  assert.throws(()=>validate(state),/after reviewedCommit.*task-assessment metadata/);
+});
+
+test('rejects implementation committed before preflight even if the intended file changes again later',t=>{
+  const state=fixture(t,{beforeAssessmentFiles:['src/notify.js','src/format.js']});
+  assert.throws(()=>validate(state),/intended source path.*PR base history/i);
+});
+
+test('accepts a linked-worktree task with an accepted nontrivial policy override',t=>{
+  const state=linkedFixture(t);
+  const result=validate(state,{repoRoot:state.root});
+  assert.equal(result.status,'passed');
+  assert.equal(result.tier,2);
+});
+
 test('refuses a Tier 2 assessment when the actual diff reclassifies to Tier 3',t=>{
   const state=fixture(t,{extraActualFiles:['src/expanded-scope.js']});
   assert.throws(()=>validate(state),/reclassifies to Tier 3/);
@@ -211,6 +283,27 @@ test('preflight accessibility evidence cannot be self-approved',t=>{
   const result=validate(state);
   assert.equal(result.tier,3);
   assert.equal(result.status,'epic-gate-required');
+});
+
+test('check-pr requires Tier 3 changes to pass the epic-plan gate',t=>{
+  const input={...answers,risks:{...risks,auth:true},intendedFiles:['project/src/notify.js','project/src/format.js']};
+  const state=fixture(t,{input});
+  const result=runCheckPr(state);
+  assert.notEqual(result.status,0);
+  assert.match(result.stderr,/Tier 3.*epic|epic.*Tier 3/i);
+});
+
+test('check-pr does not treat a merged-plan metadata exception as a Tier 3 epic gate',t=>{
+  const input={...answers,risks:{...risks,auth:true},intendedFiles:['project/src/notify.js','project/src/format.js']};
+  const state=fixture(t,{input,headRef:'epic/EPIC-004'});
+  const planDirectory=path.join(state.root,'epics/EPIC-004');
+  fs.mkdirSync(planDirectory,{recursive:true});
+  const approvals=Object.fromEntries(['principal_engineer','appsec','qa_lead','code_review','appsec_review','accessibility','accessibility_review'].map(role=>[role,null]));
+  const plan={kind:'epic-plan',id:'EPIC-004-PLAN',owner:'developer',status:'merged',revision:1,pr_url:'https://github.com/example/repo/pull/4',approvals};
+  fs.writeFileSync(path.join(planDirectory,'epic-plan.md'),`---\n${YAML.stringify(plan)}---\n`);
+  const result=runCheckPr(state);
+  assert.notEqual(result.status,0);
+  assert.match(result.stderr,/Tier 3.*successfully validated.*epic plan/i);
 });
 
 test('check-pr validates every changed assessment file in the same PR',t=>{
