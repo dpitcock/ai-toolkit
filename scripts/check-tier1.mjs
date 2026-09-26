@@ -6,7 +6,7 @@ import {isDeepStrictEqual} from 'node:util';
 import YAML from 'yaml';
 import {classifyTask,selectEffectiveTier} from './lib/task-tier.mjs';
 import {resolveTierDefaults} from './lib/tier-defaults.mjs';
-import {applyWorktreeOverlay,parseWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from './lib/workspace-config.mjs';
+import {applyWorktreeOverlay,canonicalCoordinationRoot,resolveWorkspaceConfig,parseWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from './lib/workspace-config.mjs';
 import {assertAcceptedWorkspaceConfig,readWorkspaceHistory} from './lib/workspace-history.mjs';
 import {pathToFileURL} from 'node:url';
 
@@ -118,20 +118,31 @@ function acceptedEffectivePolicy(root,assessment,adapter) {
       || currentWorktree.accepted.digest!==worktreeRecord.digest || currentWorktree.accepted.revision!==worktreeRecord.revision) {
       fail('Accepted linked-worktree config is stale; rerun preflight');
     }
-    const worktrees=runGit(adapter,['worktree','list','--porcelain']).split('\n')
-      .filter(line=>line.startsWith('worktree ')).map(line=>fs.realpathSync(line.slice(9))).filter(candidate=>candidate!==root);
-    const matches=[];
-    for(const candidate of worktrees) {
-      try {
-        const rootConfig=readAcceptedConfig(candidate);
-        if(Object.hasOwn(rootConfig.config,'worktree_overrides') || rootConfig.accepted.digest!==recorded.coordination.digest
-          || rootConfig.accepted.revision!==recorded.coordination.revision) continue;
-        const {config:combined}=applyWorktreeOverlay(rootConfig.config,currentWorktree.config);
-        if(workspaceConfigDigest(combined)===recorded.effectiveDigest) matches.push({root:candidate,config:combined,accepted:rootConfig.accepted});
-      } catch { /* Other registered roots are not candidates for this assessment. */ }
+    if(!Object.hasOwn(currentWorktree.config,'worktree_overrides')) {
+      coordinationRoot=canonicalCoordinationRoot(root);
+      if(coordinationRoot===root) fail('Canonical mirror requires its registered coordination root for the local Tier 1 check');
+      const rootConfig=readAcceptedConfig(coordinationRoot);
+      if(rootConfig.accepted.digest!==recorded.coordination.digest || rootConfig.accepted.revision!==recorded.coordination.revision) {
+        fail('Accepted coordination config is stale or unavailable');
+      }
+      effective=resolveWorkspaceConfig({coordinationRoot,worktreeRoot:root}).config;
+      policy=rootConfig.accepted;
+    } else {
+      const worktrees=runGit(adapter,['worktree','list','--porcelain']).split('\n')
+        .filter(line=>line.startsWith('worktree ')).map(line=>fs.realpathSync(line.slice(9))).filter(candidate=>candidate!==root);
+      const matches=[];
+      for(const candidate of worktrees) {
+        try {
+          const rootConfig=readAcceptedConfig(candidate);
+          if(Object.hasOwn(rootConfig.config,'worktree_overrides') || rootConfig.accepted.digest!==recorded.coordination.digest
+            || rootConfig.accepted.revision!==recorded.coordination.revision) continue;
+          const {config:combined}=applyWorktreeOverlay(rootConfig.config,currentWorktree.config);
+          if(workspaceConfigDigest(combined)===recorded.effectiveDigest) matches.push({root:candidate,config:combined,accepted:rootConfig.accepted});
+        } catch { /* Other registered roots are not candidates for this assessment. */ }
+      }
+      if(matches.length!==1) fail(matches.length?'Coordination root is ambiguous; provide one explicit root':'Accepted coordination config is stale or unavailable');
+      ({root:coordinationRoot,config:effective,accepted:policy}=matches[0]);
     }
-    if(matches.length!==1) fail(matches.length?'Coordination root is ambiguous; provide one explicit root':'Accepted coordination config is stale or unavailable');
-    ({root:coordinationRoot,config:effective,accepted:policy}=matches[0]);
     if(recorded.revision!==policy.revision) fail('Accepted config revision is stale; rerun preflight');
   }
   if(workspaceConfigDigest(effective)!==recorded.effectiveDigest) fail('Effective accepted config digest is stale; rerun preflight');

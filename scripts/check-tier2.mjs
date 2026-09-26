@@ -5,7 +5,7 @@ import {execFileSync} from 'node:child_process';
 import {isDeepStrictEqual} from 'node:util';
 import YAML from 'yaml';
 import {classifyTask,selectEffectiveTier} from './lib/task-tier.mjs';
-import {applyWorktreeOverlay,parseWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from './lib/workspace-config.mjs';
+import {applyWorktreeOverlay,canonicalCoordinationRoot,readWorkspacePolicySnapshot,resolveCanonicalPolicyMirror,resolveWorkspaceConfig,parseWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from './lib/workspace-config.mjs';
 import {parseWorkspaceHistory,readWorkspaceHistory,assertAcceptedWorkspaceConfig} from './lib/workspace-history.mjs';
 import {resolveTier3Policy} from './lib/tier3-policy.mjs';
 import {recognizeBootstrapPolicy} from './lib/bootstrap-policy.mjs';
@@ -123,6 +123,17 @@ function acceptedConfigAt(root,sha) {
   return {config,accepted};
 }
 
+function committedPolicySnapshot(root,sha) {
+  const read=relative=>{
+    const entry=git(root,['ls-tree','-z',sha,'--',relative]);
+    if(!/^100644 blob [a-f0-9]{40}\t[^\0]+\0$/.test(entry)) {
+      fail('Canonical mirror PR base policy must contain regular non-executable files');
+    }
+    return execFileSync('git',['-C',root,'show',`${sha}:${relative}`],{stdio:['ignore','pipe','pipe']});
+  };
+  return {configText:read('config/workspace-config.yaml'),historyText:read('project/workspace-config-history.jsonl')};
+}
+
 function acceptedPolicy(root,record,baseSha,bootstrap) {
   const provenance=record.acceptedConfig;
   if(!isObject(provenance) || !/^[a-f0-9]{64}$/.test(provenance.effectiveDigest??'')
@@ -153,30 +164,47 @@ function acceptedPolicy(root,record,baseSha,bootstrap) {
       || currentPolicy.digest!==worktree.digest || currentPolicy.revision!==worktree.revision) {
       fail('accepted linked-worktree policy is stale; rerun preflight');
     }
-    const candidates=git(root,['worktree','list','--porcelain']).split('\n')
-      .filter(line=>line.startsWith('worktree ')).map(line=>fs.realpathSync(line.slice('worktree '.length))).filter(candidate=>candidate!==root);
-    const matches=[];
-    for(const candidate of candidates) {
-      try {
-        const config=parseWorkspaceConfig(safeReadText(candidate,'config/workspace-config.yaml','Coordination config'));
-        const accepted=assertAcceptedWorkspaceConfig(candidate,config);
-        if(!Object.hasOwn(config,'worktree_overrides') && accepted.digest===provenance.coordination.digest
-          && accepted.revision===provenance.coordination.revision
-          && workspaceConfigDigest(applyWorktreeOverlay(config,currentConfig).config)===provenance.effectiveDigest) {
-          matches.push({config,accepted,effective:applyWorktreeOverlay(config,currentConfig).config});
-        }
-      } catch { /* Other registered worktrees are not coordination candidates. */ }
-    }
-    if(matches.length===1) {
-      ({effective,accepted:coordinationPolicy}=matches[0]);
-    } else if(matches.length>1) fail('coordination policy is ambiguous across registered worktrees');
-    else {
-      const basePolicy=acceptedConfigAt(root,baseSha);
-      if(basePolicy.accepted.digest!==provenance.coordination.digest || basePolicy.accepted.revision!==provenance.coordination.revision) {
-        fail('accepted coordination policy is stale or unavailable in PR context');
+    if(!Object.hasOwn(currentConfig,'worktree_overrides')) {
+      const coordination=canonicalCoordinationRoot(root);
+      if(coordination!==root) {
+        effective=resolveWorkspaceConfig({coordinationRoot:coordination,worktreeRoot:root}).config;
+        coordinationPolicy=assertAcceptedWorkspaceConfig(coordination,effective);
+      } else {
+        // A fresh CI checkout has no historical local root. Its committed PR
+        // base must independently prove the same complete canonical snapshot.
+        const snapshot=committedPolicySnapshot(root,baseSha);
+        effective=resolveCanonicalPolicyMirror(snapshot,readWorkspacePolicySnapshot(root)).config;
+        coordinationPolicy=parseWorkspaceHistory(snapshot.historyText.toString('utf8')).at(-1);
       }
-      coordinationPolicy=basePolicy.accepted;
-      effective=applyWorktreeOverlay(basePolicy.config,currentConfig).config;
+      if(coordinationPolicy.digest!==provenance.coordination.digest || coordinationPolicy.revision!==provenance.coordination.revision) {
+        fail('Accepted canonical coordination policy is stale or unavailable');
+      }
+    } else {
+      const candidates=git(root,['worktree','list','--porcelain']).split('\n')
+        .filter(line=>line.startsWith('worktree ')).map(line=>fs.realpathSync(line.slice('worktree '.length))).filter(candidate=>candidate!==root);
+      const matches=[];
+      for(const candidate of candidates) {
+        try {
+          const config=parseWorkspaceConfig(safeReadText(candidate,'config/workspace-config.yaml','Coordination config'));
+          const accepted=assertAcceptedWorkspaceConfig(candidate,config);
+          if(!Object.hasOwn(config,'worktree_overrides') && accepted.digest===provenance.coordination.digest
+            && accepted.revision===provenance.coordination.revision
+            && workspaceConfigDigest(applyWorktreeOverlay(config,currentConfig).config)===provenance.effectiveDigest) {
+            matches.push({config,accepted,effective:applyWorktreeOverlay(config,currentConfig).config});
+          }
+        } catch { /* Other registered worktrees are not coordination candidates. */ }
+      }
+      if(matches.length===1) {
+        ({effective,accepted:coordinationPolicy}=matches[0]);
+      } else if(matches.length>1) fail('coordination policy is ambiguous across registered worktrees');
+      else {
+        const basePolicy=acceptedConfigAt(root,baseSha);
+        if(basePolicy.accepted.digest!==provenance.coordination.digest || basePolicy.accepted.revision!==provenance.coordination.revision) {
+          fail('accepted coordination policy is stale or unavailable in PR context');
+        }
+        coordinationPolicy=basePolicy.accepted;
+        effective=applyWorktreeOverlay(basePolicy.config,currentConfig).config;
+      }
     }
   }
   if(provenance.revision!==coordinationPolicy.revision || workspaceConfigDigest(effective)!==provenance.effectiveDigest) {

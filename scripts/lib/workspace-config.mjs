@@ -4,6 +4,7 @@ import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import YAML from 'yaml';
 import {resolveTierDefaults} from './tier-defaults.mjs';
+import {workspaceHistoryValidation} from './workspace-history-validation.mjs';
 
 const approvalRoles=['principal','qa','appsec','accessibility_reviewer','ui_designer'];
 const workspaceFields=['repository','environment','provider','slack_channel_name','timezone'];
@@ -211,6 +212,59 @@ export function applyWorktreeOverlay(rootConfig,worktreeConfig) {
   return {config:parseWorkspaceConfig(YAML.stringify(effective)),sources};
 }
 
+/** Identity comes from the Git-common directory, never matching sibling policy. */
+export function canonicalCoordinationRoot(worktreeRoot) {
+  const worktree=fs.realpathSync(worktreeRoot);
+  const git=(root,args)=>execFileSync('git',['-C',root,...args],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+  const common=fs.realpathSync(git(worktree,['rev-parse','--path-format=absolute','--git-common-dir']));
+  const registered=git(worktree,['worktree','list','--porcelain','-z']).split('\0')
+    .filter(line=>line.startsWith('worktree ')).map(line=>fs.realpathSync(line.slice(9)));
+  if(!registered.includes(worktree) || fs.realpathSync(git(worktree,['rev-parse','--show-toplevel']))!==worktree) {
+    throw new Error('Canonical mirror requires a registered top-level Git worktree');
+  }
+  const roots=registered.filter(candidate=>{
+    try {
+      return fs.realpathSync(git(candidate,['rev-parse','--absolute-git-dir']))===common
+        && fs.realpathSync(git(candidate,['rev-parse','--show-toplevel']))===candidate;
+    } catch { return false; }
+  });
+  if(roots.length!==1) throw new Error('Canonical Git-common coordination root is unavailable or ambiguous');
+  return roots[0];
+}
+
+export function readWorkspacePolicySnapshot(root) {
+  const base=fs.realpathSync(root);
+  const read=relative=>{
+    const [directory,name]=relative.split('/');
+    const parent=path.join(base,directory),file=path.join(parent,name);
+    if(fs.lstatSync(parent).isSymbolicLink() || !fs.lstatSync(parent).isDirectory()
+      || fs.lstatSync(file).isSymbolicLink() || !fs.lstatSync(file).isFile()
+      || !fs.realpathSync(file).startsWith(base+path.sep)) {
+      throw new Error('Canonical mirror policy must use regular root-local files without symlinks');
+    }
+    return fs.readFileSync(file);
+  };
+  return {configText:read('config/workspace-config.yaml'),historyText:read('project/workspace-config-history.jsonl')};
+}
+
+/** Exact snapshot semantics shared with committed-base reconstruction in CI. */
+export function resolveCanonicalPolicyMirror(rootSnapshot,linkedSnapshot) {
+  const {parseWorkspaceHistory,assertAcceptedHistory}=workspaceHistoryValidation({workspaceConfigDigest,workspaceTierDefinition});
+  const rootBytes=Buffer.from(rootSnapshot.configText),linkedBytes=Buffer.from(linkedSnapshot.configText);
+  const rootHistory=Buffer.from(rootSnapshot.historyText),linkedHistory=Buffer.from(linkedSnapshot.historyText);
+  if(!rootBytes.equals(linkedBytes) || !rootHistory.equals(linkedHistory)) {
+    throw new Error('Canonical mirror requires exact config and complete accepted-history bytes; nonidentical policy requires worktree_overrides markers');
+  }
+  const config=parseWorkspaceConfig(rootBytes.toString('utf8'));
+  const linkedConfig=parseWorkspaceConfig(linkedBytes.toString('utf8'));
+  if(Object.hasOwn(config,'worktree_overrides') || Object.hasOwn(linkedConfig,'worktree_overrides')) {
+    throw new Error('Canonical mirror root and linked policy cannot declare worktree_overrides');
+  }
+  assertAcceptedHistory(parseWorkspaceHistory(rootHistory.toString('utf8')),config);
+  assertAcceptedHistory(parseWorkspaceHistory(linkedHistory.toString('utf8')),linkedConfig);
+  return {config,sources:rootSources(config)};
+}
+
 export function resolveWorkspaceConfig({coordinationRoot,worktreeRoot=coordinationRoot}) {
   if(!coordinationRoot || !worktreeRoot) throw new Error('A repository root is required');
   const root=fs.realpathSync(coordinationRoot);
@@ -226,10 +280,21 @@ export function resolveWorkspaceConfig({coordinationRoot,worktreeRoot=coordinati
   if(Object.hasOwn(config,'worktree_overrides')) throw new Error('Coordination config cannot declare worktree_overrides');
   const worktree=fs.realpathSync(worktreeRoot);
   if(worktree===root) return {config,sources:rootSources(config)};
-  const registered=execFileSync('git',['-C',worktree,'worktree','list','--porcelain'],{encoding:'utf8'})
+  const registered=execFileSync('git',['-C',worktree,'worktree','list','--porcelain'],{encoding:'utf8',stdio:['ignore','pipe','pipe']})
     .split('\n').filter(line=>line.startsWith('worktree ')).map(line=>fs.realpathSync(line.slice(9)));
   if(!registered.includes(root) || !registered.includes(worktree)) {
     throw new Error('Worktree and coordination root must be linked Git worktrees');
   }
-  return applyWorktreeOverlay(config,readConfig(worktree));
+  const linkedConfig=readConfig(worktree);
+  if(!Object.hasOwn(linkedConfig,'worktree_overrides')) {
+    if(canonicalCoordinationRoot(worktree)!==root) {
+      throw new Error('Canonical mirror must inherit from the actual Git-common coordination root');
+    }
+    try {
+      return resolveCanonicalPolicyMirror(readWorkspacePolicySnapshot(root),readWorkspacePolicySnapshot(worktree));
+    } catch(error) {
+      throw new Error(`Linked config without worktree_overrides requires an accepted canonical mirror: ${error.message}`,{cause:error});
+    }
+  }
+  return applyWorktreeOverlay(config,linkedConfig);
 }

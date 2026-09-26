@@ -57,7 +57,7 @@ function assessmentFixture(t,options={}) {
   return fixture(t,options);
 }
 
-function linkedFixture(t,{autopilot,invalidOverlay}={}) {
+function linkedFixture(t,{autopilot,invalidOverlay,mirror=false}={}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'check-tier1-coordination-'));
   const worktree=path.join(os.tmpdir(),`check-tier1-linked-${path.basename(root)}`);
   t.after(()=>{fs.rmSync(worktree,{recursive:true,force:true});fs.rmSync(root,{recursive:true,force:true});});
@@ -79,8 +79,10 @@ function linkedFixture(t,{autopilot,invalidOverlay}={}) {
     overlay.workflow.autopilot=!autopilot;
     overlay.worktree_overrides.push('workflow.autopilot');
   }
-  write(worktree,overlay);
-  git(worktree,'add','config/workspace-config.yaml','project/workspace-config-history.jsonl');git(worktree,'commit','-qm','linked overlay');
+  if(!mirror) {
+    write(worktree,overlay);
+    git(worktree,'add','config/workspace-config.yaml','project/workspace-config-history.jsonl');git(worktree,'commit','-qm','linked overlay');
+  }
   const preflight=createTaskAssessment({id:'quick-fix',answers:lowRisk,coordinationRoot:root,worktreeRoot:worktree});
   if(invalidOverlay) {
     // Model forged-but-consistently-hashed initial evidence: the final checker
@@ -203,6 +205,19 @@ test('Tier 1 final CLI accepts both marked autopilot directions from new policy'
     assert.equal(result.status,0,result.stderr);
     assert.match(result.stdout,/Tier 1 final check: passed/);
   }
+});
+
+test('Tier 1 final CLI accepts a clean canonical mirror and rejects matching sibling substitution',t=>{
+  const {root,worktree}=linkedFixture(t,{mirror:true});
+  fs.mkdirSync(path.join(worktree,'src'),{recursive:true});
+  fs.writeFileSync(path.join(worktree,'src/notify.js'),'export const notify = () => true;\n');
+  git(worktree,'add','src/notify.js');git(worktree,'commit','-qm','implement notification fix');
+  const run=()=>spawnSync(process.execPath,[cli,'--assessment',assessmentPath],{cwd:worktree,encoding:'utf8'});
+  assert.equal(run().status,0);
+  const sibling=path.join(root,'sibling');git(root,'worktree','add','-q','-b','matching-sibling',sibling);
+  fs.appendFileSync(path.join(root,'config/workspace-config.yaml'),'# root bytes changed\n');
+  const result=run();
+  assert.equal(result.status,1,result.stdout);
 });
 
 test('Tier 1 final CLI rejects unmarked autopilot and weakened tier overrides with matching raw acceptance',t=>{

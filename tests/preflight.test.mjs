@@ -111,6 +111,19 @@ test('preflight refuses derived fields, malformed input, unsafe IDs, and unaccep
   assert.equal(fs.existsSync(path.join(worktree,'project/task-assessments/pending.yaml')),false);
 });
 
+test('preflight CLI accepts a clean canonical markerless mirror with root sources',t=>{
+  const {root,worktree}=fixture(t);
+  for(const relative of ['config/workspace-config.yaml','project/workspace-config-history.jsonl']) {
+    fs.copyFileSync(path.join(root,relative),path.join(worktree,relative));
+  }
+  git(worktree,'add','config','project');git(worktree,'commit','-qm','canonical accepted mirror');
+  const result=run({root,worktree,id:'canonical-mirror'});
+  assert.equal(result.status,0,result.stderr);
+  assert.match(result.stdout,/Effective provider:\s+codex.*root/i);
+  const record=YAML.parse(fs.readFileSync(path.join(worktree,'project/task-assessments/canonical-mirror.yaml'),'utf8'));
+  assert.deepEqual(record.acceptedConfig.worktree,record.acceptedConfig.coordination);
+});
+
 test('preflight refuses dirty worktrees and symlinked evidence directories before writing',t=>{
   const {root,worktree}=fixture(t);
   fs.writeFileSync(path.join(worktree,'untracked.txt'),'dirty\n');

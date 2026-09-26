@@ -230,7 +230,7 @@ function tier3Fixture(t,{boundPlanId='EPIC-043',policyEdit=null,bindingEdit=null
   return {root:linked,baseSha,headSha:git(linked,'rev-parse','HEAD'),headRef:'epic/EPIC-043'};
 }
 
-function linkedFixture(t,{autopilot}={}) {
+function linkedFixture(t,{autopilot,mirror=false}={}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'check-tier2-coordination-'));
   const linked=path.join(os.tmpdir(),`check-tier2-linked-${path.basename(root)}`);
   t.after(()=>{try { git(root,'worktree','remove','--force',linked); } catch {} fs.rmSync(root,{recursive:true,force:true});fs.rmSync(linked,{recursive:true,force:true});});
@@ -255,10 +255,12 @@ function linkedFixture(t,{autopilot}={}) {
   if(autopilot!==undefined) {
     overlay.workflow.autopilot=!autopilot;overlay.worktree_overrides.push('workflow.autopilot');
   }
-  fs.writeFileSync(path.join(linked,'config/workspace-config.yaml'),YAML.stringify(overlay));
-  fs.writeFileSync(path.join(linked,'project/workspace-config-history.jsonl'),history(overlay));
-  git(linked,'add','--','config/workspace-config.yaml','project/workspace-config-history.jsonl');
-  git(linked,'commit','-qm','accept linked provider override');
+  if(!mirror) {
+    fs.writeFileSync(path.join(linked,'config/workspace-config.yaml'),YAML.stringify(overlay));
+    fs.writeFileSync(path.join(linked,'project/workspace-config-history.jsonl'),history(overlay));
+    git(linked,'add','--','config/workspace-config.yaml','project/workspace-config-history.jsonl');
+    git(linked,'commit','-qm','accept linked provider override');
+  }
   const baseSha=git(linked,'rev-parse','HEAD');
   const input={...answers,intendedFiles:['src/notify.js','src/format.js']};
   const assessment=createTaskAssessment({id:'tier2-change',answers:input,coordinationRoot:root,worktreeRoot:linked});
@@ -284,6 +286,41 @@ function singleCheckout(t,state) {
   assert.equal(git(clone,'worktree','list','--porcelain').split('\n').filter(line=>line.startsWith('worktree ')).length,1);
   return {...state,root:clone};
 }
+
+test('PR CLI accepts canonical mirrors locally and from the committed root in single-checkout CI',t=>{
+  const linked=linkedFixture(t,{mirror:true,autopilot:true});
+  for(const state of [linked,singleCheckout(t,linked)]) {
+    const result=runCheckPr(state);
+    assert.equal(result.status,0,result.stderr);
+    assert.match(result.stdout,/Tier 2 passed/);
+  }
+});
+
+test('PR CLI canonical mirror rejects root drift despite a matching sibling and accepted PR base',t=>{
+  const state=linkedFixture(t,{mirror:true});
+  const sibling=path.join(state.coordinationRoot,'sibling');
+  git(state.coordinationRoot,'worktree','add','-q','-b','matching-sibling',sibling);
+  fs.appendFileSync(path.join(state.coordinationRoot,'project/workspace-config-history.jsonl'),'\n');
+  const result=runCheckPr(state);
+  assert.notEqual(result.status,0,result.stdout);
+  assert.match(result.stderr,/exact.*bytes/i);
+});
+
+test('single-checkout PR CLI rejects canonical mirror config and ledger bytes that differ from committed base',t=>{
+  const state=singleCheckout(t,linkedFixture(t,{mirror:true,autopilot:true}));
+  for(const [relative,mutate] of [
+    ['config/workspace-config.yaml',text=>text+'# unchanged normalized policy\n'],
+    ['project/workspace-config-history.jsonl',text=>text.replace('"by":"Dennis"','"by":"Different acceptor"')],
+    ['project/workspace-config-history.jsonl',text=>text+'\n'],
+  ]) {
+    const file=path.join(state.root,relative),original=fs.readFileSync(file,'utf8');
+    fs.writeFileSync(file,mutate(original));
+    const result=runCheckPr(state);
+    assert.notEqual(result.status,0,result.stdout);
+    assert.match(result.stderr,/exact.*bytes/i);
+    fs.writeFileSync(file,original);
+  }
+});
 
 test('Tier 2 PR CLI accepts both marked autopilot directions through registered coordination',t=>{
   for(const autopilot of [false,true]) {
