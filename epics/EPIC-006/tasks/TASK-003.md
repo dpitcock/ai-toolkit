@@ -2,16 +2,24 @@
 kind: task
 id: TASK-003
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: [ tasks/TASK-002.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-26: node --test tests/task-tier.test.mjs tests/preflight.test.mjs
+    failed as expected before implementation: selectEffectiveTier was not
+    exported, and a Tier 2 workspace-policy fixture failed because preflight did
+    not record tierPolicy provenance."
+  green: "2026-09-26: node --test tests/task-tier.test.mjs
+    tests/preflight.test.mjs passed: 21 tests, 0 failed."
+  qa: "QA-GOV-001 and QA-GOV-002: verified max(configured minimum, risk result,
+    earlier preflight tier), accepted shared-definition version/digest
+    persistence, and low-risk routing under an accepted Tier 2 minimum. Extended
+    focused verification including task-assessment tests passed: 30 tests, 0
+    failed."
+  commit: "91df68d5b7f84e63b331e6beaf66bcb40961dcbd"
 approvals:
   principal_engineer: null
   appsec: null
