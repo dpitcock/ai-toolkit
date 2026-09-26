@@ -155,3 +155,117 @@ the same corrected implementation revision. Repeat separate actual local and
 host reviews for adoption H1 at release. Explicit owner authority for the
 concrete root update, installed host protections, live integrated verification,
 actual-session activation and safe cleanup remain release responsibilities.
+
+## Independent addendum review: active-session release verification
+
+Reviewer: Codex AppSec `/root/appsec_release_design`, 2026-09-26, separately
+assigned to review the Principal addendum at
+`4da4ce96e90ccc4513c43723f9a87e5fa686b7df`, beginning at its
+"Additional activation trace audit: post-adoption release verification" section.
+Also reviewed independent QA's design decision and nonrecursive-head condition
+in `project/EPIC-006-release-qa-trace.md` at
+`e424cb939396c1ebb5626c7c166f9235513a5a26`.
+
+Verdict: **APPROVE THE FINITE RELEASE-VERIFICATION DESIGN**, with the exact
+conditions below. There are no unresolved blocking design findings. Earlier
+adoption design approval remains intact; the addendum replaces only the direct
+I-to-completion shortcut with the reviewed evidence-only I-to-J continuation.
+This authorizes implementation within existing approved release obligations,
+not an unrestricted merged-plan task route or a new generic postmerge workflow.
+
+Rechecked the actual `workflow-event.mjs` actor, policy, event, lifecycle and
+delivery interfaces; `workflow-authorization.mjs` scoped permit contract;
+`review-scheduling.mjs` durable role/head claims; `review-evidence.mjs` host
+evidence contract; and the previously inspected integration/completion gates.
+The current adapter does not yet implement `release.verify`, and existing
+review records require a real positive PR ID. Therefore extending the local
+claim model and stage routing is necessary implementation work, not behavior
+already proven by existing tests. Concurrent canonical-mirror implementation
+was not reviewed or changed by this session.
+
+### Required security conditions
+
+1. **Current authority, finite scope (SEC-GOV-001/003/005).** Only the registered
+   EPIC-006 `activation-evidence` record with the proven PR0/M/F/PR1/I chain may
+   use this event. Resolve actual current policy and identical accepted root /
+   worktree history through ordinary resolution; verify loaded integrated code,
+   genuine current-policy permit and observed harness identity. Preserve permit
+   revocation, expiry and scope checks. Missing authority, legacy denial or
+   caller-supplied identity cannot become `authorized-routine`. Keep merged-plan
+   task dispatch and next-epic admission closed.
+2. **No general command capability (SEC-GOV-005).** Accept only `prepare`,
+   `commit` and `push`, with bounded validated input. Derive repository, branch,
+   base and head/diff internally. The returned decision is scoped to that
+   operation and observed state; it grants no executable command, caller path,
+   root-write permission, branch switch, arbitrary push or new tool permission.
+   Before applying a delayed decision, revalidate current head/diff/policy. A
+   replay must not authorize a fresh operation against a changed head or repeat
+   an already acknowledged external effect; uncertain effects need reconciliation.
+3. **Evidence cannot authorize itself (SEC-GOV-001/003/005).** Treat the report
+   as bounded untrusted data, even when its fields say `observed`. Use only the
+   named schema and observation kinds; reject unsupported fields, modes, paths,
+   symlinks and unbounded records. Evidence references must be validated data,
+   not commands, automatic file reads, arbitrary network fetches or authority.
+   The renderer must escape or reject strings that could inject Markdown/HTML
+   or block markers, preserve every byte outside the fixed block, and derive
+   the entire permitted block from the validated report. No docs-wide exception.
+4. **Prove every history step (SEC-GOV-001/006).** Every commit I-to-head and
+   both submitted/integrated snapshots must obey the two-path restriction,
+   unchanged policy/assessment binding and original PR identity. Reject hidden
+   edit/revert source changes, unrelated merges, new assessments, direct main
+   pushes and a second verification PR. The report cannot select another I,
+   lineage, repository or release record by asserting it in JSON.
+5. **Durable local and hosted readiness (SEC-GOV-002/004).** Persist an explicit
+   local release/role/head identity before dispatch, without dummy PR numbers.
+   Keep claim, dispatch, acknowledgement and actual verdict distinct. Staff
+   review precedes AppSec for the same head; role identities are independently
+   observed. Bind later verdict publication to actual PR2/head and its separate
+   hosted readiness. Publishing a verdict cannot redispatch its review. No push
+   or test run starts reviewers. Replays/restart preserve acknowledgement and
+   uncertain delivery requires observed reconciliation, not blind redispatch.
+6. **Honest QA counts and corrections (SEC-GOV-004/005).** Obtain actual Git,
+   transport and controller receipts for both meaningful commits/pushes and
+   zero early dispatches; report counters alone are insufficient. Independent
+   QA/review assesses meaningfulness. Genuine newly available facts may replace
+   pending entries after an independent reviewer identifies the correction.
+   A correction stays on PR2, invalidates head readiness and all stale reviews,
+   and obtains fresh Staff then AppSec reviews before current-head host merge
+   approval. A deliberate defect or falsely complete initial report cannot
+   satisfy the trace.
+7. **Nonrecursive evidence and three gates (SEC-GOV-002/003).** Apply QA's
+   nonrecursive-head condition exactly: committed observations of earlier heads
+   retain those head identities; final-head approvals/checks and future J facts
+   remain authenticated host/runtime evidence. Never promote earlier-head
+   receipts to final-head approval or require a report commit to name its own
+   future approval/merge. CI checks only committed provenance, local publication
+   requires real runtime reviews/authority, and trusted integrated host merge
+   requires current-head native reviews/checks. None substitutes for another.
+8. **Completion at J (SEC-GOV-006).** Keep the evidence-only relation distinct
+   from status finalization and policy adoption. Prove actual PR2 merge and both
+   submitted/integrated diffs under squash/rebase. Reload J; independently
+   refresh checks, smoke, loaded adapter, unchanged effective policy and actual
+   activation. Persist J-bound owned cleanup and completion in the locked store,
+   and refresh host facts for admission. Missing/corrupt state, policy drift,
+   raced main/head, open corrective PRs or incomplete observations block.
+
+These conditions cover spoofing, tampering, replay, privilege escalation and
+false completion at the added boundaries. Existing locked/atomic state handling,
+input limits, safe owned cleanup and secret-free receipts remain required.
+No new network credential, data category, dependency or host-write capability
+is approved by this design review.
+
+Required negative tests include unauthorized/expired/revoked operations, changed
+state after decision, delivery replay, false report claims, renderer/block escape,
+extra paths and edit/revert history, early/double review dispatch, uncertain
+claim recovery, stale-head verdict publication, nonrecursive final-head checks,
+wrong/second PR, missing live facts, policy drift and premature completion.
+The complete generated real-entrypoint trace must reach J, and later real
+QA-GOV-010 acceptance must use actual session/host observations. Fixtures remain
+development evidence only.
+
+No claim is made that this unimplemented stage passes these tests, that actual
+QA-GOV-010 is complete, or that release is authorized. After full implementation
+and QA, independent final Staff then AppSec must review the same corrected
+revision. Concrete coordination-root adoption remains a future explicit owner
+decision; PR publication/merge, host protection, live activation and cleanup
+retain their separate gates. This addendum changes no canonical approval/status.
