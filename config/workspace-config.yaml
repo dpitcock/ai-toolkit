@@ -19,3 +19,4 @@ daily_summary:
   local_time: 09:00
 task_tiers:
   tier_1_direct_merge: false
+worktree_overrides: []
