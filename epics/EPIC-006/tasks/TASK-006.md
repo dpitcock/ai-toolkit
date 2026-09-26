@@ -2,16 +2,26 @@
 kind: task
 id: TASK-006
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: [ tasks/TASK-005.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-26: node --test tests/workflow-authorization.test.mjs failed as
+    expected before implementation because
+    scripts/lib/workflow-authorization.mjs did not exist."
+  green: "2026-09-26: node --test tests/workflow-authorization.test.mjs passed: 8
+    tests, 0 failed."
+  qa: "QA-GOV-004 verified: authorization binds repository, branch, scope,
+    actions, completion criterion, accepted policy digest/definition and
+    root/worktree acceptance references. A trusted harness is required for actor
+    and owner-decision identity; raw actor claims and self-authorization fail.
+    Disabled autopilot delegates, while stale policy or authorization blocks
+    only the affected action. Restricted access, cost, deploy, and destruction
+    effects require a covering trusted owner decision, and this module does not
+    grant tool permissions or action items."
+  commit: 969e4be76f6e31c39b41a8f22503140727eaef2d
 approvals:
   principal_engineer: null
   appsec: null
