@@ -121,3 +121,23 @@ continues to govern remaining implementation work. Source correction commit
 `7482951` passed independent root verification: 54 dispatch/gate/preflight/
 completion/integration tests plus 15 authorization/review-scheduling tests,
 69 total, no failures or skips.
+
+## Bounded release-lifecycle correction
+
+TASK-016 completed in implementation `1408e4e` and evidence `7f55fcc`.
+The root independently reran its scaffold suite: 10 passed, none failed or
+skipped. Release preparation then exposed existing TASK-009/010/011 gaps:
+the mandatory merge-transition CLI cannot obtain its required host evidence,
+the prescribed status-only finalization PR is rejected, and completion
+conflates the original merge commit with current main after finalization.
+The dispatch implementer independently confirmed these by read-only inspection.
+
+Repair those accepted lifecycle contracts in bounded follow-up commits before
+TASK-013's generated full-lifecycle verification. Keep submitted head, actual
+merge commit and integrated revision distinct. Authenticate host observations
+directly; admit only proven status/PR-URL finalization with unchanged source,
+policy and review evidence. Preserve native independent current-head reviews,
+all final local gates, immutable assessment and completed task history.
+The actual-session activation and coordination-root migration remain pending;
+fixture success cannot stand in for either. This is an in-scope correction
+under the owner's explicit bootstrap authorization, not a new approval.
