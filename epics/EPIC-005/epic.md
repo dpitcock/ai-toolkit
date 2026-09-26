@@ -51,7 +51,7 @@ Complete the remaining task-tiering deliverable from project-plan revision 2. Ti
 
 - SEC-TIER3-001 (High): Tier 3 must reject the shared coordination checkout, unregistered/nested/escaped paths, unrelated linked worktrees, and branches other than the bound `epic/EPIC-NNN` branch.
 - SEC-TIER3-002 (High): a Tier 3 assessment must bind one-to-one to its exact governed epic plan, revision, approved tasks, branch, scope, policy provenance, and reviewed implementation commit; another valid or merged-metadata plan cannot authorize it.
-- SEC-TIER3-003 (High): each configured role must have an explicit, fail-closed evidence mapping. A false setting or exemption cannot remove mandatory QA, security-concern, final code/AppSec, or UI accessibility floors.
+- SEC-TIER3-003 (High): each of the four in-scope approval roles must have an explicit, fail-closed evidence mapping. A false setting or exemption cannot remove mandatory QA, security-concern, final code/AppSec, or UI accessibility floors.
 - SEC-TIER3-004 (Medium): CI must reconstruct root/worktree policy deterministically from immutable assessment provenance and PR commits, never ambient worktree discovery or mutable state.
 - SEC-TIER3-005 (Medium): generated-adopter and PR-entry tests must cover a complete valid Tier 3 route plus representative rejections for the preceding concerns.
 
