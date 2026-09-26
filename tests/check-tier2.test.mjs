@@ -32,7 +32,7 @@ function makeReview(commit,by,revision=1) {
 
 function fixture(t,{input=answers,missingRoles=[],review={},roleEdits={},assessmentEdits={},extraActualFiles=[],extraAfterReview=[],
   policyDrift=false,accessibilityFinalReview=false,accessibilityFinalReviewEdits={},multipleAssessments=false,
-  secondAssessmentEdits={},initialEvidenceEdits={},beforeAssessmentFiles=[],mergeCodeAfterReview=false,headRef='feature/tier2-check'}={}) {
+  secondAssessmentEdits={},initialEvidenceEdits={},beforeAssessmentFiles=[],implementationOnSideBranch=false,mergeCodeAfterReview=false,headRef='feature/tier2-check'}={}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'check-tier2-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   const config={
@@ -72,6 +72,9 @@ function fixture(t,{input=answers,missingRoles=[],review={},roleEdits={},assessm
     changedConfig.workspace.provider='changed-after-acceptance';
     fs.writeFileSync(path.join(root,'config/workspace-config.yaml'),YAML.stringify(changedConfig));
   }
+  let reviewedCommit;
+  const implementationBranch=git(root,'branch','--show-current');
+  if(implementationOnSideBranch) git(root,'checkout','-qb','implementation-side',baseSha);
   for(const file of input.intendedFiles) {
     const target=path.join(root,file);fs.mkdirSync(path.dirname(target),{recursive:true});
     fs.writeFileSync(target,`export const value = '${path.basename(file)}';\n`);
@@ -81,7 +84,11 @@ function fixture(t,{input=answers,missingRoles=[],review={},roleEdits={},assessm
     fs.writeFileSync(target,`export const extra = '${path.basename(file)}';\n`);
   }
   git(root,'add','--',...input.intendedFiles,...extraActualFiles);git(root,'commit','-qm','implement Tier 2 change');
-  const reviewedCommit=git(root,'rev-parse','HEAD');
+  if(implementationOnSideBranch) {
+    git(root,'checkout','-q',implementationBranch);
+    git(root,'merge','--no-ff','-m','merge preflight and implementation branches','implementation-side');
+  }
+  reviewedCommit=git(root,'rev-parse','HEAD');
   for(const file of extraAfterReview) {
     const target=path.join(root,file);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,'export const later = true;\n');
   }
@@ -240,6 +247,11 @@ test('rejects implementation changes introduced by a post-review merge commit',t
 test('rejects implementation committed before preflight even if the intended file changes again later',t=>{
   const state=fixture(t,{beforeAssessmentFiles:['src/notify.js','src/format.js']});
   assert.throws(()=>validate(state),/intended source path.*PR base history/i);
+});
+
+test('rejects intended implementation commits forked before preflight and merged afterward',t=>{
+  const state=fixture(t,{implementationOnSideBranch:true});
+  assert.throws(()=>validate(state),/implementation commit.*does not descend from initial assessment/i);
 });
 
 test('accepts a linked-worktree task with an accepted nontrivial policy override',t=>{

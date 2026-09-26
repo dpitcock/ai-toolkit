@@ -269,9 +269,18 @@ function assertReviewWindow(root,reviewedCommit,headSha) {
   if(forbidden) fail(`non-assessment change ${forbidden} occurred after reviewedCommit; only task-assessment metadata may change after review`);
 }
 
-function assertImplementationFollowsPreflight(root,baseline,reviewedCommit) {
+function assertImplementationFollowsPreflight(root,baseSha,baseline,reviewedCommit) {
   try { git(root,['merge-base','--is-ancestor',baseline.commit,reviewedCommit]); }
   catch { fail('reviewed implementation must follow the committed preflight assessment'); }
+  const commits=git(root,['rev-list','--reverse',`${baseSha}..${reviewedCommit}`]).trim().split('\n').filter(Boolean);
+  for(const commit of commits) {
+    const changed=nulPaths(git(root,['diff-tree','--no-commit-id','--no-renames','--name-only','-z','-r','-m',commit]));
+    const intendedPath=changed.find(file=>baseline.record.intendedFiles.includes(file));
+    if(intendedPath) {
+      try { git(root,['merge-base','--is-ancestor',baseline.commit,commit]); }
+      catch { fail(`implementation commit ${commit.slice(0,12)} changing intended source path ${intendedPath} does not descend from initial assessment evidence`); }
+    }
+  }
   const intendedChanges=nulPaths(git(root,['diff','--name-only','--no-renames','-z',
     baseline.record.startingHead,reviewedCommit,'--',...baseline.record.intendedFiles]));
   if(!intendedChanges.length) fail('reviewed implementation must change an intended source path after preflight assessment');
@@ -328,7 +337,7 @@ export function validateTier2Assessment({assessmentPath,repoRoot:rootValue,baseS
   const reviewedCommit=record.reviewEvidence?.commit;
   validateTier2Evidence(record,config,reviewedCommit);
   canonicalCommit(root,reviewedCommit,'reviewEvidence.commit');
-  assertImplementationFollowsPreflight(root,baseline,reviewedCommit);
+  assertImplementationFollowsPreflight(root,base,baseline,reviewedCommit);
   assertReviewWindow(root,reviewedCommit,head);
   return {assessmentPath:relative,tier:2,status:'passed',actualFiles,reviewedCommit,initialEvidenceCommit:baseline.commit};
 }
