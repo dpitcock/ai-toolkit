@@ -2,7 +2,7 @@
 kind: epic
 id: EPIC-005
 owner: "Codex"
-status: awaiting-review
+status: in-progress
 revision: 2
 parent: ../../project/project-plan.md
 parent_revision: 2
@@ -33,8 +33,49 @@ qa_requirements:
   - QA-005-SCAFFOLD
 approvals:
   principal_engineer: null
-  appsec: null
-  qa_lead: null
+  appsec:
+    by: "Codex AppSec reviewer /root/epic005_appsec_triage_v2"
+    date: "2026-09-26"
+    revision: 2
+    notes: "Independent AppSec triage reviewed EPIC-005 revision 2, draft plan
+      revision 10, TASK-001 through TASK-008, project-plan revision 2, and the
+      Tier 3 design. Threat model: local preflight input (paths, Git metadata,
+      policy history, assessment), committed PR content, and GitHub PR context
+      cross the governance boundary; the protected asset is mandatory review/PR
+      routing, not credentials or user data. SEC-TIER3-001 is addressed by
+      registered linked-worktree, containment, symlink/copy/nesting, and
+      bound-branch rejection; SEC-TIER3-002 by immutable
+      plan/task/revision/branch binding and exact named-plan PR validation;
+      SEC-TIER3-003 by fail-closed mappings for principal, qa, appsec, and
+      accessibility_reviewer, preserving QA, concern, final independent
+      code/AppSec, and named-plan UI accessibility floors; SEC-TIER3-004 by
+      recomputing committed policy digests, effective-policy digest, and role
+      provenance without ambient CI discovery; and SEC-TIER3-005 by valid and
+      blocked generated-adopter/PR-entry routes. ui_designer has no forward
+      policy, evidence, or UI-approval role in the revised plan; TASK-008 solely
+      rolls back the completed optional parser/template/test addition. CI's
+      inability to establish historical local worktree registration remains
+      documented as a cooperative-control limit, with host protection required
+      for enforcement. No credentials, personal data, new network service, or
+      executable remote input boundary is introduced. Approval is triage-only;
+      plan AppSec signoff remains required after independent Principal
+      approval."
+  qa_lead:
+    by: "Codex QA reviewer /root/epic005_qa_triage_v2"
+    date: "2026-09-26"
+    revision: 2
+    notes: "Independent QA triage reviewed EPIC-005 revision 2, plan revision 10,
+      project-plan revision 2, and TASK-001 through TASK-008. The active Tier 3
+      matrix is limited to principal, qa, appsec, and accessibility_reviewer;
+      TASK-008 rolls back only the out-of-scope ui_designer parser/template/test
+      change. TASK-007 covers missing, malformed, self-issued, stale,
+      wrong-commit, and exemption evidence while retaining unconditional final
+      code/AppSec and named-plan UI accessibility floors. TASK-002/TASK-003
+      cover isolated-worktree, exact-plan, policy-provenance, and post-review
+      rejection paths; TASK-004/TASK-005 retain PR-only CI and
+      cooperative-control/host-protection boundaries; TASK-006 exercises valid
+      and blocked generated-adopter routes. Baseline npm test passed on
+      2026-09-26."
   code_review: null
   appsec_review: null
   accessibility: null
