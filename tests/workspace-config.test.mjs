@@ -10,6 +10,7 @@ import {
   resolveWorkspaceConfig,
   workspaceConfigDigest,
 } from '../scripts/lib/workspace-config.mjs';
+import {resolveTier3Policy,tier3PolicyContract,validateTier3RoleEvidence} from '../scripts/lib/tier3-policy.mjs';
 import {assertAcceptedWorkspaceConfig} from '../scripts/lib/workspace-history.mjs';
 
 const sample=`workspace:
@@ -189,4 +190,74 @@ test('history rejects orphaned, gapped, and tampered acceptance evidence',t=>{
   const acceptance={kind:'acceptance',digest,revision:1,date:'2026-09-25',by:'Reviewer',reason:'reviewed',changes:[]};
   fs.writeFileSync(history,`${JSON.stringify(proposal)}\n${JSON.stringify(acceptance)}\n`);
   assert.throws(()=>assertAcceptedWorkspaceConfig(root,config),/proposal.*digest/i);
+});
+
+function tier3Documents({ui=true}={}) {
+  const reviewedCommit='a'.repeat(40);
+  const approval=(by,revision,commit)=>({by,date:'2026-09-26',notes:`${by} reviewed the evidence.`,revision,...(commit?{commit}: {})});
+  return {
+    reviewedCommit,
+    developer:'implementer-session',
+    plan:{owner:'plan-owner',revision:4,accessibility:{ui,rationale:'Explicit assessment.'},security:{auth:false,data:false,external:true,concerns:[],rationale:'Policy boundary.'},touches_concerns:[],approvals:{
+      principal_engineer:approval('principal-reviewer',4),appsec:approval('appsec-planner',4),code_review:approval('code-reviewer',4,reviewedCommit),appsec_review:approval('appsec-final-reviewer',4,reviewedCommit),accessibility:ui?approval('accessibility-planner',4):null,accessibility_review:ui?approval('accessibility-final-reviewer',4,reviewedCommit):null,
+    }},
+    epic:{owner:'epic-owner',revision:2,approvals:{qa_lead:approval('qa-reviewer',2)}},
+  };
+}
+
+test('Tier 3 rejects missing configured-role evidence',()=>{
+  const policy=resolveTier3Policy({config:parseWorkspaceConfig(sample),sources:{}});
+  assert.deepEqual(Object.keys(policy.roles),['principal','qa','appsec','accessibility_reviewer']);
+  assert.equal(Object.hasOwn(policy.roles,'ui_designer'),false);
+  const valid=tier3Documents();
+  assert.doesNotThrow(()=>validateTier3RoleEvidence({...valid,policy}));
+
+  const missing=tier3Documents(); missing.plan.approvals.principal_engineer=null;
+  assert.throws(()=>validateTier3RoleEvidence({...missing,policy}),/principal/i);
+  const malformed=tier3Documents(); malformed.epic.approvals.qa_lead={by:'qa-reviewer'};
+  assert.throws(()=>validateTier3RoleEvidence({...malformed,policy}),/qa/i);
+  const selfIssued=tier3Documents(); selfIssued.plan.approvals.appsec_review.by=selfIssued.developer;
+  assert.throws(()=>validateTier3RoleEvidence({...selfIssued,policy}),/appsec/i);
+  const planOwner=tier3Documents(); planOwner.plan.approvals.principal_engineer.by=' PLAN-OWNER ';
+  assert.throws(()=>validateTier3RoleEvidence({...planOwner,policy}),/principal/i);
+  const epicOwner=tier3Documents(); epicOwner.epic.approvals.qa_lead.by=' EPIC-OWNER ';
+  assert.throws(()=>validateTier3RoleEvidence({...epicOwner,policy}),/qa/i);
+  const stale=tier3Documents(); stale.plan.approvals.appsec.revision=3;
+  assert.throws(()=>validateTier3RoleEvidence({...stale,policy}),/appsec/i);
+  const wrongCommit=tier3Documents(); wrongCommit.plan.approvals.code_review.commit='b'.repeat(40);
+  assert.throws(()=>validateTier3RoleEvidence({...wrongCommit,policy}),/code review/i);
+  const appsecWrongCommit=tier3Documents(); appsecWrongCommit.plan.approvals.appsec_review.commit='b'.repeat(40);
+  assert.throws(()=>validateTier3RoleEvidence({...appsecWrongCommit,policy}),/appsec/i);
+});
+
+test('Tier 3 preserves UI accessibility when policy is false',()=>{
+  const config=parseWorkspaceConfig(sample);
+  config.approvals_required.principal=false;
+  config.approvals_required.qa=false;
+  config.approvals_required.appsec=false;
+  config.approvals_required.accessibility_reviewer=false;
+  config.approvals_overrides={reason:'Policy claims no UI',exempt:['principal','qa','appsec','accessibility_reviewer','ui_designer']};
+  const policy=resolveTier3Policy({config,sources:{'approvals_required.accessibility_reviewer':'worktree'}});
+  assert.equal(policy.roles.accessibility_reviewer.required,false);
+  assert.ok(Object.values(policy.roles).every(role=>role.required===false));
+  assert.match(tier3PolicyContract.resolvedRoles,/immutable provenance/i);
+  assert.match(tier3PolicyContract.evidenceFloors,/check-gate/i);
+  const baseline=tier3Documents();
+  assert.doesNotThrow(()=>validateTier3RoleEvidence({...baseline,policy}));
+  baseline.plan.approvals.principal_engineer=null;
+  assert.throws(()=>validateTier3RoleEvidence({...baseline,policy}),/principal/i);
+  const missingQa=tier3Documents(); missingQa.epic.approvals.qa_lead=null;
+  assert.throws(()=>validateTier3RoleEvidence({...missingQa,policy}),/qa/i);
+  const missingPlanAppsec=tier3Documents(); missingPlanAppsec.plan.approvals.appsec=null;
+  assert.throws(()=>validateTier3RoleEvidence({...missingPlanAppsec,policy}),/appsec/i);
+  const missingCodeReview=tier3Documents(); missingCodeReview.plan.approvals.code_review=null;
+  assert.throws(()=>validateTier3RoleEvidence({...missingCodeReview,policy}),/code review/i);
+  const missingFinalAppsec=tier3Documents(); missingFinalAppsec.plan.approvals.appsec_review=null;
+  assert.throws(()=>validateTier3RoleEvidence({...missingFinalAppsec,policy}),/appsec/i);
+  const missing=tier3Documents(); missing.plan.approvals.accessibility=null;
+  assert.throws(()=>validateTier3RoleEvidence({...missing,policy}),/accessibility/i);
+  const wrongCommit=tier3Documents(); wrongCommit.plan.approvals.accessibility_review.commit='b'.repeat(40);
+  assert.throws(()=>validateTier3RoleEvidence({...wrongCommit,policy}),/accessibility/i);
+  const nonUi=tier3Documents({ui:false}); nonUi.plan.approvals.accessibility=null; nonUi.plan.approvals.accessibility_review=null;
+  assert.doesNotThrow(()=>validateTier3RoleEvidence({...nonUi,policy}));
 });
