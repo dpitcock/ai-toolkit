@@ -33,7 +33,9 @@ test('pull-request workflow passes immutable PR context to the unified validator
  assert.ok(steps.some(step=>step.run==='npm test'),'workflow keeps template-only test coverage');
  const validator=steps.find(step=>step.run==='node scripts/check-pr.mjs');
  assert.ok(validator,'workflow invokes the single unified PR validator');
+ assert.deepEqual(workflow.jobs.gates.permissions,{'contents':'read','pull-requests':'read'});
  assert.deepEqual(validator.env,{
+  GH_TOKEN:'${{ github.token }}',
   BASE_SHA:'${{ github.event.pull_request.base.sha }}',
   HEAD_SHA:'${{ github.event.pull_request.head.sha }}',
   HEAD_REF:'${{ github.head_ref }}',

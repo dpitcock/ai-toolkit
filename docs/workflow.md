@@ -41,7 +41,7 @@ worktree must be on its `epic/EPIC-NNN` branch with accepted effective policy.
 | --- | --- |
 | `epic.start` | Checks predecessor completion before admitting the epic; `integration(receipt)` fetches current host integration facts for a predecessor. Provisioning in `new-epic.sh` reserves admission separately before creating resources. |
 | `task.dispatch` | Checks the canonical approved plan, listed task, legal task state and completed dependencies before dispatch. |
-| `review.ready` | Checks the canonical review stage. Before a PR exists, returns local role/head readiness without inventing a PR. With a canonical PR URL, `pullRequest(context)` returns live `{repository, pr, head}` and durable role/head claims are scheduled. |
+| `review.ready` | Checks the canonical review stage before a PR exists. After local final reviews reach `ready-for-pr`, schedules publication of completed verdicts against the live PR head. `pullRequest(context)` returns `{repository, pr, head, state: 'open', base: 'main', headBranch}` from the host; durable claims bind that PR/head/role. |
 | `merge.eligible` | Requires the canonical PR gate and `reviewAuthority(context)` returning `{identities, api}` for authenticated, paginated current-head reviews/checks. Rechecks the head and merge gates; it does not merge. |
 | `epic.complete` | Requires a merged canonical plan. `completion(context)` supplies typed integration, policy, findings, documentation, activation and cleanup evidence; `integration(receipt)` independently refreshes host facts before completion is persisted. |
 
@@ -50,8 +50,8 @@ contains `root`, `repository`, `epic`, `head`, and the applicable `pr` or
 `completionId`. The API returned by `reviewAuthority` implements the adapter
 contract in `scripts/check-host-reviews.mjs`; use authenticated host reads,
 never caller-supplied green snapshots. Completion receipt fields are defined
-by `scripts/lib/epic-completion.mjs` and distinguish submitted head from squash
-or rebase integration SHA. Harness observations identify actual activation and
+by `scripts/lib/epic-completion.mjs` and distinguish submitted head, the original
+PR's merge commit, and the current integrated revision. Harness observations identify actual activation and
 owned cleanup resources. An `authenticated` boolean or JSON receipt cannot
 authenticate anyone by itself: local files remain cooperative evidence.
 
@@ -97,6 +97,25 @@ facts at admission; pending/unavailable checks, corrective PRs or missing state
 keep the epic active. Never manufacture a historical completion receipt: legacy
 merged epics need an explicit historical baseline. Next-epic provisioning stays
 blocked until completion/admission succeeds, including after restart.
+
+Record an observed merge with the ordinary `check-gate.mjs DOCUMENT merged
+--write` command, first for the plan and then the epic. The CLI obtains live
+GitHub evidence through stored `gh` authentication; supplied JSON cannot replace
+that observation. Preserve the original implementation PR in `pr_url`.
+Before opening its status-only follow-up, run `check-gate.mjs PLAN
+finalization-pr`. This separate gate permits only the same epic's status and
+original PR URL markers, with reviewed source, policy, bodies, approvals and
+task evidence unchanged. The follow-up still needs its own current-head host
+checks and independent reviews. Hosted `review.ready` resolves that open PR
+separately from the preserved original PR; it does not repeat or reopen the
+completed local implementation review.
+
+Completion after finalization retains the original merge commit and binds
+checks, smoke and documentation to the new integrated revision. Authenticated
+host observations must prove the intervening status-only PR integration.
+Arbitrary main advancement, direct pushes and policy migration cannot use this
+finalization relation. Recheck actual activation and cleanup for the resulting
+integrated revision before admitting the next epic.
 
 ## Native workspace lock dependency
 

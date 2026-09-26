@@ -40,7 +40,17 @@ plan). These actions do not transition status or grant merge authority. The
 trusted PR validator supplies committed diffs for plan-only content checks;
 calling a helper with an empty path list cannot establish that a PR is safe.
 EPIC-006 bootstrap still follows the stricter `pr` sequence below before opening
-any PR. New staged behavior is adopted only after integrated rollout.
+the implementation PR. New staged behavior is adopted only after integrated rollout.
+
+After confirmed merge, the CLI obtains authenticated GitHub facts for `merged
+--write`; pre-merge eligibility is a separate action. A status-only follow-up
+uses `finalization-pr` before creation and the matching strict route in
+`check-pr.mjs`. It preserves the original PR URL and permits only the same
+epic/plan's status and PR markers. Source, policy, document bodies, approvals,
+task evidence and unrelated paths cannot change. A merged plan never authorizes
+a new implementation assessment. The follow-up requires its own exact-head
+host checks and independent reviews; completion verifies its PR-based
+integration while preserving the original implementation merge identity.
 
 ## Legal progression
 
@@ -87,8 +97,8 @@ For enforced merge policy, configure the host to require the actual check name
 reviews and no direct pushes to the protected base branch. The trusted
 `review-gates.yml` publisher reevaluates approval, dismissal, request-changes,
 synchronize and check-completion events on the same PR head without dispatching
-reviewers or creating commits. It reads gate code and accepted policy from the
-trusted base branch, never executes candidate code with a write token, and
+reviewers or creating commits. It reads gate code from the trusted base branch
+and role mappings from owner-managed repository variables, never executes candidate code with a write token, and
 publishes status for the exact observed head after race checks.
 
 Install protections only after integration and observation of these actual
