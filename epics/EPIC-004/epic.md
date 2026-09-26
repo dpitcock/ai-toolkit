@@ -7,7 +7,7 @@
 kind: epic
 id: EPIC-004
 owner: "Codex"
-status: in-progress
+status: merged
 revision: 2
 parent: ../../project/project-plan.md
 parent_revision: 2
