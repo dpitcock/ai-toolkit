@@ -1,4 +1,4 @@
-import {resolveWorkspaceConfig} from './workspace-config.mjs';
+import {resolveWorkspaceConfig,workspaceConfigDigest} from './workspace-config.mjs';
 
 const tier3Roles=['principal','qa','appsec','accessibility_reviewer'];
 
@@ -70,7 +70,7 @@ export function resolveTier3Policy({coordinationRoot,worktreeRoot,config,sources
       source:resolved.sources?.[`approvals_required.${role}`] ?? 'root',
     };
   }
-  return {config:policy,sources:resolved.sources??{},roles};
+  return {config:policy,sources:resolved.sources??{},roles,effectiveDigest:workspaceConfigDigest(policy)};
 }
 
 /**

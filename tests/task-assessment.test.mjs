@@ -19,7 +19,7 @@ function acceptedHistory(config) {
     {kind:'acceptance',revision:1,date:'2026-09-25',digest,by:'Dennis',reason:'Accepted fixture policy',changes:[]},
   ].map(record=>JSON.stringify(record)).join('\n')+'\n';
 }
-function fixture(t,{linked=true}={}) {
+function fixture(t,{linked=true,branch='assessment-worktree'}={}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'task-assessment-root-'));
   const worktree=path.join(os.tmpdir(),`task-assessment-worktree-${path.basename(root)}`);
   t.after(()=>{fs.rmSync(worktree,{recursive:true,force:true});fs.rmSync(root,{recursive:true,force:true});});
@@ -36,12 +36,37 @@ function fixture(t,{linked=true}={}) {
   git(root,'init','-q');git(root,'config','user.email','qa@example.test');git(root,'config','user.name','QA');
   git(root,'add','.');git(root,'commit','-qm','accepted coordination policy');
   if(!linked) return {root,worktree:root,config,startingHead:git(root,'rev-parse','HEAD')};
-  git(root,'worktree','add','-q','-b','assessment-worktree',worktree);
+  git(root,'worktree','add','-q','-b',branch,worktree);
   const overlay=structuredClone(config);overlay.workspace.provider='vscode';overlay.worktree_overrides=['workspace.provider'];
   writePolicy(worktree,overlay);
   git(worktree,'add','config/workspace-config.yaml','project/workspace-config-history.jsonl');
   git(worktree,'commit','-qm','accepted linked policy');
   return {root,worktree,config,overlay,startingHead:git(worktree,'rev-parse','HEAD')};
+}
+
+function tier3Answers() {
+  return {
+    ...answers,
+    risks:{...noRisks,auth:true},
+    claimedTier:3,
+    intendedFiles:['scripts/preflight.mjs'],
+    tier3Binding:{planPath:'epics/EPIC-042/epic-plan.md',taskPath:'epics/EPIC-042/tasks/TASK-001.md'},
+  };
+}
+
+function writeTier3Plan(worktree) {
+  const planPath=path.join(worktree,'epics/EPIC-042/epic-plan.md');
+  const taskPath=path.join(worktree,'epics/EPIC-042/tasks/TASK-001.md');
+  fs.mkdirSync(path.dirname(taskPath),{recursive:true});
+  fs.writeFileSync(planPath,YAML.stringify({
+    kind:'epic-plan',id:'EPIC-042-PLAN',owner:'planner',status:'in-progress',revision:3,
+    tasks:['tasks/TASK-001.md'],
+  })+'\n');
+  fs.writeFileSync(taskPath,YAML.stringify({
+    kind:'task',id:'TASK-001',owner:'developer',status:'approved',revision:1,
+    parent:'../epic-plan.md',parent_revision:3,depends_on:[],evidence:{red:null,green:null,qa:null,commit:null},approvals:{},
+  })+'\n');
+  git(worktree,'add','epics/EPIC-042');git(worktree,'commit','-qm','fixture tier 3 plan');
 }
 
 test('validates only declared assessment answers and safe assessment IDs',()=>{
@@ -124,9 +149,34 @@ test('refuses symlinked assessment paths, escaping roots, and existing records',
 });
 
 test('valid unknown or high-risk attestations are persisted at Tier 3 rather than lowered',t=>{
-  const answersWithRisk={...answers,risks:{...noRisks,auth:null},claimedTier:1};
-  const {root,worktree}=fixture(t);
-  const result=createTaskAssessment({id:'unknown-risk',answers:answersWithRisk,coordinationRoot:root,worktreeRoot:worktree});
+  const answersWithRisk={...tier3Answers(),risks:{...noRisks,auth:null},claimedTier:1};
+  const {root,worktree}=fixture(t,{branch:'epic/EPIC-042'});
+  writeTier3Plan(worktree);
+  const result=createTaskAssessment({id:'unknown-risk',answers:answersWithRisk,coordinationRoot:root,worktreeRoot:worktree,enforceTier3Binding:true});
   assert.equal(result.record.selectedTier,3);
   assert.ok(result.record.reasons.includes('unknown-risk-auth'));
+});
+
+test('Tier 3 rejects the coordination checkout',t=>{
+  const {root}=fixture(t,{linked:false});
+  assert.throws(()=>createTaskAssessment({id:'coordination-tier3',answers:tier3Answers(),coordinationRoot:root,worktreeRoot:root,enforceTier3Binding:true}),/Tier 3.*linked|coordination/i);
+});
+
+test('Tier 3 persists an exact plan task binding',t=>{
+  const {root,worktree}=fixture(t,{branch:'epic/EPIC-042'});
+  writeTier3Plan(worktree);
+  const result=createTaskAssessment({id:'tier3-binding',answers:tier3Answers(),coordinationRoot:root,worktreeRoot:worktree,enforceTier3Binding:true});
+  assert.deepEqual(result.record.tier3Binding,{
+    planPath:'epics/EPIC-042/epic-plan.md',planId:'EPIC-042-PLAN',planRevision:3,
+    taskPath:'epics/EPIC-042/tasks/TASK-001.md',taskId:'TASK-001',branch:'epic/EPIC-042',
+    worktreePath:path.relative(root,worktree),
+    policy:{
+      coordination:result.record.acceptedConfig.coordination,
+      worktree:result.record.acceptedConfig.worktree,
+      effectiveDigest:result.record.acceptedConfig.effectiveDigest,
+      roles:{
+        principal:{required:true,source:'root'},qa:{required:true,source:'root'},appsec:{required:true,source:'root'},accessibility_reviewer:{required:false,source:'root'},
+      },
+    },
+  });
 });

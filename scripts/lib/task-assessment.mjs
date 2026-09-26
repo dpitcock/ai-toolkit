@@ -6,8 +6,10 @@ import YAML from 'yaml';
 import {classifyTask} from './task-tier.mjs';
 import {parseWorkspaceConfig,resolveWorkspaceConfig,workspaceConfigDigest} from './workspace-config.mjs';
 import {readWorkspaceHistory,assertAcceptedWorkspaceConfig} from './workspace-history.mjs';
+import {resolveTier3Policy} from './tier3-policy.mjs';
 
-const answerKeys=['developer','scope','risks','userFacingUI','claimedTier','intendedFiles','accessibilityEvidence'];
+const answerKeys=['developer','scope','risks','userFacingUI','claimedTier','intendedFiles','accessibilityEvidence','tier3Binding'];
+const requiredAnswerKeys=['developer','scope','risks','userFacingUI','claimedTier','intendedFiles','accessibilityEvidence'];
 const riskKeys=['auth','secrets','schema','publicApi','financial','userData','criticalInfrastructure','hardToRevert'];
 const approvalRoles=['principal','qa','appsec','accessibility_reviewer','ui_designer'];
 const scopeValues=['single-file','one-subsystem','cross-cutting','unknown'];
@@ -24,6 +26,14 @@ function safeRepoPath(value) {
   return typeof value==='string' && value.length>0 && !/[\u0000-\u001f\u007f]/.test(value)
     && !value.startsWith('/') && !value.includes('\\') && !/^[A-Za-z]:/.test(value)
     && !value.split('/').some(part=>!part || part==='.' || part==='..');
+}
+
+function tier3BindingInput(value) {
+  if(!isObject(value) || Object.keys(value).some(key=>!['planPath','taskPath'].includes(key))
+    || !safeRepoPath(value.planPath) || !safeRepoPath(value.taskPath)) {
+    reject('tier3Binding must name safe planPath and taskPath values');
+  }
+  return {planPath:value.planPath,taskPath:value.taskPath};
 }
 
 function validateReviewEntry(value,withCommit=false) {
@@ -47,7 +57,7 @@ function validateAccessibilityEvidence(value) {
 export function validateAssessmentAnswers(value) {
   if(!isObject(value)) reject('Assessment input must be a JSON object');
   if(Object.keys(value).some(key=>!answerKeys.includes(key))) reject('Assessment input contains unknown or derived fields');
-  if(answerKeys.some(key=>!Object.hasOwn(value,key))) reject('Assessment input is missing a required answer field');
+  if(requiredAnswerKeys.some(key=>!Object.hasOwn(value,key))) reject('Assessment input is missing a required answer field');
   if(typeof value.developer!=='string' || !value.developer.trim()) reject('developer must be a non-empty attested identity');
   if(!scopeValues.includes(value.scope)) reject('scope must be a known classification value');
   if(!isObject(value.risks) || Object.keys(value.risks).length!==riskKeys.length || riskKeys.some(key=>!Object.hasOwn(value.risks,key))) {
@@ -65,6 +75,7 @@ export function validateAssessmentAnswers(value) {
     developer:value.developer.trim(),scope:value.scope,risks:Object.fromEntries(riskKeys.map(key=>[key,value.risks[key]])),
     userFacingUI:value.userFacingUI,claimedTier:value.claimedTier,intendedFiles:[...value.intendedFiles],
     accessibilityEvidence:structuredClone(value.accessibilityEvidence),
+    ...(Object.hasOwn(value,'tier3Binding') ? {tier3Binding:tier3BindingInput(value.tier3Binding)} : {}),
   };
 }
 
@@ -118,6 +129,59 @@ function assertContained(root,directory) {
   const actual=fs.realpathSync(directory);
   if(actual===root || !actual.startsWith(root+path.sep)) reject('Assessment path must stay inside the worktree');
   return actual;
+}
+
+function readYamlInsideWorktree(root,relativePath,label) {
+  if(!safeRepoPath(relativePath)) reject(`${label} path is unsafe`);
+  const candidate=path.join(root,relativePath);
+  let stat;
+  try { stat=fs.lstatSync(candidate); }
+  catch { reject(`${label} does not exist`); }
+  if(stat.isSymbolicLink() || !stat.isFile()) reject(`${label} must be a regular file`);
+  const actual=fs.realpathSync(candidate);
+  if(!actual.startsWith(root+path.sep)) reject(`${label} escapes the registered worktree`);
+  const document=YAML.parseDocument(fs.readFileSync(actual,'utf8'),{uniqueKeys:true});
+  if(document.errors.length) reject(`${label} is invalid YAML`);
+  const value=document.toJS({maxAliasCount:0});
+  if(!isObject(value)) reject(`${label} must be a mapping`);
+  return value;
+}
+
+function currentBranch(root) {
+  const branch=git(root,['symbolic-ref','--quiet','--short','HEAD']);
+  if(!/^epic\/EPIC-\d+$/.test(branch)) reject('Tier 3 linked worktree must use an epic/EPIC-NNN branch');
+  return branch;
+}
+
+function buildTier3Binding({answers,coordination,worktree,rootPolicy,worktreePolicy,resolved}) {
+  if(worktree===coordination) reject('Tier 3 rejects the coordination checkout; use a distinct registered linked worktree');
+  const branch=currentBranch(worktree);
+  if(!answers.tier3Binding) reject('Tier 3 requires a named current epic plan and listed task binding');
+  const {planPath,taskPath}=answers.tier3Binding;
+  const plan=readYamlInsideWorktree(worktree,planPath,'Tier 3 plan');
+  const task=readYamlInsideWorktree(worktree,taskPath,'Tier 3 task');
+  const epicId=branch.slice('epic/'.length);
+  const expectedPlanPath=`epics/${epicId}/epic-plan.md`;
+  if(planPath!==expectedPlanPath || plan.kind!=='epic-plan' || plan.id!==`${epicId}-PLAN` || !Number.isInteger(plan.revision) || plan.revision<1) {
+    reject('Tier 3 plan must be the current named epic plan for the worktree branch');
+  }
+  if(!['approved','in-progress'].includes(plan.status)) reject('Tier 3 plan must be approved or in-progress');
+  if(!Array.isArray(plan.tasks) || !plan.tasks.every(entry=>typeof entry==='string')) reject('Tier 3 plan task list is malformed');
+  const listedTaskPath=path.posix.normalize(path.posix.join(path.posix.dirname(planPath),plan.tasks.find(entry=>path.posix.normalize(path.posix.join(path.posix.dirname(planPath),entry))===taskPath)??''));
+  if(listedTaskPath!==taskPath || task.kind!=='task' || typeof task.id!=='string' || !task.id || task.parent!=='../epic-plan.md' || task.parent_revision!==plan.revision) {
+    reject('Tier 3 task must be listed by the current named plan and bound to its revision');
+  }
+  if(task.status!=='approved') reject('Tier 3 task must be approved before preflight');
+  const policy=resolveTier3Policy({config:resolved.config,sources:resolved.sources});
+  return {
+    planPath,planId:plan.id,planRevision:plan.revision,taskPath,taskId:task.id,branch,
+    worktreePath:path.relative(coordination,worktree),
+    policy:{
+      coordination:{digest:rootPolicy.accepted.digest,revision:rootPolicy.accepted.revision},
+      worktree:{digest:worktreePolicy.accepted.digest,revision:worktreePolicy.accepted.revision},
+      effectiveDigest:policy.effectiveDigest,roles:policy.roles,
+    },
+  };
 }
 
 function ensureAssessmentDirectory(root) {
@@ -174,7 +238,7 @@ export function writeTaskAssessment(worktreeRoot,id,record) {
   }
 }
 
-export function buildTaskAssessment({id,answers,coordinationRoot,worktreeRoot}) {
+export function buildTaskAssessment({id,answers,coordinationRoot,worktreeRoot,enforceTier3Binding=false}) {
   if(!safeAssessmentId(id)) reject('Assessment id is unsafe; use 1-64 letters, digits, dots, underscores, or hyphens and start with a letter or digit');
   const normalizedAnswers=validateAssessmentAnswers(answers);
   const coordination=repositoryRoot(coordinationRoot,'coordination root');
@@ -188,6 +252,12 @@ export function buildTaskAssessment({id,answers,coordinationRoot,worktreeRoot}) 
   const startingHead=git(worktree,['rev-parse','HEAD']);
   if(!/^[a-f0-9]{40}$/i.test(startingHead)) reject('Unable to determine a full starting HEAD commit');
   const classification=classifyTask({...normalizedAnswers,stage:'preflight'});
+  const tier3Binding=classification.tier===3 && enforceTier3Binding
+    ? buildTier3Binding({answers:normalizedAnswers,coordination,worktree,rootPolicy,worktreePolicy,resolved})
+    : null;
+  if(enforceTier3Binding && classification.tier!==3 && Object.hasOwn(normalizedAnswers,'tier3Binding')) {
+    reject('tier3Binding is allowed only when Tier 3 is selected');
+  }
   const record={
     kind:'task-assessment',id,startingHead,
     acceptedConfig:{
@@ -199,6 +269,7 @@ export function buildTaskAssessment({id,answers,coordinationRoot,worktreeRoot}) 
     userFacingUI:normalizedAnswers.userFacingUI,intendedFiles:normalizedAnswers.intendedFiles,
     claimedTier:normalizedAnswers.claimedTier,selectedTier:classification.tier,reasons:classification.reasons,
     accessibilityEvidence:normalizedAnswers.accessibilityEvidence,reviewEvidence:null,roleEvidence:null,
+    ...(tier3Binding===null ? {} : {tier3Binding}),
   };
   return {record,config:resolved.config,sources:resolved.sources,policyDigest:rootPolicy.accepted.digest,worktreeRoot:worktree};
 }
@@ -220,6 +291,13 @@ export function formatTaskAssessment(result) {
     'Required approvals:',
   ];
   for(const role of approvalRoles) lines.push(`  ${role}: ${config.approvals_required[role]} (source: ${result.sources[`approvals_required.${role}`]??'root'})`);
+  if(result.record.tier3Binding) {
+    const binding=result.record.tier3Binding;
+    lines.push(
+      `Tier 3 plan: ${binding.planId} revision ${binding.planRevision}`,
+      `Tier 3 task: ${binding.taskId} (branch: ${binding.branch})`,
+    );
+  }
   lines.push(
     `Exemptions: ${config.approvals_overrides.exempt.length?config.approvals_overrides.exempt.join(', '):'none'}`,
     `Exemption reason: ${config.approvals_overrides.reason||'none'}`,
