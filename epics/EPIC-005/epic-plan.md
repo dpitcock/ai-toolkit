@@ -2,7 +2,7 @@
 kind: epic-plan
 id: EPIC-005-PLAN
 owner: "Codex"
-status: awaiting-principal-signoff
+status: awaiting-appsec-signoff
 revision: 10
 parent: epic.md
 parent_revision: 2
@@ -48,7 +48,20 @@ review_comments: []
 review_commit: null
 pr_url: null
 approvals:
-  principal_engineer: null
+  principal_engineer:
+    by: "Codex Principal reviewer /root/epic005_principal_review_v2"
+    date: "2026-09-26"
+    revision: 10
+    notes: "Independent Principal review of project-plan revision 2, EPIC-005
+      revision 2, the task-tiering design, and TASK-001 through TASK-008.
+      Verified the exact Tier 3 architecture and interfaces, serial dependency
+      route TASK-001 -> TASK-008 -> TASK-007 -> TASK-002 -> TASK-003 -> TASK-004
+      -> TASK-005 -> TASK-006, role mapping limited to
+      principal/qa/appsec/accessibility_reviewer, rollback-only ui_designer
+      references, QA coverage, security concern mapping, PR-only boundary, and
+      conditional UI accessibility floors. Re-reviewed dependency prose
+      corrections in d090a6956806ae5869dbead1b6eb7746a3c740ab; no remaining
+      Principal blockers."
   appsec: null
   qa_lead: null
   code_review: null
