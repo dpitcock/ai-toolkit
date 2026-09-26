@@ -6,6 +6,7 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {execFileSync,spawnSync} from 'node:child_process';
 import YAML from 'yaml';
+import {fixture as lifecycleFixture,exerciseLifecycle} from './helpers/lifecycle-fixture.mjs';
 const source=path.resolve(import.meta.dirname,'..');
 const noRisks={auth:false,secrets:false,schema:false,publicApi:false,financial:false,userData:false,criticalInfrastructure:false,hardToRevert:false};
 const lowRiskAnswers={developer:'fixture-implementer',scope:'single-file',risks:noRisks,userFacingUI:false,claimedTier:1,intendedFiles:['project/src/quick-fix.js'],accessibilityEvidence:null};
@@ -283,6 +284,48 @@ test('generated adopter Tier 3 route',
   const staleConfig=YAML.parse(fs.readFileSync(path.join(linked,'config/workspace-config.yaml'),'utf8'));staleConfig.workspace.provider='stale-provider';fs.writeFileSync(path.join(linked,'config/workspace-config.yaml'),YAML.stringify(staleConfig));commitAll(linked,'attempt stale linked policy');
   const stale=preflight(linked,'stale-tier3');assert.notEqual(stale.status,0);assert.match(stale.stderr,/Workspace configuration changed after acceptance|stale/i);
  });
+});
+
+test('generated legacy adopter requires accepted migration before the complete workflow',t=>{
+ const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'blueprint-migrated-adopter-')));
+ t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ copyAdopterSeed(root,['scripts','project','docs','skills','package.json','package-lock.json','.gitignore','AGENTS.md']);
+ fs.symlinkSync(path.join(source,'node_modules'),path.join(root,'node_modules'),'dir');
+ const legacy={workspace:{repository:'repo',environment:'staging',provider:'codex',slack_channel_name:'ws-owner-kept-codex',timezone:'America/New_York'},approvals_required:{principal:true,qa:true,appsec:true,accessibility_reviewer:false,ui_designer:false},approvals_overrides:{reason:'Owner retained no-UI exemption',exempt:['accessibility_reviewer','ui_designer']},daily_summary:{local_time:'10:30'},task_tiers:{tier_1_direct_merge:false}};
+ fs.mkdirSync(path.join(root,'config'),{recursive:true});
+ const configFile=path.join(root,'config/workspace-config.yaml');fs.writeFileSync(configFile,YAML.stringify(legacy));
+ const run=(command,args)=>execFileSync(command,args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']});
+ const initialized=run('bash',['scripts/init-project.sh','--offline']);
+ const initial=JSON.parse(initialized.split('\n')[0]);assert.equal(initial.status,'pending');
+ const workspace=(...args)=>JSON.parse(run(process.execPath,['scripts/init-workspace.mjs',...args,'--root',root]));
+ workspace('accept','--by','fixture-owner','--reason','Accept existing legacy adopter policy','--digest',initial.digest);
+ git(root,'init','--initial-branch=main');git(root,'config','user.name','Fixture');git(root,'config','user.email','fixture@example.test');
+ commitAll(root,'Accepted legacy adopter');
+ const historyFile=path.join(root,'project/workspace-config-history.jsonl');
+ const oldConfig=fs.readFileSync(configFile,'utf8'),oldHistory=fs.readFileSync(historyFile,'utf8');
+ assert.equal(workspace('status').digest,initial.digest);
+ const candidate=structuredClone(legacy);delete candidate.task_tiers;
+ candidate.task_tier='tier_1';candidate.tier_overrides={direct_merge:false};candidate.workflow={autopilot:true};
+ const candidateFile=path.join(root,'project/migration-candidate.yaml');fs.writeFileSync(candidateFile,YAML.stringify(candidate));
+ const proposed=workspace('propose-change','--candidate',candidateFile);
+ assert.equal(proposed.base_digest,initial.digest);
+ assert.deepEqual(proposed.changes.slice().sort(),['task_tier','task_tiers','tier_overrides','workflow']);
+ assert.equal(fs.readFileSync(configFile,'utf8'),oldConfig,'proposal does not activate policy');
+ assert.equal(fs.readFileSync(historyFile,'utf8'),oldHistory,'proposal does not rewrite acceptance');
+ const accepted=workspace('apply-change','--candidate',candidateFile,'--by','fixture-owner','--reason','Explicit test-only migration','--digest',proposed.digest,'--base-digest',proposed.base_digest);
+ assert.equal(accepted.status,'accepted');assert.equal(workspace('status').digest,proposed.digest);
+ const migrated=YAML.parse(fs.readFileSync(configFile,'utf8'));
+ assert.deepEqual(migrated,candidate,'migration preserves every owner field and changes only the requested policy');
+ const history=fs.readFileSync(historyFile,'utf8'),records=history.trim().split('\n').map(line=>JSON.parse(line));
+ assert.ok(history.startsWith(oldHistory));assert.equal(records.length,3);
+ assert.equal(records.at(-1).kind,'change');assert.equal(records.at(-1).revision,2);
+ assert.equal(records.at(-1).digest,proposed.digest);assert.equal(records.at(-1).by,'fixture-owner');
+ assert.equal(records.at(-1).definition.version,1);assert.match(records.at(-1).definition.digest,/^[a-f0-9]{64}$/);
+ assert.ok(!fs.existsSync(path.join(root,'project/workspace-config-transaction.json')),'successful migration retires its transaction journal');
+ fs.rmSync(candidateFile);
+ const revisions=exerciseLifecycle(lifecycleFixture(t,{adopterRoot:root}));
+ assert.equal(new Set(Object.values(revisions)).size,3,'submitted, merged and integrated revisions remain distinct');
+ assert.ok(fs.readFileSync(historyFile,'utf8').startsWith(oldHistory),'old acceptance remains byte-for-byte intact');
 });
 
 test('native lock install is local and does not run an unexpected lifecycle hook',{timeout:120_000},t=>{

@@ -414,7 +414,7 @@ test('check-pr does not treat a merged-plan metadata exception as a Tier 3 epic 
   fs.writeFileSync(path.join(planDirectory,'epic-plan.md'),`---\n${YAML.stringify(plan)}---\n`);
   const result=runCheckPr(state);
   assert.notEqual(result.status,0);
-  assert.match(result.stderr,/Tier 3.*successfully validated.*epic plan/i);
+  assert.match(result.stderr,/Postmerge finalization cannot authorize a Tier 3 assessment or another epic/);
 });
 
 test('check-pr validates every changed assessment file in the same PR',t=>{
