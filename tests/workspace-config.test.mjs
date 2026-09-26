@@ -54,9 +54,25 @@ test('parses non-secret config and hashes equivalent YAML identically',()=>{
   const parsed=parseWorkspaceConfig(sample,{partial:false});
   assert.equal(parsed.workspace.slack_channel_name,'ws-example-repository-codex');
   assert.deepEqual(parsed.approvals_overrides.exempt,['accessibility_reviewer','ui_designer']);
+  assert.deepEqual(Object.keys(parsed),['workspace','approvals_required','approvals_overrides','daily_summary']);
+  assert.equal(parsed.task_tiers?.tier_1_direct_merge ?? false,false);
+  assert.equal(workspaceConfigDigest(parsed),'7028655b353fa52ed3b9a400f46cddc504958b269c55707c348c82483c853530');
   assert.match(workspaceConfigDigest(parsed),/^[a-f0-9]{64}$/);
   const commented=parseWorkspaceConfig(sample.replace('provider: codex','provider: codex # adapter'));
   assert.equal(workspaceConfigDigest(parsed),workspaceConfigDigest(commented));
+});
+
+test('accepts only an explicit boolean Tier 1 policy and includes it in the accepted digest',()=>{
+  const enabled=parseWorkspaceConfig(`${sample}task_tiers:\n  tier_1_direct_merge: true\n`);
+  const disabled=parseWorkspaceConfig(`${sample}task_tiers:\n  tier_1_direct_merge: false\n`);
+
+  assert.deepEqual(enabled.task_tiers,{tier_1_direct_merge:true});
+  assert.deepEqual(disabled.task_tiers,{tier_1_direct_merge:false});
+  assert.notEqual(workspaceConfigDigest(enabled),workspaceConfigDigest(disabled));
+  assert.notEqual(workspaceConfigDigest(enabled),workspaceConfigDigest(parseWorkspaceConfig(sample)));
+  assert.throws(()=>parseWorkspaceConfig(`${sample}task_tiers: {}\n`),/tier_1_direct_merge.*required/i);
+  assert.throws(()=>parseWorkspaceConfig(`${sample}task_tiers:\n  tier_1_direct_merge: "true"\n`),/must be boolean/i);
+  assert.throws(()=>parseWorkspaceConfig(`${sample}task_tiers:\n  tier_1_direct_merge: false\n  allow_all: true\n`),/not allowed/i);
 });
 
 test('an empty exemption list remains valid after normalization and hashing',()=>{
@@ -92,6 +108,11 @@ test('root resolver reports provenance and refuses missing or escaping config',t
   assert.equal(result.sources['workspace.provider'],'root');
   assert.equal(result.sources['approvals_required.qa'],'root');
   fs.unlinkSync(file);
+  fs.writeFileSync(file,`${sample}task_tiers:\n  tier_1_direct_merge: false\n`);
+  const withTierPolicy=resolveWorkspaceConfig({coordinationRoot:root});
+  assert.deepEqual(withTierPolicy.config.task_tiers,{tier_1_direct_merge:false});
+  assert.equal(withTierPolicy.sources['task_tiers.tier_1_direct_merge'],'root');
+  fs.unlinkSync(file);
   const escaped=path.join(outside,'workspace-config.yaml');
   fs.writeFileSync(escaped,sample);
   fs.symlinkSync(escaped,file);
@@ -122,6 +143,20 @@ test('linked worktree applies only explicit provider, role, and exemption overri
   assert.equal(result.sources['approvals_required.appsec'],'root');
   assert.equal(result.sources['approvals_overrides.exempt'],'worktree');
   assert.equal(result.sources['approvals_overrides.reason'],'worktree');
+});
+
+test('linked worktree cannot override Tier 1 direct-merge policy',t=>{
+  const {root,linked}=linkedWorktrees(t);
+  const rootConfig=parseWorkspaceConfig(sample);
+  rootConfig.task_tiers={tier_1_direct_merge:false};
+  writeConfig(root,rootConfig);
+  writeConfig(linked,{
+    ...rootConfig,
+    task_tiers:{tier_1_direct_merge:true},
+    worktree_overrides:['workspace.provider'],
+  });
+
+  assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}),/worktrees cannot override|Tier 1 policy is defined/i);
 });
 
 test('linked worktree rejects missing, duplicate, unknown, and incomplete override markers',t=>{

@@ -273,6 +273,7 @@ function proposalFor(root) {
       exempt:['accessibility_reviewer','ui_designer'],
     },
     daily_summary:{local_time:'09:00'},
+    task_tiers:{tier_1_direct_merge:false},
   };
   const reasons={
     principal:'Tier 3 architectural and interface changes need Principal review.',
@@ -280,6 +281,7 @@ function proposalFor(root) {
     appsec:hasSecuritySurface ? 'Security-relevant dependencies detected; AppSec review is proposed.' : 'No security dependency signal detected; AppSec review is proposed conservatively for policy and external boundaries.',
     accessibility_reviewer:hasUI ? 'A user interface was detected.' : 'No user interface was detected; proposed structural exemption requires human acceptance.',
     ui_designer:hasUI ? 'A user interface was detected.' : 'No user interface was detected; proposed structural exemption requires human acceptance.',
+    task_tiers:'Tier 1 direct merge is disabled by default and requires an explicitly reviewed, accepted policy change.',
   };
   return {config:parseWorkspaceConfig(YAML.stringify(config)),reasons};
 }
