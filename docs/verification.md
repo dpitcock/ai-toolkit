@@ -35,6 +35,15 @@ immutable bootstrap policy/history and assessment during implementation.
 Root acceptance, linked raw acceptance, effective policy provenance, real adapter
 adoption, host protection and QA-GOV-010 are separate release obligations.
 
+<!-- EPIC-006 ACTIVATION EVIDENCE START -->
+
+EPIC-006 actual-session activation and QA-GOV-010 remain pending. After verified
+policy adoption, the finite activation-evidence release records actual observations
+and explicit pending or not-exercised facts here. Generated fixtures are development
+evidence only. This block is reserved for the strict report renderer.
+
+<!-- EPIC-006 ACTIVATION EVIDENCE END -->
+
 Before ordinary source work, an adopter must have accepted configuration and a committed preflight assessment. Tier 1 is single-file, low-risk, and excludes UI; direct merge is disabled by default and never allowed for this template repository. `check-tier1.mjs` can report `Direct merge eligible: yes` when accepted config enables it; that generic result does not enforce this template's PR-only rule, so host protections must prevent bypass. Any uncertainty or high-risk signal escalates to Tier 3, and final-diff classification can only raise the tier. Tier 2 UI requires independent accessibility triage and plan evidence before implementation and a final independent review on the reviewed commit. These local checks validate supplied evidence but do not authenticate identities or enforce host rules; the configured PR workflow is the repository's PR gate, and host protections remain an administrator responsibility.
 
 Tier 3 verification uses a generated adopter with accepted policy and a registered isolated worktree on the bound `epic/EPIC-NNN` branch. The initial assessment captures immutable approved plan, listed task, branch, and policy/effective-role provenance; the PR check reconstructs those committed facts while documenting that CI cannot prove historical local registration. Tests cover the fail-closed configured roles—principal, qa, appsec, and accessibility_reviewer—and preserve independent final code/AppSec floors. Conditional accessibility floors apply whenever the named plan declares UI work, including triage, plan approval, and final review on the reviewed commit. The route is PR-only: validators do not push or merge, and host protections enforce the cooperative boundary.
