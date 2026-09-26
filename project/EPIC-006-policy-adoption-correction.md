@@ -127,3 +127,31 @@ The next worker must consume the typed I relation for the separately approved
 finite release.verify/J stage; it must not stretch status-only M/F finalization
 into a whole M/I proof or treat I alone as completion. See the approved release
 design, independent AppSec review and QA trace for that remaining contract.
+
+## Root/controller verification of committed source
+
+Codex `/root`, 2026-09-26, independently reran the focused regression set against
+source `a6e851920a27abf85036ee2db7c841730a3fde00` after the worker froze it:
+
+```sh
+node --test --test-concurrency=2 tests/epic-policy-adoption.test.mjs tests/bootstrap-policy.test.mjs tests/init-workspace.test.mjs tests/host-review-events.test.mjs tests/workflow-state.test.mjs tests/lifecycle-finalization.test.mjs tests/gates.test.mjs
+```
+
+Result: **186/186 passed**, zero failures, cancellations, skips or todo tests;
+duration 674725.333875 ms. Execution log:
+`/tmp/epic006-adoption-independent.log`. The intervening worker evidence commit
+changed only this evidence document; implementation source remained identical.
+
+The controller also created a separate single-checkout clone at
+`/tmp/epic006-adoption-root-pr-VJ0FVw`, checked out that exact source commit,
+and executed its own `scripts/check-pr.mjs` against original base
+`553daf9fb49df58e55c3c5a6fbb68df6a0be0a41`, with the exact source HEAD and
+`HEAD_REF=epic/EPIC-006`. Exit 0 reported `implementation-pr permitted` and
+`Tier 3 epic-gate-required`. This verifies current candidate admission, not PR
+publication, final-review approval, actual policy adoption or completion.
+
+The finite release-verification/J stage and documented pre-test historical-object
+preparation remain serial implementation obligations. All final Staff findings
+remain open for the independently assigned final reviewer. No accepted policy,
+immutable assessment, canonical plan state, host setting or coordination-checkout
+content was changed by this verification.
