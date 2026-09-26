@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {classifyTask} from '../scripts/lib/task-tier.mjs';
+import {classifyTask, selectEffectiveTier} from '../scripts/lib/task-tier.mjs';
 
 const noRisks = {
   auth: false,
@@ -99,6 +99,13 @@ test('a higher claimed tier is preserved', () => {
   const result = classifyTask(assessment({claimedTier: 3}));
 
   assert.equal(result.tier, 3);
+});
+
+test('selects the strictest configured, risk-derived, and earlier preflight tiers', () => {
+  assert.equal(selectEffectiveTier({configuredMinimum: 1, riskTier: 3, earlierPreflightTier: 1}), 3);
+  assert.equal(selectEffectiveTier({configuredMinimum: 3, riskTier: 1, earlierPreflightTier: 1}), 3);
+  assert.equal(selectEffectiveTier({configuredMinimum: 1, riskTier: 1, earlierPreflightTier: 2}), 2);
+  assert.throws(() => selectEffectiveTier({configuredMinimum: 0, riskTier: 1, earlierPreflightTier: 1}), /tier/i);
 });
 
 test('an omitted tier claim fails closed while an explicit null claim leaves the computed tier intact', () => {
