@@ -33,6 +33,7 @@ approvals:
   appsec_review: null
   accessibility: null
   accessibility_review: null
+  ui_designer: null
 ---
 
 # EPIC-XXX Epic Plan

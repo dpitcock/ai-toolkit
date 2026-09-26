@@ -21,6 +21,7 @@ export function readDocument(file) {
   const parsed = YAML.parseDocument(match[1], {uniqueKeys:true});
   requireThat(!parsed.errors.length, `${file}: ${parsed.errors.map(e=>e.message).join('; ')}`);
   const data = parsed.toJS({maxAliasCount:0});
+  if(data?.approvals && !Object.hasOwn(data.approvals,'ui_designer')) data.approvals.ui_designer=null;
   requireThat(data && graphs[data.kind] && (Object.hasOwn(graphs[data.kind],data.status) || (data.kind==='task' ? data.status==='done' : data.status==='merged' && data.kind!=='project')), 'Unknown kind/status');
   requireThat(meaningful(data.id) && meaningful(data.owner), 'id and owner must be filled');
   requireThat(Number.isInteger(data.revision) && data.revision > 0, 'revision must be a positive integer');
