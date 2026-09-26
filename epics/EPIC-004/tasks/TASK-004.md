@@ -2,7 +2,7 @@
 kind: task
 id: TASK-004
 owner: "Codex"
-status: draft
+status: done
 revision: 2
 parent: ../epic-plan.md
 parent_revision: 2
@@ -10,15 +10,33 @@ depends_on:
   - tasks/TASK-001.md
   - tasks/TASK-003.md
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "Initial focused run before implementation failed before assertions with
+    ERR_MODULE_NOT_FOUND because scripts/check-tier1.mjs did not exist. Review
+    regressions then reproduced parent-directory swap and hard-link cases that
+    the initial writer accepted; both were fixed."
+  green: "node --test tests/check-tier1.test.mjs: 11/11 passed; npm test: 91/91
+    passed."
+  qa: "Verified exact one-file Tier 1 diff, false/omitted policy PR routing,
+    linked accepted policy provenance, stale config and immutable-fact refusal,
+    empty/expanded/UI/unknown-risk escalation, read-only Git boundary, host-rule
+    warning, parent-path swap containment with restoration, and hard-link
+    refusal. git diff --cached --check clean."
+  commit: "7e09dd0138f3a906f1081b4ec4c9d0eba32ff301"
 approvals:
   principal_engineer: null
   appsec: null
   qa_lead: null
-  code_review: null
+  code_review:
+    by: "/root/review_task004"
+    date: "2026-09-25"
+    notes: "Initial review found parent-path swap and hard-link write risks; added
+      descriptor-bound writes, recovery, and single-link refusal with regression
+      tests. Re-review found no remaining Critical or Important issues. Minor
+      limitation: in-place writes are not crash-atomic; synchronous failures
+      restore the original bytes and the committed initial record is the
+      recovery source."
+    revision: 2
+    commit: "7e09dd0138f3a906f1081b4ec4c9d0eba32ff301"
   appsec_review: null
   accessibility: null
   accessibility_review: null
