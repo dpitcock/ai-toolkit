@@ -2,11 +2,11 @@
 kind: task
 id: TASK-015
 owner: "Codex"
-status: draft
+status: in-progress
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
-depends_on: [tasks/TASK-012.md]
+depends_on: [ tasks/TASK-012.md ]
 evidence:
   red: null
   green: null
