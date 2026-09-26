@@ -85,7 +85,8 @@ function cleanupReceipt(value,epic) {
  });
  return {source:HARNESS,observedAt:instant(value.observedAt,'cleanup observation'),revalidated:true,worktrees,branches,processes};
 }
-function collection(value,label) { if(!Array.isArray(value) || !value.length) fail(`${label} cleanup evidence is required`);return value; }
+// An explicitly observed empty inventory is valid; an absent inventory is not.
+function collection(value,label) { if(!Array.isArray(value)) fail(`${label} cleanup evidence is required`);return value; }
 
 /** Pure evaluation of typed receipts. Callers must independently fetch the host
  * observation again in admitEpic; a fixture or arbitrary JSON is never enough. */

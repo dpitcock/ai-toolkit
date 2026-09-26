@@ -132,6 +132,35 @@ function writeDocument(ctx, parsed) {
     fs.writeFileSync(ctx.file,`---\n${parsed.toString()}---\n${ctx.raw.slice(ctx.match[0].length)}`);
   } finally {fs.closeSync(lock); fs.unlinkSync(`${ctx.file}.lock`);}
 }
+export function checkWorkflowReadiness(file,{root=process.cwd(),task}={}) {
+ const ctx={...readDocument(file),root},d=ctx.data;
+ requireThat(d.kind==='epic-plan','Workflow requires an epic plan');
+ planApproved(ctx);tasks(ctx,task===undefined);
+ if(task!==undefined) {
+  requireThat(d.status==='in-progress','Start the epic plan before dispatch');
+  requireThat(d.tasks.includes(task),'Task is not listed in plan');
+  const t=related(ctx,task,'task');
+  requireThat(['approved','in-progress'].includes(t.data.status),'Task status is not eligible for dispatch');
+  requireThat(Array.isArray(t.data.depends_on),'Task dependencies must be explicit');
+  for(const dependency of t.data.depends_on) {
+   requireThat(d.tasks.includes(dependency) && dependency!==task,'Unknown or self task dependency');
+   requireThat(related(ctx,dependency,'task').data.status==='done','Task dependency is not done');
+  }
+  requireThat(d.tasks.every(name=>name===task || related(ctx,name,'task').data.status!=='in-progress'),'Another task is already in progress');
+  return {task:t.data.id};
+ }
+ const role={'in-review':'code_reviewer','in-appsec-review':'appsec','in-accessibility-review':'accessibility_reviewer'}[d.status];
+ requireThat(role,'Plan is not at a canonical review-ready stage');
+ if(role!=='code_reviewer') {const cr=approval(d,'code_review');reviewComments(d,cr);requireThat(cr.commit===d.review_commit,'Code review must cover the implementation commit');}
+ if(role==='accessibility_reviewer') {requireThat(needsAccessibility(ctx),'Accessibility review is not required');const ar=approval(d,'appsec_review');requireThat(ar.commit===d.review_commit,'AppSec review must cover the implementation commit');}
+ if(role!=='code_reviewer') {
+  requireThat(/^[a-f0-9]{40}$/.test(d.review_commit),'review_commit must be a full commit SHA');
+  execFileSync('git',['merge-base','--is-ancestor',d.review_commit,'HEAD'],{cwd:root,stdio:'pipe'});
+  requireThat(!execFileSync('git',['diff','--name-only',d.review_commit,'--','.',':(exclude)epics/**',':(exclude)project/**'],{cwd:root,encoding:'utf8'}).trim(),'Implementation changed after code review');
+ }
+ return {roles:[role]};
+}
+
 export function check(file,target,{root=process.cwd(),write=false,changedFiles=[],head,hostEvidence}={}) {
   const ctx={...readDocument(file),root}; const d=ctx.data;
   if(target==='draft') {

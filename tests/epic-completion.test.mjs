@@ -66,3 +66,10 @@ test('deleted state needs recovery and legacy history is an explicit baseline',(
  assert.throws(()=>admitEpic({historical:true,activeEpics:[]},{id:'EPIC-007'}),/baseline/i);
  assert.deepEqual(admitEpic({historical:true,historicalBaseline:{epic:'EPIC-005',integrationSha:integrated,recordedAt:'2026-09-26T12:00:00.000Z'},activeEpics:[]},{id:'EPIC-007'}),{admitted:true,epic:'EPIC-007',historical:true});
 });
+
+test('explicitly observed empty process inventory needs no invented process cleanup',()=>{
+ const evidence=completion();evidence.cleanup.processes=[];
+ assert.equal(evaluateCompletion(evidence).complete,true);
+ delete evidence.cleanup.processes;
+ assert.throws(()=>evaluateCompletion(evidence),/processes/i);
+});
