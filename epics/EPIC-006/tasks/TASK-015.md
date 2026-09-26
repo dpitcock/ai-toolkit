@@ -2,16 +2,25 @@
 kind: task
 id: TASK-015
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: [ tasks/TASK-012.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-26: node --test tests/host-review-events.test.mjs
+    tests/review-evidence.test.mjs failed before implementation because
+    check-host-reviews.mjs did not export evaluateHostReviewGate."
+  green: "2026-09-26: node --test tests/host-review-events.test.mjs
+    tests/review-evidence.test.mjs passed 12/12; node --check
+    scripts/check-host-reviews.mjs and git diff --check passed."
+  qa: "QA-GOV-005/006/007/009: trusted default-branch workflows revalidate every
+    synchronize and review event against authenticated current-head, mapped
+    human reviews, and the stable workflow / gates status. Duplicate and
+    out-of-order delivery has no dispatch effect; stale, dismissed, mismatched,
+    pending, and missing evidence fail closed. PR code never receives
+    write-capable execution."
+  commit: "706f2aae865b0e21d2cbf8d06853b9b7eba5b247"
 approvals:
   principal_engineer: null
   appsec: null
