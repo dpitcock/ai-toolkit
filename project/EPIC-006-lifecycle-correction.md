@@ -92,3 +92,18 @@ No policy/source change is admitted as bookkeeping. Root policy adoption,
 actual activation, cleanup of owned resources, protection enforcement and
 EPIC-007 release remain separate gated obligations. Root-owned documentation
 edits are excluded from this source/evidence change.
+
+## Independent root verification and operator alignment
+
+The root reran the seven focused suites above plus scaffold on `ae0af969`:
+113/114 passed, with the sole failure an exact scaffold assertion that did not
+yet expect the newly required scoped `GH_TOKEN`. The other 104 focused tests
+passed independently. Log: `/tmp/epic006-lifecycle-independent.log`.
+
+The bounded follow-up updates that expected field and asserts the gate job has
+exactly contents/read and pull-requests/read permissions. Scaffold then passed
+10/10 with no skips; log `/tmp/epic006-lifecycle-scaffold-green.log`.
+Operator documentation now describes hosted verdict publication, authenticated
+merge recording, strict finalization PR admission and separate revision
+identities. `git diff --check` passed. These tests do not claim actual host
+integration or activation. Implementation and this evidence are separate commits.
