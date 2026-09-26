@@ -1,0 +1,49 @@
+name: review-gates
+
+# This workflow deliberately runs from the default branch. It does not check
+# out, execute, or grant write authority to code from the PR under review.
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
+jobs:
+  host-review-gate:
+    name: host-review-gate
+    if: github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The default-branch version supplies both the workflow and the
+          # gate code. A PR cannot relax this run by editing its own files.
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Revalidate current host reviews
+        env:
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # Repository variables are owner-managed role mappings, never data
+          # accepted from a PR event or checkout.
+          REQUIRED_ROLES: ${{ vars.GOVERNANCE_REQUIRED_REVIEW_ROLES }}
+          REVIEW_IDENTITIES: ${{ vars.GOVERNANCE_REVIEW_IDENTITIES }}
+          REQUIRED_CHECKS: '["workflow / gates"]'
+        run: >-
+          node scripts/check-host-reviews.mjs
+          --repository "$REPOSITORY"
+          --pr "$PR_NUMBER"
+          --head "$HEAD_SHA"
+          --stage final
+          --required-roles "$REQUIRED_ROLES"
+          --identities "$REVIEW_IDENTITIES"
+          --required-checks "$REQUIRED_CHECKS"
