@@ -30,7 +30,7 @@ history are preserved.
 
 ## GREEN and QA
 
-`node --test tests/workflow-event.test.mjs tests/preflight.test.mjs tests/gates.test.mjs tests/epic-completion.test.mjs tests/epic-integration.test.mjs tests/review-scheduling.test.mjs tests/workflow-authorization.test.mjs tests/check-host-reviews.test.mjs`
+`node --test tests/workflow-event.test.mjs tests/preflight.test.mjs tests/gates.test.mjs tests/epic-completion.test.mjs tests/epic-integration.test.mjs tests/review-scheduling.test.mjs tests/workflow-authorization.test.mjs`
 
 Result: 69 passed, 0 failed, 0 skipped. `git diff --check` passed before source
 commit. QA-GOV-004/006/007/008/009 are exercised: both autopilot modes,
