@@ -2,7 +2,7 @@
 kind: epic-plan
 id: EPIC-005-PLAN
 owner: "Codex"
-status: awaiting-appsec-signoff
+status: approved
 revision: 10
 parent: epic.md
 parent_revision: 2
@@ -62,7 +62,25 @@ approvals:
       conditional UI accessibility floors. Re-reviewed dependency prose
       corrections in d090a6956806ae5869dbead1b6eb7746a3c740ab; no remaining
       Principal blockers."
-  appsec: null
+  appsec:
+    by: "Codex AppSec reviewer /root/epic005_plan_appsec_v10"
+    date: "2026-09-26"
+    revision: 10
+    notes: "Independent AppSec plan review of project-plan revision 2, EPIC-005
+      revision 2, approved Principal plan revision 10, TASK-001 through
+      TASK-008, and the Tier 3 design. Verified SEC-TIER3-001 through
+      SEC-TIER3-005 map respectively to registered linked-worktree/branch
+      rejection, exact immutable plan-task-revision binding, the fail-closed
+      four-role matrix (principal, qa, appsec, accessibility_reviewer) with
+      mandatory final code/AppSec and named-plan UI floors, committed
+      policy/effective-policy digest and role-source provenance reconstruction,
+      and valid plus blocked PR-entry/generated-adopter tests. The plan
+      explicitly preserves conditional UI accessibility triage, plan signoff,
+      and final review; ui_designer appears only in completed TASK-001 history
+      and the scoped TASK-008 rollback, with no forward policy or approval role.
+      It makes no merge/push claim, documents CI's inability to prove historical
+      local registration, and retains host protections as the enforcement
+      boundary. No plan-level AppSec blockers found."
   qa_lead: null
   code_review: null
   appsec_review: null
