@@ -77,11 +77,13 @@ test('headless proposal explains roles and stays pending on repeat',t=>{
   assert.equal(proposal.status,'pending');
   assert.equal(proposal.digest,workspaceConfigDigest(config));
   assert.deepEqual(Object.keys(proposal.reasons).sort(),[
-    'accessibility_reviewer','appsec','principal','qa','ui_designer',
+    'accessibility_reviewer','appsec','principal','qa','task_tiers','ui_designer',
   ]);
   assert.equal(config.workspace.repository,'headless-tool');
   assert.equal(config.workspace.provider,'codex');
   assert.equal(config.workspace.slack_channel_name,'ws-headless-tool-codex');
+  assert.deepEqual(config.task_tiers,{tier_1_direct_merge:false});
+  assert.match(proposal.reasons.task_tiers,/off|disabled|direct.merge/i);
   assert.deepEqual(config.approvals_overrides.exempt,['accessibility_reviewer','ui_designer']);
   assert.throws(()=>assertAcceptedWorkspaceConfig(root,config));
   assert.throws(()=>run(root,'status'));
@@ -278,6 +280,30 @@ test('policy changes stay read-only until matching human approval is applied',t=
   assert.equal(applied.revision,2);
   assert.equal(readWorkspaceHistory(root).at(-1).kind,'change');
   assert.equal(JSON.parse(run(root,'status')).revision,2);
+});
+
+test('Tier 1 direct merge stays off until a matching reviewed policy change is accepted',t=>{
+  const root=fixture(t);
+  const proposal=JSON.parse(run(root,'propose'));
+  const configFile=path.join(root,'config/workspace-config.yaml');
+  run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
+  const accepted=parseWorkspaceConfig(fs.readFileSync(configFile,'utf8'));
+  assert.equal(accepted.task_tiers.tier_1_direct_merge,false);
+
+  const candidate=path.join(root,'candidate.yaml');
+  const changed=structuredClone(accepted);
+  changed.task_tiers.tier_1_direct_merge=true;
+  fs.writeFileSync(candidate,YAML.stringify(changed));
+  const pending=JSON.parse(run(root,'propose-change','--candidate',candidate));
+  assert.equal(pending.status,'pending-change');
+  assert.ok(pending.changes.includes('task_tiers.tier_1_direct_merge'));
+  assert.equal(parseWorkspaceConfig(fs.readFileSync(configFile,'utf8')).task_tiers.tier_1_direct_merge,false);
+
+  assert.throws(()=>run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','Enable after review','--digest','0'.repeat(64),'--base-digest',pending.base_digest));
+  const applied=JSON.parse(run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','Enable after review','--digest',pending.digest,'--base-digest',pending.base_digest));
+  assert.equal(applied.status,'accepted');
+  assert.equal(parseWorkspaceConfig(fs.readFileSync(configFile,'utf8')).task_tiers.tier_1_direct_merge,true);
+  assert.doesNotThrow(()=>assertAcceptedWorkspaceConfig(root,parseWorkspaceConfig(fs.readFileSync(configFile,'utf8'))));
 });
 
 test('concurrent policy changes from one reviewed base leave one accepted revision',async t=>{

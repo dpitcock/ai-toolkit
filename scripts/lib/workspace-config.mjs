@@ -34,7 +34,7 @@ function nonempty(value,label) {
 }
 
 function normalize(value,{partial=false}={}) {
-  const data=fields(value,['workspace','approvals_required','approvals_overrides','daily_summary','worktree_overrides'],partial?[]:['workspace','approvals_required','daily_summary'],'config');
+  const data=fields(value,['workspace','approvals_required','approvals_overrides','daily_summary','task_tiers','worktree_overrides'],partial?[]:['workspace','approvals_required','daily_summary'],'config');
   const result={};
   if(Object.hasOwn(data,'workspace')) {
     const workspace=fields(data.workspace,workspaceFields,partial?[]:workspaceFields,'workspace');
@@ -88,6 +88,11 @@ function normalize(value,{partial=false}={}) {
       normalized.local_time=summary.local_time;
     }
     result.daily_summary=normalized;
+  }
+  if(Object.hasOwn(data,'task_tiers')) {
+    const taskTiers=fields(data.task_tiers,['tier_1_direct_merge'],['tier_1_direct_merge'],'task_tiers');
+    if(typeof taskTiers.tier_1_direct_merge!=='boolean') throw new Error('task_tiers.tier_1_direct_merge must be boolean');
+    result.task_tiers={tier_1_direct_merge:taskTiers.tier_1_direct_merge};
   }
   if(Object.hasOwn(data,'worktree_overrides')) {
     if(!Array.isArray(data.worktree_overrides) || data.worktree_overrides.some(marker=>typeof marker!=='string' || !worktreeOverridePaths.includes(marker))) {
@@ -148,6 +153,9 @@ export function resolveWorkspaceConfig({coordinationRoot,worktreeRoot=coordinati
     throw new Error('Worktree and coordination root must be linked Git worktrees');
   }
   const overlay=readConfig(worktree);
+  if(Object.hasOwn(overlay,'task_tiers') && JSON.stringify(overlay.task_tiers)!==JSON.stringify(config.task_tiers)) {
+    throw new Error('Tier 1 policy is defined by the accepted coordination root; worktrees cannot override task_tiers.tier_1_direct_merge');
+  }
   const markers=overlay.worktree_overrides;
   if(!markers) throw new Error('Linked worktree config requires worktree_overrides markers');
   const effective=structuredClone(config);
