@@ -19,7 +19,7 @@ approvals: {principal_engineer: null, appsec: null, qa_lead: null, code_review: 
 
 ## Files and dependencies
 
-Modify `AGENTS.md`, `docs/workflow.md`, `docs/gates.md`, `docs/verification.md`, `skills/governed-build/SKILL.md`, and `skills/governed-ship/SKILL.md`. Depends on TASK-003.
+Modify `AGENTS.md`, `docs/workflow.md`, `docs/gates.md`, `docs/verification.md`, `skills/governed-build/SKILL.md`, and `skills/governed-ship/SKILL.md`. Depends on TASK-003 and TASK-004.
 
 ## TDD steps
 

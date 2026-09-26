@@ -29,7 +29,7 @@ approvals:
 
 ## Files and dependencies
 
-Create `scripts/lib/tier3-policy.mjs`; modify `scripts/lib/workspace-config.mjs`, `tests/workspace-config.test.mjs`, and `tests/gates.test.mjs`. Depends on TASK-001.
+Create `scripts/lib/tier3-policy.mjs`; modify `scripts/lib/workspace-config.mjs`, `tests/workspace-config.test.mjs`, and `tests/gates.test.mjs`. Depends on TASK-008, which completes the required rollback after TASK-001.
 
 ## TDD steps
 
