@@ -2,16 +2,21 @@
 kind: task
 id: TASK-010
 owner: "Codex"
-status: in-progress
+status: done
 revision: 1
 parent: ../epic-plan.md
 parent_revision: 1
 depends_on: [ tasks/TASK-009.md ]
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "2026-09-26: node --test tests/epic-completion.test.mjs failed as expected
+    because scripts/lib/epic-completion.mjs did not exist."
+  green: "2026-09-26: node --test tests/epic-completion.test.mjs passed 6/6 after
+    implementation."
+  qa: "QA-GOV-010: the focused suite verifies authenticated fresh host admission,
+    exact integrated check/smoke binding, active-session adoption, owned
+    cleanup, correction invalidation, restart rejection, and explicit historical
+    baselines."
+  commit: "b61ac7f847354e8ea2e27a9d08416ed321d2cbff"
 approvals:
   principal_engineer: null
   appsec: null
