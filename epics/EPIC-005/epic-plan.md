@@ -2,10 +2,10 @@
 kind: epic-plan
 id: EPIC-005-PLAN
 owner: "Codex"
-status: awaiting-principal-signoff
-revision: 9
+status: draft
+revision: 10
 parent: epic.md
-parent_revision: 1
+parent_revision: 2
 security:
   auth: false
   data: false
@@ -71,13 +71,13 @@ approvals:
 
 - The template repository remains PR-only. No command may merge, push, delete a branch, or claim to make local controls tamper-proof.
 - Tier 3 is an adopting-repository route: a template checkout without accepted `config/workspace-config.yaml` must continue to use the established epic lifecycle for template development; generated adopters must supply accepted policy before Tier 3 validation.
-- Required configured roles are additive evidence requirements. They never waive Principal plan approval, QA epic approval, AppSec concern/final review, final independent code/AppSec review, or UI accessibility triage/plan/final review.
+- The Tier 3 approval mappings in scope are `principal`, `qa`, `appsec`, and `accessibility_reviewer`. They are additive evidence requirements and never waive Principal plan approval, QA epic approval, AppSec concern/final review, final independent code/AppSec review, or UI accessibility triage/plan/final review.
 - A Tier 3 assessment must bind to one plan ID/revision, its listed approved task, its `epic/EPIC-NNN` branch, a registered linked worktree distinct from the coordination root, and immutable accepted-policy provenance. Unknown, stale, malformed, ambiguous, or self-issued evidence fails closed.
 - Preserve the existing cooperative-control limitation: host branch protection and required hosted reviews, not local files, prevent an authorized user from bypassing the workflow.
 
 ## Design
 
-`scripts/lib/tier3-policy.mjs` will provide the sole Tier 3 contract. `resolveTier3Policy({coordinationRoot, worktreeRoot, assessment, plan})` validates accepted history for both roots, uses `resolveWorkspaceConfig`, rejects the coordination checkout and non-registered/incorrect worktree branch, and returns policy digests/revisions, effective role values/sources, branch identity, and bound plan/task identity. `validateTier3RoleEvidence({policy, plan, epic, developer, reviewedCommit})` maps configuration to evidence: `principal` to `approvals.principal_engineer`; `qa` to epic `approvals.qa_lead`; `appsec` to applicable plan AppSec approval plus always-required final AppSec; and `accessibility_reviewer` to existing UI-only `accessibility` and `accessibility_review`. Existing UI accessibility approvals remain mandatory regardless of policy false or exemption. Independent final code review and final AppSec remain unconditional.
+`scripts/lib/tier3-policy.mjs` will provide the sole Tier 3 contract. `resolveTier3Policy({coordinationRoot, worktreeRoot, assessment, plan})` validates accepted history for both roots, uses `resolveWorkspaceConfig`, rejects the coordination checkout and non-registered/incorrect worktree branch, and returns policy digests/revisions, effective role values/sources, branch identity, and bound plan/task identity. `validateTier3RoleEvidence({policy, plan, epic, developer, reviewedCommit})` maps the in-scope configuration roles to evidence: `principal` to `approvals.principal_engineer`; `qa` to epic `approvals.qa_lead`; `appsec` to applicable plan AppSec approval plus always-required final AppSec; and `accessibility_reviewer` to existing UI-only `accessibility` and `accessibility_review`. Accessibility approvals are required only when the named plan declares `accessibility.ui: true`, regardless of the resolved policy value or exemption. Independent final code review and final AppSec remain unconditional.
 
 Preflight will require `tier3Binding` whenever classification selects Tier 3. Its immutable first-commit fields are the normalized plan path/ID/revision, listed task path/ID, `epic/EPIC-NNN` branch, canonical worktree identity (the preflight top-level path relative to the coordination root), coordination and worktree policy digests/revisions, the resolved effective-policy digest, and a complete map of each configured role's effective value and source. `planRevision` must equal the parsed named plan's current revision at preflight and PR validation. Paths resolve inside the registered worktree; the task must be listed by that plan at the same revision. Local preflight alone proves registration, distinctness from coordination, path containment, and branch identity before writing. `check-pr` reads the immutable binding, derives the required epic ID from `HEAD_REF`, validates only the named plan under the existing `pr` gate, and recomputes accepted policy digests, the effective-policy digest, and role provenance from committed PR content. CI validates preserved evidence and committed policy but cannot prove historical local registration/path isolation; its output documents that cooperative limit. Non-Tier-3 checks retain their current route. CI supplies base/head/ref only; all policy logic remains in scripts.
 
@@ -87,7 +87,7 @@ Preflight will require `tier3Binding` whenever classification selects Tier 3. It
 | --- | --- |
 | SEC-TIER3-001 | Local preflight rejects coordination, unregistered, copied/nested, symlink-escaped, and wrong-branch worktrees; PR validation verifies the immutable recorded branch/path identity but cannot re-prove historical registration in CI. |
 | SEC-TIER3-002 | The initial assessment persists exact plan ID/revision/task/branch; the PR check validates that named plan instead of counting arbitrary valid plans, including freshness after implementation review. |
-| SEC-TIER3-003 | A single policy module maps every configured role to independent, revision/commit-bound evidence and preserves every current mandatory floor. |
+| SEC-TIER3-003 | A single policy module maps the four in-scope approval roles to independent, revision/commit-bound evidence and preserves every current mandatory floor. |
 | SEC-TIER3-004 | Accepted root/worktree and effective-policy digests/revisions, per-role sources, worktree identity, and plan binding are immutable first-commit facts; PR validation reconstructs committed policy facts and rejects ambiguity or drift. |
 | SEC-TIER3-005 | Real PR-entry and generated-adopter tests cover valid Tier 3 plus shared-worktree, stale-policy, missing-role, and wrong-plan rejections. |
 
@@ -98,7 +98,7 @@ This plan has no user-facing UI. The `accessibility_reviewer` policy mapping mus
 ## Small tasks
 
 1. TASK-008 removes the out-of-scope optional `ui_designer` normalization, template field, and regression test from the completed TASK-001 implementation.
-2. TASK-007 adds the Tier 3 policy parser and configured-role matrix for the actually configured roles.
+2. TASK-007 adds the Tier 3 policy parser and approval matrix for `principal`, `qa`, `appsec`, and `accessibility_reviewer`.
 3. TASK-002 binds Tier 3 preflight evidence to a real isolated worktree, explicit plan/task shape, and immutable policy provenance.
 4. TASK-003 enforces exact Tier 3 assessment-to-plan validation at the PR entry point and preserves reviewed-code freshness.
 5. TASK-004 wires the unified PR command into CI and tests the workflow contract.

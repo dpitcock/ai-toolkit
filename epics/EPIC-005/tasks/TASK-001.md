@@ -5,7 +5,7 @@ owner: "Codex"
 status: done
 revision: 1
 parent: ../epic-plan.md
-parent_revision: 9
+parent_revision: 10
 depends_on: []
 evidence:
   red: "node --test tests/gates.test.mjs failed: legacy documents exposed

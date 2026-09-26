@@ -5,7 +5,7 @@ owner: "Codex"
 status: draft
 revision: 1
 parent: ../epic-plan.md
-parent_revision: 9
+parent_revision: 10
 depends_on: [tasks/TASK-003.md]
 evidence: {red: null, green: null, qa: null, commit: null}
 approvals: {principal_engineer: null, appsec: null, qa_lead: null, code_review: null, appsec_review: null, accessibility: null, accessibility_review: null}
