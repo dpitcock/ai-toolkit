@@ -93,3 +93,31 @@ still pending, with real root acceptance, adapter activation and QA-GOV-010
 remaining release obligations. The exclusive-worktree instruction permits no
 coordination-source edits. This sequencing neither fabricates migration nor
 waives the activation gate.
+
+## Actual controller observation after correction
+
+On 2026-09-26 the root controller exercised the exported bounded
+`runWorkflowEvent(args, {actor})` adapter using the app-observed session and
+owner messages above. Its temporary invocation file was
+`/private/tmp/epic006-controller-observation.mjs`; the permit is stored only in
+the locked Git-common runtime store, not tracked source. No credential was
+retrieved, exported, printed or created.
+
+Loaded commit: `e6a1eacaafa6000ec9d5b914db4a8d5c5bdaebd1`.
+Authorization: `epic006-controller-observed-20260926`, bound to canonical
+`dpitcock/ai-toolkit`, `epic/EPIC-006`, `epics/EPIC-006`, approved routine event
+actions and the stated implementation/integrated-activation completion criterion.
+Effective policy digest:
+`a9008f1f352e53a0d39bf66a8b1376d09914ff0523da25b6dbbc45f34643cf5a`.
+Root acceptance is revision 1 at that digest; raw worktree acceptance is
+revision 2 at
+`d58b8020bf9db0f73ab1ddcbe8867106132d3a713491c906a6711373a6eab7ab`.
+
+The actual TASK-016 dispatch request returned exit 1 with
+`decision: human-needed`, `reason: autopilot-policy-required`. This is the
+expected refusal under the unchanged legacy policy, not a successful dispatch
+or integrated activation claim. The explicit owner-authorized bootstrap route
+continues to govern remaining implementation work. Source correction commit
+`7482951` passed independent root verification: 54 dispatch/gate/preflight/
+completion/integration tests plus 15 authorization/review-scheduling tests,
+69 total, no failures or skips.
