@@ -2,17 +2,22 @@
 kind: task
 id: TASK-002
 owner: "Codex"
-status: draft
+status: done
 revision: 2
 parent: ../epic-plan.md
 parent_revision: 2
 depends_on:
   - tasks/TASK-001.md
 evidence:
-  red: null
-  green: null
-  qa: null
-  commit: null
+  red: "Initial focused run: 4/40 failures for missing task_tiers parser support,
+    default proposal policy/reason, and worktree override rejection."
+  green: "node --test tests/workspace-config.test.mjs
+    tests/init-workspace.test.mjs: 40/40 passed; npm test: 70/70 passed."
+  qa: "Verified legacy normalized shape and digest unchanged; explicit booleans
+    strict and digest-bound; Tier 1 defaults off and only changes through
+    matching reviewed acceptance; worktree policy override rejected. git diff
+    --cached --check clean."
+  commit: "61d6e61723b42c4da2f99940f4d36436a6dd2ba3"
 approvals:
   principal_engineer: null
   appsec: null
