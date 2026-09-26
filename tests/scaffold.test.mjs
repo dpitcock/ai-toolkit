@@ -156,7 +156,9 @@ function advanceGate(run,root,relative,target) {
  assert.equal(result.status,0,result.stderr);
 }
 
-test('generated adopter Tier 3 route',async t=>{
+test('generated adopter Tier 3 route',
+  {skip:process.env.CI ? 'requires locally installed skills for generated-adopter verification' : false},
+  async t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'blueprint-tier3-adopter-'));
  const linked=path.join(root,'.worktrees/EPIC-043');
  t.after(()=>{try { git(root,'worktree','remove','--force',linked); } catch {} fs.rmSync(root,{recursive:true,force:true});fs.rmSync(linked,{recursive:true,force:true});});
