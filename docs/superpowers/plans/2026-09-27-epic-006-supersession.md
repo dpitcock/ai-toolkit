@@ -163,7 +163,7 @@ Use a representative EPIC-006 fixture to prove the decision record is required b
 
 - [ ] **Step 2: Run RED tests**
 
-Run: `node --test tests/gates.test.mjs tests/local-review-route.test.mjs`
+Run: `node --test tests/gates.test.mjs tests/local-review-route.test.mjs tests/workflow-event.test.mjs`
 
 Expected: the fixture cannot yet archive an active epic or start the independent successor route.
 
@@ -173,7 +173,7 @@ Create the decision record with the actual current revision/head and replacement
 
 - [ ] **Step 4: Run GREEN tests and documentation validation**
 
-Run: `node --test tests/gates.test.mjs tests/local-review-route.test.mjs && git diff --check`
+Run: `node --test tests/gates.test.mjs tests/local-review-route.test.mjs tests/workflow-event.test.mjs && git diff --check`
 
 Expected: the retirement record is accepted, EPIC-006 delivery remains blocked, and the successor remains independent.
 
