@@ -9,6 +9,7 @@ import {
   parseWorkspaceConfig,
   resolveWorkspaceConfig,
   workspaceConfigDigest,
+  workspaceTierDefinition,
 } from '../scripts/lib/workspace-config.mjs';
 import {resolveTier3Policy,tier3PolicyContract,validateTier3RoleEvidence} from '../scripts/lib/tier3-policy.mjs';
 import {assertAcceptedWorkspaceConfig} from '../scripts/lib/workspace-history.mjs';
@@ -51,6 +52,117 @@ function writeConfig(root,value) {
   fs.writeFileSync(path.join(root,'config/workspace-config.yaml'),YAML.stringify(value));
 }
 
+function writeAcceptedMirror(root,linked) {
+  const config=parseWorkspaceConfig(`${sample}task_tier: tier_2\ntier_overrides: {}\nworkflow:\n  autopilot: true\n`);
+  const digest=workspaceConfigDigest(config),definition=workspaceTierDefinition(config);
+  const history=[
+    {kind:'proposal',revision:1,date:'2026-09-26',digest,definition,config,reasons:{}},
+    {kind:'acceptance',revision:1,date:'2026-09-26',digest,definition,by:'Owner',reason:'Accepted',changes:[]},
+  ].map(record=>JSON.stringify(record)).join('\n')+'\n';
+  for(const base of [root,linked]) {
+    writeConfig(base,config);
+    fs.mkdirSync(path.join(base,'project'),{recursive:true});
+    fs.writeFileSync(path.join(base,'project/workspace-config-history.jsonl'),history);
+  }
+}
+
+test('canonical markerless mirror inherits accepted root fields and definition',t=>{
+  const {root,linked}=linkedWorktrees(t);
+  writeAcceptedMirror(root,linked);
+  const result=resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked});
+  assert.equal(result.config.workflow.autopilot,true);
+  assert.equal(result.config.task_tier,'tier_2');
+  assert.ok(Object.values(result.sources).every(source=>source==='root'));
+});
+
+test('canonical mirror rejects byte drift, history substitution, and missing or stale acceptance',t=>{
+  const {root,linked}=linkedWorktrees(t);
+  for(const mutate of [
+    ()=>fs.appendFileSync(path.join(linked,'config/workspace-config.yaml'),'# same normalized digest\n'),
+    ()=>fs.appendFileSync(path.join(linked,'project/workspace-config-history.jsonl'),'\n'),
+    ()=>{
+      const file=path.join(linked,'project/workspace-config-history.jsonl');
+      fs.writeFileSync(file,fs.readFileSync(file,'utf8').replace('"by":"Owner"','"by":"Another owner"'));
+    },
+    ()=>fs.unlinkSync(path.join(linked,'project/workspace-config-history.jsonl')),
+    ()=>fs.unlinkSync(path.join(root,'project/workspace-config-history.jsonl')),
+    ()=>{
+      for(const base of [root,linked]) {
+        const file=path.join(base,'project/workspace-config-history.jsonl');
+        const records=fs.readFileSync(file,'utf8').trim().split('\n').map(JSON.parse);
+        records.at(-1).digest='0'.repeat(64);
+        fs.writeFileSync(file,records.map(record=>JSON.stringify(record)).join('\n')+'\n');
+      }
+    },
+    ()=>{
+      for(const base of [root,linked]) {
+        const file=path.join(base,'project/workspace-config-history.jsonl');
+        const records=fs.readFileSync(file,'utf8').trim().split('\n').map(JSON.parse);
+        records.at(-1).definition.digest='0'.repeat(64);
+        fs.writeFileSync(file,records.map(record=>JSON.stringify(record)).join('\n')+'\n');
+      }
+    },
+    ()=>{
+      for(const base of [root,linked]) {
+        const file=path.join(base,'project/workspace-config-history.jsonl');
+        fs.writeFileSync(file,fs.readFileSync(file,'utf8').split('\n')[0]+'\n');
+      }
+    },
+  ]) {
+    writeAcceptedMirror(root,linked);mutate();
+    assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}));
+  }
+});
+
+test('canonical mirror compares raw bytes before UTF-8 decoding config and ledger',t=>{
+  const {root,linked}=linkedWorktrees(t);
+  for(const relative of ['config/workspace-config.yaml','project/workspace-config-history.jsonl']) {
+    writeAcceptedMirror(root,linked);
+    for(const [base,byte] of [[root,0x80],[linked,0x81]]) {
+      const file=path.join(base,relative),original=fs.readFileSync(file);
+      const bytes=relative.startsWith('config/')
+        ? Buffer.concat([original,Buffer.from('# '),Buffer.from([byte]),Buffer.from('\n')])
+        : Buffer.concat([original.subarray(0,original.indexOf('Owner')),Buffer.from([byte]),original.subarray(original.indexOf('Owner')+5)]);
+      fs.writeFileSync(file,bytes);
+    }
+    assert.equal(fs.readFileSync(path.join(root,relative),'utf8'),fs.readFileSync(path.join(linked,relative),'utf8'));
+    assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}),/exact.*bytes/i);
+  }
+});
+
+test('canonical mirror rejects a symlinked config or history parent directory',t=>{
+  const {root,linked}=linkedWorktrees(t);
+  for(const relative of ['config','project']) {
+    writeAcceptedMirror(root,linked);
+    const directory=path.join(linked,relative),saved=path.join(linked,`${relative}-saved`);
+    fs.renameSync(directory,saved);fs.symlinkSync(saved,directory);
+    assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}));
+    fs.unlinkSync(directory);fs.renameSync(saved,directory);
+  }
+});
+
+test('canonical mirror cannot use a matching sibling instead of the Git-common root',t=>{
+  const {root,linked}=linkedWorktrees(t);
+  const sibling=path.join(root,'sibling');
+  execFileSync('git',['worktree','add','-q','-b','sibling',sibling],{cwd:root});
+  writeAcceptedMirror(root,linked);writeAcceptedMirror(sibling,linked);
+  assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:sibling,worktreeRoot:linked}),/canonical|Git-common/i);
+});
+
+test('canonical mirror rejects symlinked policy paths and an unregistered checkout',t=>{
+  const {root,linked}=linkedWorktrees(t);
+  for(const relative of ['config/workspace-config.yaml','project/workspace-config-history.jsonl']) {
+    writeAcceptedMirror(root,linked);
+    const file=path.join(linked,relative);
+    fs.unlinkSync(file);fs.symlinkSync(path.join(root,relative),file);
+    assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}));
+    fs.unlinkSync(file);
+  }
+  writeAcceptedMirror(root,linked);
+  fs.unlinkSync(path.join(linked,'.git'));
+  assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}));
+});
+
 test('parses non-secret config and hashes equivalent YAML identically',()=>{
   const parsed=parseWorkspaceConfig(sample,{partial:false});
   assert.equal(parsed.workspace.slack_channel_name,'ws-example-repository-codex');
@@ -74,6 +186,32 @@ test('accepts only an explicit boolean Tier 1 policy and includes it in the acce
   assert.throws(()=>parseWorkspaceConfig(`${sample}task_tiers: {}\n`),/tier_1_direct_merge.*required/i);
   assert.throws(()=>parseWorkspaceConfig(`${sample}task_tiers:\n  tier_1_direct_merge: "true"\n`),/must be boolean/i);
   assert.throws(()=>parseWorkspaceConfig(`${sample}task_tiers:\n  tier_1_direct_merge: false\n  allow_all: true\n`),/not allowed/i);
+});
+
+test('parses versioned workspace tier selection without changing legacy normalization',()=>{
+  const legacy=parseWorkspaceConfig(`${sample}task_tiers:\n  tier_1_direct_merge: false\n`);
+  const selected=parseWorkspaceConfig(`${sample}task_tier: tier_1\ntier_overrides:\n  direct_merge: false\n`);
+
+  assert.equal(workspaceConfigDigest(legacy),'c703705da949108548f2f484ef5edd948bba2831e33811c66e7198369b507e82');
+  assert.equal(selected.task_tier,'tier_1');
+  assert.deepEqual(selected.tier_overrides,{direct_merge:false});
+  assert.match(workspaceTierDefinition(selected).digest,/^[a-f0-9]{64}$/);
+  assert.throws(()=>parseWorkspaceConfig(`${sample}task_tier: tier_1\ntask_tiers:\n  tier_1_direct_merge: false\ntier_overrides:\n  direct_merge: false\n`),/cannot.*used with/i);
+  assert.throws(()=>parseWorkspaceConfig(`${sample}task_tier: tier_4\ntier_overrides:\n  direct_merge: false\n`),/task_tier/i);
+  assert.throws(()=>parseWorkspaceConfig(`${sample}task_tier: tier_1\ntier_overrides:\n  direct_merge: false\n  reviewers: true\n`),/tier_overrides.*allowed/i);
+});
+
+test('preserves omitted workflow policy while validating explicit autopilot choices',()=>{
+  const omitted=parseWorkspaceConfig(sample);
+  const enabled=parseWorkspaceConfig(`${sample}workflow:\n  autopilot: true\n`);
+  const disabled=parseWorkspaceConfig(`${sample}workflow:\n  autopilot: false\n`);
+
+  assert.equal(Object.hasOwn(omitted,'workflow'),false);
+  assert.deepEqual(enabled.workflow,{autopilot:true});
+  assert.deepEqual(disabled.workflow,{autopilot:false});
+  assert.notEqual(workspaceConfigDigest(enabled),workspaceConfigDigest(disabled));
+  assert.throws(()=>parseWorkspaceConfig(`${sample}workflow:\n  autopilot: "true"\n`),/workflow.autopilot.*boolean/i);
+  assert.throws(()=>parseWorkspaceConfig(`${sample}workflow:\n  autopilot: true\n  delegated_decision: accepted\n`),/workflow.delegated_decision.*allowed/i);
 });
 
 test('an empty exemption list remains valid after normalization and hashing',()=>{
@@ -146,6 +284,21 @@ test('linked worktree applies only explicit provider, role, and exemption overri
   assert.equal(result.sources['approvals_overrides.reason'],'worktree');
 });
 
+test('linked worktree resolves explicit autopilot override with field provenance',t=>{
+  const {root,linked}=linkedWorktrees(t);
+  const rootConfig=parseWorkspaceConfig(`${sample}workflow:\n  autopilot: false\n`);
+  const overlay={...rootConfig,workflow:{autopilot:true},worktree_overrides:['workflow.autopilot']};
+  writeConfig(root,rootConfig);
+  writeConfig(linked,overlay);
+
+  const result=resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked});
+  assert.equal(result.config.workflow.autopilot,true);
+  assert.equal(result.sources['workflow.autopilot'],'worktree');
+
+  writeConfig(linked,{...overlay,worktree_overrides:[]});
+  assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}),/workflow.autopilot.*marker|worktree_overrides/i);
+});
+
 test('linked worktree cannot override Tier 1 direct-merge policy',t=>{
   const {root,linked}=linkedWorktrees(t);
   const rootConfig=parseWorkspaceConfig(sample);
@@ -158,6 +311,16 @@ test('linked worktree cannot override Tier 1 direct-merge policy',t=>{
   });
 
   assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}),/worktrees cannot override|Tier 1 policy is defined/i);
+});
+
+test('linked worktree cannot weaken the root configured tier',t=>{
+  const {root,linked}=linkedWorktrees(t);
+  const rootConfig=parseWorkspaceConfig(`${sample}task_tier: tier_3\ntier_overrides:\n  direct_merge: false\n`);
+  const overlay={...rootConfig,task_tier:'tier_1',worktree_overrides:[]};
+  writeConfig(root,rootConfig);
+  writeConfig(linked,overlay);
+
+  assert.throws(()=>resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}),/tier.*coordination root|cannot override/i);
 });
 
 test('linked worktree rejects missing, duplicate, unknown, and incomplete override markers',t=>{

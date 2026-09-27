@@ -4,10 +4,11 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {isDeepStrictEqual} from 'node:util';
 import YAML from 'yaml';
-import {classifyTask} from './lib/task-tier.mjs';
-import {parseWorkspaceConfig,workspaceConfigDigest} from './lib/workspace-config.mjs';
+import {classifyTask,selectEffectiveTier} from './lib/task-tier.mjs';
+import {applyWorktreeOverlay,canonicalCoordinationRoot,readWorkspacePolicySnapshot,resolveCanonicalPolicyMirror,resolveWorkspaceConfig,parseWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from './lib/workspace-config.mjs';
 import {parseWorkspaceHistory,readWorkspaceHistory,assertAcceptedWorkspaceConfig} from './lib/workspace-history.mjs';
 import {resolveTier3Policy} from './lib/tier3-policy.mjs';
+import {recognizeBootstrapPolicy} from './lib/bootstrap-policy.mjs';
 
 const INITIAL_FIELDS=['kind','id','startingHead','acceptedConfig','developer','scope','risks','userFacingUI','intendedFiles','claimedTier','selectedTier','reasons'];
 const RISK_KEYS=['auth','secrets','schema','publicApi','financial','userData','criticalInfrastructure','hardToRevert'];
@@ -122,26 +123,18 @@ function acceptedConfigAt(root,sha) {
   return {config,accepted};
 }
 
-function applyWorktreeOverlay(rootConfig,overlay) {
-  if(Object.hasOwn(rootConfig,'worktree_overrides')) fail('coordination config cannot declare worktree_overrides');
-  if(Object.hasOwn(overlay,'task_tiers') && JSON.stringify(overlay.task_tiers)!==JSON.stringify(rootConfig.task_tiers)) {
-    fail('linked worktree cannot override Tier 1 policy');
-  }
-  const effective=structuredClone(rootConfig),markers=overlay.worktree_overrides;
-  if(!Array.isArray(markers)) fail('linked worktree has no accepted override markers');
-  const roles=['principal','qa','appsec','accessibility_reviewer','ui_designer'];
-  for(const marker of markers) {
-    if(marker==='workspace.provider') effective.workspace.provider=overlay.workspace.provider;
-    else if(marker==='approvals_overrides') effective.approvals_overrides=overlay.approvals_overrides;
-    else if(roles.some(role=>marker===`approvals_required.${role}`)) {
-      const role=marker.slice('approvals_required.'.length);
-      effective.approvals_required[role]=overlay.approvals_required[role];
-    } else fail(`unknown linked worktree override: ${marker}`);
-  }
-  return parseWorkspaceConfig(YAML.stringify(effective));
+function committedPolicySnapshot(root,sha) {
+  const read=relative=>{
+    const entry=git(root,['ls-tree','-z',sha,'--',relative]);
+    if(!/^100644 blob [a-f0-9]{40}\t[^\0]+\0$/.test(entry)) {
+      fail('Canonical mirror PR base policy must contain regular non-executable files');
+    }
+    return execFileSync('git',['-C',root,'show',`${sha}:${relative}`],{stdio:['ignore','pipe','pipe']});
+  };
+  return {configText:read('config/workspace-config.yaml'),historyText:read('project/workspace-config-history.jsonl')};
 }
 
-function acceptedPolicy(root,record,baseSha) {
+function acceptedPolicy(root,record,baseSha,bootstrap) {
   const provenance=record.acceptedConfig;
   if(!isObject(provenance) || !/^[a-f0-9]{64}$/.test(provenance.effectiveDigest??'')
     || !Number.isInteger(provenance.revision) || !isObject(provenance.coordination)
@@ -150,6 +143,15 @@ function acceptedPolicy(root,record,baseSha) {
   }
   const currentConfig=parseWorkspaceConfig(safeReadText(root,'config/workspace-config.yaml','Workspace config'));
   const currentPolicy=assertAcceptedWorkspaceConfig(root,currentConfig);
+  if(bootstrap) {
+    for(const [name,expected] of [['config/workspace-config.yaml',bootstrap.linked.configText],
+      ['project/workspace-config-history.jsonl',bootstrap.linked.historyText]]) {
+      if(safeReadText(root,name,'Bootstrap policy')!==expected || (fs.lstatSync(path.join(root,name)).mode&0o111)) {
+        fail('bootstrap working policy differs from proven snapshot');
+      }
+    }
+    return bootstrap.effective;
+  }
   let effective,coordinationPolicy;
   if(provenance.worktree===null) {
     coordinationPolicy=currentPolicy;effective=currentConfig;
@@ -162,30 +164,47 @@ function acceptedPolicy(root,record,baseSha) {
       || currentPolicy.digest!==worktree.digest || currentPolicy.revision!==worktree.revision) {
       fail('accepted linked-worktree policy is stale; rerun preflight');
     }
-    const candidates=git(root,['worktree','list','--porcelain']).split('\n')
-      .filter(line=>line.startsWith('worktree ')).map(line=>fs.realpathSync(line.slice('worktree '.length))).filter(candidate=>candidate!==root);
-    const matches=[];
-    for(const candidate of candidates) {
-      try {
-        const config=parseWorkspaceConfig(safeReadText(candidate,'config/workspace-config.yaml','Coordination config'));
-        const accepted=assertAcceptedWorkspaceConfig(candidate,config);
-        if(!Object.hasOwn(config,'worktree_overrides') && accepted.digest===provenance.coordination.digest
-          && accepted.revision===provenance.coordination.revision
-          && workspaceConfigDigest(applyWorktreeOverlay(config,currentConfig))===provenance.effectiveDigest) {
-          matches.push({config,accepted,effective:applyWorktreeOverlay(config,currentConfig)});
-        }
-      } catch { /* Other registered worktrees are not coordination candidates. */ }
-    }
-    if(matches.length===1) {
-      ({effective,accepted:coordinationPolicy}=matches[0]);
-    } else if(matches.length>1) fail('coordination policy is ambiguous across registered worktrees');
-    else {
-      const basePolicy=acceptedConfigAt(root,baseSha);
-      if(basePolicy.accepted.digest!==provenance.coordination.digest || basePolicy.accepted.revision!==provenance.coordination.revision) {
-        fail('accepted coordination policy is stale or unavailable in PR context');
+    if(!Object.hasOwn(currentConfig,'worktree_overrides')) {
+      const coordination=canonicalCoordinationRoot(root);
+      if(coordination!==root) {
+        effective=resolveWorkspaceConfig({coordinationRoot:coordination,worktreeRoot:root}).config;
+        coordinationPolicy=assertAcceptedWorkspaceConfig(coordination,effective);
+      } else {
+        // A fresh CI checkout has no historical local root. Its committed PR
+        // base must independently prove the same complete canonical snapshot.
+        const snapshot=committedPolicySnapshot(root,baseSha);
+        effective=resolveCanonicalPolicyMirror(snapshot,readWorkspacePolicySnapshot(root)).config;
+        coordinationPolicy=parseWorkspaceHistory(snapshot.historyText.toString('utf8')).at(-1);
       }
-      coordinationPolicy=basePolicy.accepted;
-      effective=applyWorktreeOverlay(basePolicy.config,currentConfig);
+      if(coordinationPolicy.digest!==provenance.coordination.digest || coordinationPolicy.revision!==provenance.coordination.revision) {
+        fail('Accepted canonical coordination policy is stale or unavailable');
+      }
+    } else {
+      const candidates=git(root,['worktree','list','--porcelain']).split('\n')
+        .filter(line=>line.startsWith('worktree ')).map(line=>fs.realpathSync(line.slice('worktree '.length))).filter(candidate=>candidate!==root);
+      const matches=[];
+      for(const candidate of candidates) {
+        try {
+          const config=parseWorkspaceConfig(safeReadText(candidate,'config/workspace-config.yaml','Coordination config'));
+          const accepted=assertAcceptedWorkspaceConfig(candidate,config);
+          if(!Object.hasOwn(config,'worktree_overrides') && accepted.digest===provenance.coordination.digest
+            && accepted.revision===provenance.coordination.revision
+            && workspaceConfigDigest(applyWorktreeOverlay(config,currentConfig).config)===provenance.effectiveDigest) {
+            matches.push({config,accepted,effective:applyWorktreeOverlay(config,currentConfig).config});
+          }
+        } catch { /* Other registered worktrees are not coordination candidates. */ }
+      }
+      if(matches.length===1) {
+        ({effective,accepted:coordinationPolicy}=matches[0]);
+      } else if(matches.length>1) fail('coordination policy is ambiguous across registered worktrees');
+      else {
+        const basePolicy=acceptedConfigAt(root,baseSha);
+        if(basePolicy.accepted.digest!==provenance.coordination.digest || basePolicy.accepted.revision!==provenance.coordination.revision) {
+          fail('accepted coordination policy is stale or unavailable in PR context');
+        }
+        coordinationPolicy=basePolicy.accepted;
+        effective=applyWorktreeOverlay(basePolicy.config,currentConfig).config;
+      }
     }
   }
   if(provenance.revision!==coordinationPolicy.revision || workspaceConfigDigest(effective)!==provenance.effectiveDigest) {
@@ -245,7 +264,16 @@ function validateTier2Evidence(record,config,reviewedCommit) {
   }
 }
 
-function assertInitialClassification(record) {
+function effectiveTierPolicy(config) {
+  const definition=workspaceTierDefinition(config);
+  return {configuredMinimum:definition===null ? 1 : Number(config.task_tier.slice(-1)),definition};
+}
+
+function assertInitialClassification(record,config) {
+  const policy=effectiveTierPolicy(config);
+  if(Object.hasOwn(record,'tierPolicy')) {
+    if(!isDeepStrictEqual(record.tierPolicy,policy)) fail('tier policy definition provenance is invalid or stale');
+  }
   const {tier3Binding,...classificationRecord}=record;
   const result=classifyTask({
     stage:'preflight',developer:classificationRecord.developer,scope:classificationRecord.scope,risks:classificationRecord.risks,
@@ -253,7 +281,10 @@ function assertInitialClassification(record) {
     accessibilityEvidence:classificationRecord.accessibilityEvidence,
     ...(tier3Binding===undefined?{}:{tier3Binding}),
   });
-  if(result.tier!==classificationRecord.selectedTier || !isDeepStrictEqual(result.reasons,classificationRecord.reasons)) {
+  const selected=Object.hasOwn(record,'tierPolicy')
+    ? selectEffectiveTier({configuredMinimum:policy.configuredMinimum,riskTier:result.tier,earlierPreflightTier:1})
+    : result.tier;
+  if(selected!==classificationRecord.selectedTier || !isDeepStrictEqual(result.reasons,classificationRecord.reasons)) {
     fail('first committed assessment classification is internally inconsistent; use the Tier 3 route');
   }
 }
@@ -294,9 +325,13 @@ function tier3Binding(record,config,headRef) {
   return {binding,policy};
 }
 
-function assertPreflightBeforeIntendedChanges(root,baseSha,baseline) {
-  const priorChanges=nulPaths(git(root,['diff','--name-only','--no-renames','-z',
+function priorIntendedChanges(root,baseSha,baseline) {
+  return nulPaths(git(root,['diff','--name-only','--no-renames','-z',
     `${baseSha}...${baseline.record.startingHead}`,'--',...baseline.record.intendedFiles]));
+}
+
+function assertPreflightBeforeIntendedChanges(prior,bootstrap) {
+  const priorChanges=prior.filter(name=>!bootstrap?.allowedPaths.includes(name));
   if(priorChanges.length) {
     fail(`intended source path ${priorChanges[0]} changed before initial assessment evidence relative to PR base history`);
   }
@@ -355,10 +390,20 @@ export function validateTier2Assessment({assessmentPath,repoRoot:rootValue,baseS
 
   const record=readAssessment(root,relative);
   const baseline=firstAssessmentCommit(relative,head,root);
-  assertPreflightBeforeIntendedChanges(root,base,baseline);
-  assertInitialClassification(baseline.record);
+  const prior=priorIntendedChanges(root,base,baseline);
+  const bootstrap=prior.some(name=>['config/workspace-config.yaml','project/workspace-config-history.jsonl'].includes(name))
+    ? recognizeBootstrapPolicy({root,baseSha:base,headSha:head,headRef,assessmentPath:relative}) : null;
+  if(bootstrap && (baseline.commit!==bootstrap.initialEvidenceCommit || !isDeepStrictEqual(baseline.record,bootstrap.initialAssessment))) {
+    fail('bootstrap initial assessment differs from proven committed snapshot');
+  }
+  assertPreflightBeforeIntendedChanges(prior,bootstrap);
   assertInitialFactsUnchanged(record,baseline.record);
-  const config=acceptedPolicy(root,record,base);
+  const config=acceptedPolicy(root,record,base,bootstrap);
+  assertInitialClassification(baseline.record,config);
+  if(Object.hasOwn(record,'tierPolicy')!==Object.hasOwn(baseline.record,'tierPolicy')
+    || (Object.hasOwn(record,'tierPolicy') && !isDeepStrictEqual(record.tierPolicy,baseline.record.tierPolicy))) {
+    fail('current tier policy differs from the first committed assessment evidence');
+  }
   const actualFiles=[...new Set(changed.filter(file=>!/^project\/task-assessments\/[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.yaml$/.test(file)))].sort();
   const classified=classifyTask({
     stage:'final',developer:record.developer,scope:record.scope,risks:record.risks,
@@ -366,7 +411,8 @@ export function validateTier2Assessment({assessmentPath,repoRoot:rootValue,baseS
     actualFiles,accessibilityEvidence:record.accessibilityEvidence,
     reviewedCommit:record.reviewEvidence?.commit,
   });
-  const tier=Math.max(baseline.record.selectedTier,classified.tier);
+  const policy=effectiveTierPolicy(config);
+  const tier=selectEffectiveTier({configuredMinimum:policy.configuredMinimum,riskTier:classified.tier,earlierPreflightTier:baseline.record.selectedTier});
   if(tier===3) {
     if(baseline.record.selectedTier!==3) {
       fail(`actual PR diff reclassifies to Tier 3 (${classified.reasons.join(', ')||'higher recorded tier'}); use the governed Tier 3 review route`);

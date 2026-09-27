@@ -4,15 +4,15 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {isDeepStrictEqual} from 'node:util';
 import YAML from 'yaml';
-import {classifyTask} from './lib/task-tier.mjs';
-import {parseWorkspaceConfig,workspaceConfigDigest} from './lib/workspace-config.mjs';
+import {classifyTask,selectEffectiveTier} from './lib/task-tier.mjs';
+import {resolveTierDefaults} from './lib/tier-defaults.mjs';
+import {applyWorktreeOverlay,canonicalCoordinationRoot,resolveWorkspaceConfig,parseWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from './lib/workspace-config.mjs';
 import {assertAcceptedWorkspaceConfig,readWorkspaceHistory} from './lib/workspace-history.mjs';
 import {pathToFileURL} from 'node:url';
 
 const READ_ONLY_COMMANDS=new Set(['rev-parse','worktree','status','rev-list','diff','diff-tree','show','log','ls-files','ls-tree','merge-base']);
 const INITIAL_FIELDS=['kind','id','startingHead','acceptedConfig','developer','scope','risks','userFacingUI','intendedFiles','claimedTier','selectedTier','reasons','accessibilityEvidence'];
 const RISK_KEYS=['auth','secrets','schema','publicApi','financial','userData','criticalInfrastructure','hardToRevert'];
-const CONFIG_ROLES=['principal','qa','appsec','accessibility_reviewer','ui_designer'];
 
 function fail(message) { throw new Error(message); }
 function isObject(value) { return value!==null && typeof value==='object' && !Array.isArray(value); }
@@ -100,25 +100,6 @@ function readAcceptedConfig(root) {
   return {config,accepted};
 }
 
-function applyWorktreeOverlay(rootConfig,overlay) {
-  if(Object.hasOwn(rootConfig,'worktree_overrides')) fail('Coordination config cannot declare worktree_overrides');
-  if(Object.hasOwn(overlay,'task_tiers') && JSON.stringify(overlay.task_tiers)!==JSON.stringify(rootConfig.task_tiers)) {
-    fail('Accepted Tier 1 policy cannot be overridden by a worktree');
-  }
-  const markers=overlay.worktree_overrides;
-  if(!markers) fail('Linked worktree config has no accepted override markers');
-  const effective=structuredClone(rootConfig);
-  for(const marker of markers) {
-    if(marker==='workspace.provider') effective.workspace.provider=overlay.workspace.provider;
-    else if(marker==='approvals_overrides') effective.approvals_overrides=overlay.approvals_overrides;
-    else if(CONFIG_ROLES.some(role=>marker===`approvals_required.${role}`)) {
-      const role=marker.slice('approvals_required.'.length);
-      effective.approvals_required[role]=overlay.approvals_required[role];
-    } else fail(`Unknown worktree override marker: ${marker}`);
-  }
-  return parseWorkspaceConfig(YAML.stringify(effective));
-}
-
 function acceptedEffectivePolicy(root,assessment,adapter) {
   const recorded=assessment.acceptedConfig;
   if(!/^[a-f0-9]{64}$/.test(recorded.effectiveDigest) || !Number.isInteger(recorded.revision)
@@ -137,24 +118,40 @@ function acceptedEffectivePolicy(root,assessment,adapter) {
       || currentWorktree.accepted.digest!==worktreeRecord.digest || currentWorktree.accepted.revision!==worktreeRecord.revision) {
       fail('Accepted linked-worktree config is stale; rerun preflight');
     }
-    const worktrees=runGit(adapter,['worktree','list','--porcelain']).split('\n')
-      .filter(line=>line.startsWith('worktree ')).map(line=>fs.realpathSync(line.slice(9))).filter(candidate=>candidate!==root);
-    const matches=[];
-    for(const candidate of worktrees) {
-      try {
-        const rootConfig=readAcceptedConfig(candidate);
-        if(Object.hasOwn(rootConfig.config,'worktree_overrides') || rootConfig.accepted.digest!==recorded.coordination.digest
-          || rootConfig.accepted.revision!==recorded.coordination.revision) continue;
-        const combined=applyWorktreeOverlay(rootConfig.config,currentWorktree.config);
-        if(workspaceConfigDigest(combined)===recorded.effectiveDigest) matches.push({root:candidate,config:combined,accepted:rootConfig.accepted});
-      } catch { /* Other registered roots are not candidates for this assessment. */ }
+    if(!Object.hasOwn(currentWorktree.config,'worktree_overrides')) {
+      coordinationRoot=canonicalCoordinationRoot(root);
+      if(coordinationRoot===root) fail('Canonical mirror requires its registered coordination root for the local Tier 1 check');
+      const rootConfig=readAcceptedConfig(coordinationRoot);
+      if(rootConfig.accepted.digest!==recorded.coordination.digest || rootConfig.accepted.revision!==recorded.coordination.revision) {
+        fail('Accepted coordination config is stale or unavailable');
+      }
+      effective=resolveWorkspaceConfig({coordinationRoot,worktreeRoot:root}).config;
+      policy=rootConfig.accepted;
+    } else {
+      const worktrees=runGit(adapter,['worktree','list','--porcelain']).split('\n')
+        .filter(line=>line.startsWith('worktree ')).map(line=>fs.realpathSync(line.slice(9))).filter(candidate=>candidate!==root);
+      const matches=[];
+      for(const candidate of worktrees) {
+        try {
+          const rootConfig=readAcceptedConfig(candidate);
+          if(Object.hasOwn(rootConfig.config,'worktree_overrides') || rootConfig.accepted.digest!==recorded.coordination.digest
+            || rootConfig.accepted.revision!==recorded.coordination.revision) continue;
+          const {config:combined}=applyWorktreeOverlay(rootConfig.config,currentWorktree.config);
+          if(workspaceConfigDigest(combined)===recorded.effectiveDigest) matches.push({root:candidate,config:combined,accepted:rootConfig.accepted});
+        } catch { /* Other registered roots are not candidates for this assessment. */ }
+      }
+      if(matches.length!==1) fail(matches.length?'Coordination root is ambiguous; provide one explicit root':'Accepted coordination config is stale or unavailable');
+      ({root:coordinationRoot,config:effective,accepted:policy}=matches[0]);
     }
-    if(matches.length!==1) fail(matches.length?'Coordination root is ambiguous; provide one explicit root':'Accepted coordination config is stale or unavailable');
-    ({root:coordinationRoot,config:effective,accepted:policy}=matches[0]);
     if(recorded.revision!==policy.revision) fail('Accepted config revision is stale; rerun preflight');
   }
   if(workspaceConfigDigest(effective)!==recorded.effectiveDigest) fail('Effective accepted config digest is stale; rerun preflight');
-  return {config:effective,accepted:policy,coordinationRoot,directMergeEnabled:effective.task_tiers?.tier_1_direct_merge??false};
+  // This generic policy result does not authorize bypassing template or host PR rules.
+  const directMergeEnabled=Object.hasOwn(effective,'task_tier')
+    ? resolveTierDefaults({tier:Number(effective.task_tier.slice(-1)),overrides:effective.tier_overrides,templateRepository:false}).rules.direct_merge
+    : effective.task_tiers?.tier_1_direct_merge??false;
+  return {config:effective,accepted:policy,coordinationRoot,directMergeEnabled,
+    tierPolicy:effectiveTierPolicy(effective)};
 }
 
 function assertInitialClassification(record) {
@@ -164,6 +161,32 @@ function assertInitialClassification(record) {
     accessibilityEvidence:record.accessibilityEvidence,
   });
   if(result.tier!==record.selectedTier || !isDeepStrictEqual(result.reasons,record.reasons)) fail('Initial assessment classification is internally inconsistent');
+}
+
+function effectiveTierPolicy(config) {
+  const definition=workspaceTierDefinition(config);
+  return {configuredMinimum:definition===null ? 1 : Number(config.task_tier.slice(-1)),definition};
+}
+
+function assertEffectiveInitialTier(record,initial,config) {
+  const currentHasPolicy=Object.hasOwn(record,'tierPolicy');
+  const initialHasPolicy=Object.hasOwn(initial,'tierPolicy');
+  if(currentHasPolicy!==initialHasPolicy || (currentHasPolicy && !isDeepStrictEqual(record.tierPolicy,initial.tierPolicy))) {
+    fail('Initial tier policy evidence differs from the committed assessment');
+  }
+  if(!currentHasPolicy) {
+    assertInitialClassification(record);
+    return;
+  }
+  const policy=effectiveTierPolicy(config);
+  if(!isDeepStrictEqual(record.tierPolicy,policy)) fail('Tier policy definition provenance is invalid or stale');
+  const result=classifyTask({
+    stage:'preflight',developer:record.developer,scope:record.scope,risks:record.risks,
+    userFacingUI:record.userFacingUI,claimedTier:record.claimedTier,intendedFiles:record.intendedFiles,
+    accessibilityEvidence:record.accessibilityEvidence,
+  });
+  const selected=selectEffectiveTier({configuredMinimum:policy.configuredMinimum,riskTier:result.tier,earlierPreflightTier:1});
+  if(selected!==record.selectedTier || !isDeepStrictEqual(result.reasons,record.reasons)) fail('Initial assessment tier policy is internally inconsistent');
 }
 
 function committedInitialRecord(relative,currentHead,adapter) {
@@ -187,7 +210,6 @@ function assertInitialFieldsMatch(current,initial) {
       fail(`Current ${field} differs from the committed initial assessment evidence`);
     }
   }
-  assertInitialClassification(current);
 }
 
 function changedFiles(start,head,assessmentPath,adapter) {
@@ -294,6 +316,7 @@ export function checkTier1({assessmentPath,repoRoot=process.cwd(),gitAdapter=cre
   const baseline=committedInitialRecord(relative,currentHead,gitAdapter);
   assertInitialFieldsMatch(record,baseline.record);
   const policy=acceptedEffectivePolicy(root,record,gitAdapter);
+  assertEffectiveInitialTier(record,baseline.record,policy.config);
   const actualFiles=changedFiles(record.startingHead,currentHead,relative,gitAdapter);
   if(!actualFiles.length) fail('No implementation diff exists after the initial assessment; Tier 1 check requires a non-empty diff');
   const classified=classifyTask({
@@ -301,12 +324,13 @@ export function checkTier1({assessmentPath,repoRoot=process.cwd(),gitAdapter=cre
     claimedTier:record.claimedTier,intendedFiles:record.intendedFiles,actualFiles,
     accessibilityEvidence:record.accessibilityEvidence,reviewedCommit:currentHead,
   });
-  const route=routeFor(classified.tier,policy.directMergeEnabled);
-  const directMergeEligible=record.selectedTier===1 && classified.tier===1 && policy.directMergeEnabled;
+  const tier=selectEffectiveTier({configuredMinimum:policy.tierPolicy?.configuredMinimum??1,riskTier:classified.tier,earlierPreflightTier:record.selectedTier});
+  const route=routeFor(tier,policy.directMergeEnabled);
+  const directMergeEligible=record.selectedTier===1 && tier===1 && policy.directMergeEnabled;
   const check={
-    status:record.selectedTier===1&&classified.tier===1?'passed':'escalated',
+    status:record.selectedTier===1&&tier===1?'passed':'escalated',
     checkedHead:currentHead,initialEvidenceCommit:baseline.commit,actualFiles,
-    tier:classified.tier,reasons:classified.reasons,directMergeEligible,route,
+    tier,reasons:classified.reasons,directMergeEligible,route,
   };
   const updated=appendCheck(root,relative,record,check);
   return {record:updated,check,policy,tier:check.tier,directMergeEligible:check.directMergeEligible,route:check.route,output:formatResult({check,policy})};

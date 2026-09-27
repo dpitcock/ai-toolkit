@@ -4,7 +4,45 @@ Run `node scripts/install-native-lock.mjs && npm test` on Node.js 22+. The helpe
 
 The scaffold test creates a real temporary Git repository and worktree, verifies branch isolation and collision rejection, checks non-destructive repeated initialization, and confirms that generated non-secret workspace configuration reaches an isolated epic worktree. It substitutes npm in that test to avoid registry access, while asserting setup and baseline-test commands were invoked. This is template/configuration coverage, not evidence of a live Slack integration.
 
-The scaffold suite also initializes a temporary adopter, explicitly accepts its generated workspace policy, and executes the real `preflight.mjs`, `check-tier1.mjs`, and PR `check-pr.mjs` routes with committed Tier 1 and Tier 2 evidence. It verifies that `task_tiers.tier_1_direct_merge` is proposed as `false`; initializer idempotence and the PR gate remain covered. This exercises the Tier 2 validator through its existing PR entry point rather than simulating a GitHub-hosted run.
+The scaffold suite also initializes a temporary adopter, explicitly accepts its generated workspace policy, and executes the real `preflight.mjs`, `check-tier1.mjs`, and PR `check-pr.mjs` routes with committed Tier 1 and Tier 2 evidence. It verifies that `tier_overrides.direct_merge` is proposed as `false`; initializer idempotence and the PR gate remain covered. This exercises the Tier 2 validator through its existing PR entry point rather than simulating a GitHub-hosted run.
+
+Run `node --test tests/scaffold.test.mjs tests/lifecycle-finalization.test.mjs`
+for generated-adopter migration and lifecycle verification. The migration test
+starts with accepted legacy `task_tiers` policy, proposes an explicit candidate,
+and calls the copied adopter's real `init-workspace.mjs apply-change` with both
+reviewed digests. Proposal alone changes neither configuration nor history.
+Acceptance appends a definition-bound revision while preserving all prior
+history bytes, workspace/Slack names, role exemptions and summary time.
+The accepted candidate enables `workflow.autopilot`, selects `tier_1`, and
+keeps direct merge false. An unmigrated adopter refuses workflow progression
+with `autopilot-policy-required`.
+
+The migrated adopter runs its packaged controller and CLI gates through the
+shared test-only lifecycle fixture. It verifies implementation review readiness
+and merge eligibility, merge recording, a separately reviewed status-only
+finalization PR, integration, typed completion and next-epic admission.
+Submitted head S, original merge M and integrated main I remain distinct.
+The lifecycle suite retains negative review, check, race, policy/source mutation
+and direct-push cases. Git repositories and commands are real; the fixture's
+GitHub transport, owner/reviewer identities and activation/cleanup observations
+are controlled test data. They are not actual host reviews, deployment,
+session activation or evidence of safe cleanup in this repository.
+
+EPIC-006's own root and linked-worktree migration candidates and exact rollout
+digests are recorded in [the migration rollout](../project/EPIC-006-migration-rollout.md).
+Their active acceptance remains pending approved integration. Preserve the
+immutable bootstrap policy/history and assessment during implementation.
+Root acceptance, linked raw acceptance, effective policy provenance, real adapter
+adoption, host protection and QA-GOV-010 are separate release obligations.
+
+<!-- EPIC-006 ACTIVATION EVIDENCE START -->
+
+EPIC-006 actual-session activation and QA-GOV-010 remain pending. After verified
+policy adoption, the finite activation-evidence release records actual observations
+and explicit pending or not-exercised facts here. Generated fixtures are development
+evidence only. This block is reserved for the strict report renderer.
+
+<!-- EPIC-006 ACTIVATION EVIDENCE END -->
 
 Before ordinary source work, an adopter must have accepted configuration and a committed preflight assessment. Tier 1 is single-file, low-risk, and excludes UI; direct merge is disabled by default and never allowed for this template repository. `check-tier1.mjs` can report `Direct merge eligible: yes` when accepted config enables it; that generic result does not enforce this template's PR-only rule, so host protections must prevent bypass. Any uncertainty or high-risk signal escalates to Tier 3, and final-diff classification can only raise the tier. Tier 2 UI requires independent accessibility triage and plan evidence before implementation and a final independent review on the reviewed commit. These local checks validate supplied evidence but do not authenticate identities or enforce host rules; the configured PR workflow is the repository's PR gate, and host protections remain an administrator responsibility.
 

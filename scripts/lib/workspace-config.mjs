@@ -3,10 +3,12 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import YAML from 'yaml';
+import {resolveTierDefaults} from './tier-defaults.mjs';
+import {workspaceHistoryValidation} from './workspace-history-validation.mjs';
 
 const approvalRoles=['principal','qa','appsec','accessibility_reviewer','ui_designer'];
 const workspaceFields=['repository','environment','provider','slack_channel_name','timezone'];
-const worktreeOverridePaths=['workspace.provider','approvals_overrides',...approvalRoles.map(role=>`approvals_required.${role}`)];
+const worktreeOverridePaths=['workspace.provider','workflow.autopilot','approvals_overrides',...approvalRoles.map(role=>`approvals_required.${role}`)];
 
 function object(value,label) {
   if(value===null || typeof value!=='object' || Array.isArray(value)) {
@@ -34,7 +36,13 @@ function nonempty(value,label) {
 }
 
 function normalize(value,{partial=false}={}) {
-  const data=fields(value,['workspace','approvals_required','approvals_overrides','daily_summary','task_tiers','worktree_overrides'],partial?[]:['workspace','approvals_required','daily_summary'],'config');
+  const data=fields(value,['workspace','approvals_required','approvals_overrides','daily_summary','task_tiers','task_tier','tier_overrides','workflow','worktree_overrides'],partial?[]:['workspace','approvals_required','daily_summary'],'config');
+  if(Object.hasOwn(data,'task_tiers') && (Object.hasOwn(data,'task_tier') || Object.hasOwn(data,'tier_overrides'))) {
+    throw new Error('task_tiers cannot be used with task_tier or tier_overrides');
+  }
+  if(Object.hasOwn(data,'task_tier')!==Object.hasOwn(data,'tier_overrides')) {
+    throw new Error('task_tier and tier_overrides must be declared together');
+  }
   const result={};
   if(Object.hasOwn(data,'workspace')) {
     const workspace=fields(data.workspace,workspaceFields,partial?[]:workspaceFields,'workspace');
@@ -89,10 +97,28 @@ function normalize(value,{partial=false}={}) {
     }
     result.daily_summary=normalized;
   }
+  if(Object.hasOwn(data,'workflow')) {
+    const workflow=fields(data.workflow,['autopilot'],partial?[]:['autopilot'],'workflow');
+    if(Object.hasOwn(workflow,'autopilot') && typeof workflow.autopilot!=='boolean') {
+      throw new Error('workflow.autopilot must be boolean');
+    }
+    result.workflow=Object.hasOwn(workflow,'autopilot') ? {autopilot:workflow.autopilot} : {};
+  }
   if(Object.hasOwn(data,'task_tiers')) {
     const taskTiers=fields(data.task_tiers,['tier_1_direct_merge'],['tier_1_direct_merge'],'task_tiers');
     if(typeof taskTiers.tier_1_direct_merge!=='boolean') throw new Error('task_tiers.tier_1_direct_merge must be boolean');
     result.task_tiers={tier_1_direct_merge:taskTiers.tier_1_direct_merge};
+  }
+  if(Object.hasOwn(data,'task_tier')) {
+    if(!['tier_1','tier_2','tier_3'].includes(data.task_tier)) {
+      throw new Error('task_tier must be tier_1, tier_2, or tier_3');
+    }
+    const overrides=fields(data.tier_overrides,['direct_merge'],[], 'tier_overrides');
+    if(Object.hasOwn(overrides,'direct_merge') && typeof overrides.direct_merge!=='boolean') {
+      throw new Error('tier_overrides.direct_merge must be boolean');
+    }
+    result.task_tier=data.task_tier;
+    result.tier_overrides=Object.hasOwn(overrides,'direct_merge') ? {direct_merge:overrides.direct_merge} : {};
   }
   if(Object.hasOwn(data,'worktree_overrides')) {
     if(!Array.isArray(data.worktree_overrides) || data.worktree_overrides.some(marker=>typeof marker!=='string' || !worktreeOverridePaths.includes(marker))) {
@@ -128,6 +154,117 @@ export function workspaceConfigDigest(config) {
   return createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
 }
 
+export function workspaceTierDefinition(config) {
+  const normalized=normalize(config);
+  if(!Object.hasOwn(normalized,'task_tier')) return null;
+  const tier=Number(normalized.task_tier.slice(-1));
+  return resolveTierDefaults({tier,overrides:normalized.tier_overrides,templateRepository:false}).definition;
+}
+
+function rootSources(config) {
+  const sources={};
+  for(const [section,entries] of Object.entries(config)) {
+    if(entries && typeof entries==='object' && !Array.isArray(entries)) {
+      for(const key of Object.keys(entries)) sources[`${section}.${key}`]='root';
+    } else {
+      sources[section]='root';
+    }
+  }
+  return sources;
+}
+
+/** Pure overlay semantics shared by preflight and committed-policy final checks. */
+export function applyWorktreeOverlay(rootConfig,worktreeConfig) {
+  const config=normalize(rootConfig),overlay=normalize(worktreeConfig);
+  if(Object.hasOwn(config,'worktree_overrides')) throw new Error('Coordination config cannot declare worktree_overrides');
+  const sources=rootSources(config);
+  for(const field of ['task_tiers','task_tier','tier_overrides']) {
+    if(JSON.stringify(overlay[field])!==JSON.stringify(config[field])) {
+      throw new Error('Tier policy is defined by the accepted coordination root; worktrees cannot override it');
+    }
+  }
+  const markers=overlay.worktree_overrides;
+  if(!markers) throw new Error('Linked worktree config requires worktree_overrides markers');
+  const effective=structuredClone(config);
+  for(const marker of markers) {
+    if(marker==='workspace.provider') {
+      effective.workspace.provider=overlay.workspace.provider;
+      sources[marker]='worktree';
+    } else if(marker==='workflow.autopilot') {
+      if(!Object.hasOwn(overlay.workflow ?? {},'autopilot')) {
+        throw new Error('workflow.autopilot override marker requires an autopilot value');
+      }
+      effective.workflow={autopilot:overlay.workflow.autopilot};
+      sources[marker]='worktree';
+    } else if(marker==='approvals_overrides') {
+      effective.approvals_overrides=overlay.approvals_overrides;
+      sources['approvals_overrides.reason']='worktree';
+      sources['approvals_overrides.exempt']='worktree';
+    } else {
+      const role=marker.slice('approvals_required.'.length);
+      effective.approvals_required[role]=overlay.approvals_required[role];
+      sources[marker]='worktree';
+    }
+  }
+  if(JSON.stringify(overlay.workflow) !== JSON.stringify(config.workflow) && !markers.includes('workflow.autopilot')) {
+    throw new Error('workflow.autopilot changes require a worktree_overrides marker');
+  }
+  return {config:parseWorkspaceConfig(YAML.stringify(effective)),sources};
+}
+
+/** Identity comes from the Git-common directory, never matching sibling policy. */
+export function canonicalCoordinationRoot(worktreeRoot) {
+  const worktree=fs.realpathSync(worktreeRoot);
+  const git=(root,args)=>execFileSync('git',['-C',root,...args],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+  const common=fs.realpathSync(git(worktree,['rev-parse','--path-format=absolute','--git-common-dir']));
+  const registered=git(worktree,['worktree','list','--porcelain','-z']).split('\0')
+    .filter(line=>line.startsWith('worktree ')).map(line=>fs.realpathSync(line.slice(9)));
+  if(!registered.includes(worktree) || fs.realpathSync(git(worktree,['rev-parse','--show-toplevel']))!==worktree) {
+    throw new Error('Canonical mirror requires a registered top-level Git worktree');
+  }
+  const roots=registered.filter(candidate=>{
+    try {
+      return fs.realpathSync(git(candidate,['rev-parse','--absolute-git-dir']))===common
+        && fs.realpathSync(git(candidate,['rev-parse','--show-toplevel']))===candidate;
+    } catch { return false; }
+  });
+  if(roots.length!==1) throw new Error('Canonical Git-common coordination root is unavailable or ambiguous');
+  return roots[0];
+}
+
+export function readWorkspacePolicySnapshot(root) {
+  const base=fs.realpathSync(root);
+  const read=relative=>{
+    const [directory,name]=relative.split('/');
+    const parent=path.join(base,directory),file=path.join(parent,name);
+    if(fs.lstatSync(parent).isSymbolicLink() || !fs.lstatSync(parent).isDirectory()
+      || fs.lstatSync(file).isSymbolicLink() || !fs.lstatSync(file).isFile()
+      || !fs.realpathSync(file).startsWith(base+path.sep)) {
+      throw new Error('Canonical mirror policy must use regular root-local files without symlinks');
+    }
+    return fs.readFileSync(file);
+  };
+  return {configText:read('config/workspace-config.yaml'),historyText:read('project/workspace-config-history.jsonl')};
+}
+
+/** Exact snapshot semantics shared with committed-base reconstruction in CI. */
+export function resolveCanonicalPolicyMirror(rootSnapshot,linkedSnapshot) {
+  const {parseWorkspaceHistory,assertAcceptedHistory}=workspaceHistoryValidation({workspaceConfigDigest,workspaceTierDefinition});
+  const rootBytes=Buffer.from(rootSnapshot.configText),linkedBytes=Buffer.from(linkedSnapshot.configText);
+  const rootHistory=Buffer.from(rootSnapshot.historyText),linkedHistory=Buffer.from(linkedSnapshot.historyText);
+  if(!rootBytes.equals(linkedBytes) || !rootHistory.equals(linkedHistory)) {
+    throw new Error('Canonical mirror requires exact config and complete accepted-history bytes; nonidentical policy requires worktree_overrides markers');
+  }
+  const config=parseWorkspaceConfig(rootBytes.toString('utf8'));
+  const linkedConfig=parseWorkspaceConfig(linkedBytes.toString('utf8'));
+  if(Object.hasOwn(config,'worktree_overrides') || Object.hasOwn(linkedConfig,'worktree_overrides')) {
+    throw new Error('Canonical mirror root and linked policy cannot declare worktree_overrides');
+  }
+  assertAcceptedHistory(parseWorkspaceHistory(rootHistory.toString('utf8')),config);
+  assertAcceptedHistory(parseWorkspaceHistory(linkedHistory.toString('utf8')),linkedConfig);
+  return {config,sources:rootSources(config)};
+}
+
 export function resolveWorkspaceConfig({coordinationRoot,worktreeRoot=coordinationRoot}) {
   if(!coordinationRoot || !worktreeRoot) throw new Error('A repository root is required');
   const root=fs.realpathSync(coordinationRoot);
@@ -142,36 +279,22 @@ export function resolveWorkspaceConfig({coordinationRoot,worktreeRoot=coordinati
   const config=readConfig(root);
   if(Object.hasOwn(config,'worktree_overrides')) throw new Error('Coordination config cannot declare worktree_overrides');
   const worktree=fs.realpathSync(worktreeRoot);
-  const sources={};
-  for(const [section,entries] of Object.entries(config)) {
-    for(const key of Object.keys(entries)) sources[`${section}.${key}`]='root';
-  }
-  if(worktree===root) return {config,sources};
-  const registered=execFileSync('git',['-C',worktree,'worktree','list','--porcelain'],{encoding:'utf8'})
+  if(worktree===root) return {config,sources:rootSources(config)};
+  const registered=execFileSync('git',['-C',worktree,'worktree','list','--porcelain'],{encoding:'utf8',stdio:['ignore','pipe','pipe']})
     .split('\n').filter(line=>line.startsWith('worktree ')).map(line=>fs.realpathSync(line.slice(9)));
   if(!registered.includes(root) || !registered.includes(worktree)) {
     throw new Error('Worktree and coordination root must be linked Git worktrees');
   }
-  const overlay=readConfig(worktree);
-  if(Object.hasOwn(overlay,'task_tiers') && JSON.stringify(overlay.task_tiers)!==JSON.stringify(config.task_tiers)) {
-    throw new Error('Tier 1 policy is defined by the accepted coordination root; worktrees cannot override task_tiers.tier_1_direct_merge');
-  }
-  const markers=overlay.worktree_overrides;
-  if(!markers) throw new Error('Linked worktree config requires worktree_overrides markers');
-  const effective=structuredClone(config);
-  for(const marker of markers) {
-    if(marker==='workspace.provider') {
-      effective.workspace.provider=overlay.workspace.provider;
-      sources[marker]='worktree';
-    } else if(marker==='approvals_overrides') {
-      effective.approvals_overrides=overlay.approvals_overrides;
-      sources['approvals_overrides.reason']='worktree';
-      sources['approvals_overrides.exempt']='worktree';
-    } else {
-      const role=marker.slice('approvals_required.'.length);
-      effective.approvals_required[role]=overlay.approvals_required[role];
-      sources[marker]='worktree';
+  const linkedConfig=readConfig(worktree);
+  if(!Object.hasOwn(linkedConfig,'worktree_overrides')) {
+    if(canonicalCoordinationRoot(worktree)!==root) {
+      throw new Error('Canonical mirror must inherit from the actual Git-common coordination root');
+    }
+    try {
+      return resolveCanonicalPolicyMirror(readWorkspacePolicySnapshot(root),readWorkspacePolicySnapshot(worktree));
+    } catch(error) {
+      throw new Error(`Linked config without worktree_overrides requires an accepted canonical mirror: ${error.message}`,{cause:error});
     }
   }
-  return {config:parseWorkspaceConfig(YAML.stringify(effective)),sources};
+  return applyWorktreeOverlay(config,linkedConfig);
 }

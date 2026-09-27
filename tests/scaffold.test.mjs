@@ -3,14 +3,30 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {pathToFileURL} from 'node:url';
 import {execFileSync,spawnSync} from 'node:child_process';
 import YAML from 'yaml';
+import {fixture as lifecycleFixture,exerciseLifecycle} from './helpers/lifecycle-fixture.mjs';
 const source=path.resolve(import.meta.dirname,'..');
 const noRisks={auth:false,secrets:false,schema:false,publicApi:false,financial:false,userData:false,criticalInfrastructure:false,hardToRevert:false};
 const lowRiskAnswers={developer:'fixture-implementer',scope:'single-file',risks:noRisks,userFacingUI:false,claimedTier:1,intendedFiles:['project/src/quick-fix.js'],accessibilityEvidence:null};
 const tier2Answers={developer:'fixture-implementer',scope:'one-subsystem',risks:noRisks,userFacingUI:false,claimedTier:2,intendedFiles:['project/src/notify.js','project/src/format.js'],accessibilityEvidence:null};
 function git(root,...args) { return execFileSync('git',['-C',root,...args],{encoding:'utf8'}).trim(); }
 function commitAll(root,message) { git(root,'add','-A');git(root,'commit','-m',message);return git(root,'rev-parse','HEAD'); }
+function copyAdopterSeed(root,items) {
+ const instancePaths=new Set([
+  'config/workspace-config.yaml',
+  'project/workspace-config-history.jsonl',
+  'project/workspace-config-history.jsonl.lock',
+  'project/workspace-config-transaction.json',
+  'project/task-assessments',
+ ]);
+ for(const item of new Set([...items,'policy'])) fs.cpSync(path.join(source,item),path.join(root,item),{
+  recursive:true,filter:file=>!instancePaths.has(path.relative(source,file).split(path.sep).join('/')),
+ });
+ for(const relative of instancePaths) assert.ok(!fs.existsSync(path.join(root,relative)),`${relative} must not seed an adopter`);
+ assert.ok(fs.existsSync(path.join(root,'project/project-plan.md.template')));
+}
 
 test('pull-request workflow passes immutable PR context to the unified validator without irreversible operations',()=>{
  const workflow=YAML.parse(fs.readFileSync(path.join(source,'.github/workflows/workflow.yml'),'utf8'));
@@ -18,7 +34,9 @@ test('pull-request workflow passes immutable PR context to the unified validator
  assert.ok(steps.some(step=>step.run==='npm test'),'workflow keeps template-only test coverage');
  const validator=steps.find(step=>step.run==='node scripts/check-pr.mjs');
  assert.ok(validator,'workflow invokes the single unified PR validator');
+ assert.deepEqual(workflow.jobs.gates.permissions,{'contents':'read','pull-requests':'read'});
  assert.deepEqual(validator.env,{
+  GH_TOKEN:'${{ github.token }}',
   BASE_SHA:'${{ github.event.pull_request.base.sha }}',
   HEAD_SHA:'${{ github.event.pull_request.head.sha }}',
   HEAD_REF:'${{ github.head_ref }}',
@@ -43,13 +61,25 @@ test('Tier 3 guidance preserves the registered-worktree, evidence, and PR-only c
  }
 });
 
+test('adapter documentation describes the exported controller boundary',()=>{
+ for(const file of ['AGENTS.md','CLAUDE.md','.clinerules/00-governance.md',
+  'skills/governed-plan/SKILL.md','skills/governed-build/SKILL.md','skills/governed-ship/SKILL.md']) {
+  const text=fs.readFileSync(path.join(source,file),'utf8');
+  assert.match(text,/runWorkflowEvent/ ,`${file} names the exported entrypoint`);
+  assert.match(text,/standalone[\s\S]*fails?[ -]closed/i,`${file} explains the standalone boundary`);
+ }
+});
+
 test('init is idempotent; real epic worktree is isolated and refuses collisions',t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'blueprint-scaffold-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
- for(const item of ['scripts','project','tests','package.json','package-lock.json','.gitignore']) fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
+ copyAdopterSeed(root,['scripts','project','tests','package.json','package-lock.json','.gitignore']);
  fs.mkdirSync(path.join(root,'epics'));fs.cpSync(path.join(source,'epics','EPIC-XXX'),path.join(root,'epics','EPIC-XXX'),{recursive:true});
  fs.symlinkSync(path.join(source,'node_modules'),path.join(root,'node_modules'),'dir');
  const run=(cmd,args)=>execFileSync(cmd,args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']});
- run('bash',['scripts/init-project.sh','--offline']);
+ const initialized=run('bash',['scripts/init-project.sh','--offline']);
+ const proposal=JSON.parse(initialized.split('\n')[0]);assert.equal(proposal.status,'pending');
+ run('node',['scripts/init-workspace.mjs','accept','--root',root,'--by','Fixture policy reviewer','--reason','Accept isolated scaffold fixture','--digest',proposal.digest]);
+ assert.match(run('node',['scripts/init-workspace.mjs','status','--root',root]),/"status":"accepted"/);
  const plan=path.join(root,'project/project-plan.md');fs.appendFileSync(plan,'Preserve this user edit\n');
  run('bash',['scripts/init-project.sh','--offline']);assert.match(fs.readFileSync(plan,'utf8'),/Preserve this user edit/);
  const text=fs.readFileSync(plan,'utf8');const match=text.match(/^---\n([\s\S]*?)\n---\n/);const d=YAML.parse(match[1]);
@@ -74,9 +104,7 @@ test('init is idempotent; real epic worktree is isolated and refuses collisions'
 
 test('generated adopter executes accepted Tier 1 and Tier 2 routes and documents their gates',t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'blueprint-tier-routes-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
- for(const item of ['scripts','project','docs','skills','package.json','package-lock.json','.gitignore','AGENTS.md']) {
-  fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
- }
+ copyAdopterSeed(root,['scripts','project','docs','skills','package.json','package-lock.json','.gitignore','AGENTS.md']);
  fs.symlinkSync(path.join(source,'node_modules'),path.join(root,'node_modules'),'dir');
  const run=(cmd,args,options={})=>execFileSync(cmd,args,{
   cwd:root,encoding:'utf8',stdio:options.input===undefined?['ignore','pipe','pipe']:['pipe','pipe','pipe'],...options,
@@ -85,7 +113,8 @@ test('generated adopter executes accepted Tier 1 and Tier 2 routes and documents
  const proposal=JSON.parse(initOutput.split('\n')[0]);
  assert.equal(proposal.status,'pending');
  const config=YAML.parse(fs.readFileSync(path.join(root,'config/workspace-config.yaml'),'utf8'));
- assert.equal(config.task_tiers.tier_1_direct_merge,false);
+ assert.equal(config.task_tier,'tier_1');
+ assert.equal(config.tier_overrides.direct_merge,false);
  run('node',['scripts/init-workspace.mjs','accept','--root',root,'--by','Fixture policy reviewer','--reason','Accept generated adopter fixture','--digest',proposal.digest]);
  assert.match(run('node',['scripts/init-workspace.mjs','status','--root',root]),/"status":"accepted"/);
  git(root,'init');git(root,'config','user.email','fixture@example.test');git(root,'config','user.name','Fixture');
@@ -162,7 +191,7 @@ test('generated adopter Tier 3 route',
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'blueprint-tier3-adopter-'));
  const linked=path.join(root,'.worktrees/EPIC-043');
  t.after(()=>{try { git(root,'worktree','remove','--force',linked); } catch {} fs.rmSync(root,{recursive:true,force:true});fs.rmSync(linked,{recursive:true,force:true});});
- for(const item of ['scripts','project','docs','skills','tests','package.json','package-lock.json','.gitignore','AGENTS.md']) fs.cpSync(path.join(source,item),path.join(root,item),{recursive:true});
+ copyAdopterSeed(root,['scripts','project','docs','skills','tests','package.json','package-lock.json','.gitignore','AGENTS.md']);
  fs.mkdirSync(path.join(root,'epics'));fs.cpSync(path.join(source,'epics','EPIC-XXX'),path.join(root,'epics','EPIC-XXX'),{recursive:true});
  fs.rmSync(path.join(root,'project','project-plan.md'));
  fs.symlinkSync(path.join(source,'node_modules'),path.join(root,'node_modules'),'dir');
@@ -202,6 +231,33 @@ test('generated adopter Tier 3 route',
  advanceGate(run,linked,'epics/EPIC-043/tasks/TASK-001.md','approved');
  commitAll(linked,'accept linked policy and start governed epic');
  const baseSha=git(linked,'rev-parse','HEAD');
+ await t.test('packaged controller entrypoint enforces accepted policy and out-of-band identity',async()=>{
+  assert.ok(fs.existsSync(path.join(linked,'policy/task-tier-defaults.yaml')));
+  const packaged=relative=>import(pathToFileURL(path.join(linked,relative)).href);
+  const {resolveWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition}=await packaged('scripts/lib/workspace-config.mjs');
+  const {assertAcceptedWorkspaceConfig}=await packaged('scripts/lib/workspace-history.mjs');
+  const {withWorkflowState,readWorkflowState}=await packaged('scripts/lib/workflow-state.mjs');
+  git(root,'remote','add','origin','https://github.com/fixture/scaffold.git');
+  const effective=resolveWorkspaceConfig({coordinationRoot:root,worktreeRoot:linked}).config;
+  const acceptance=directory=>assertAcceptedWorkspaceConfig(directory,YAML.parse(fs.readFileSync(path.join(directory,'config/workspace-config.yaml'),'utf8')));
+  const rootReceipt=acceptance(root),linkedReceipt=acceptance(linked);
+  const provenance={digest:workspaceConfigDigest(effective),definition:workspaceTierDefinition(effective),
+   rootAcceptance:`workspace:${rootReceipt.revision}:${rootReceipt.digest}`,worktreeAcceptance:`workspace:${linkedReceipt.revision}:${linkedReceipt.digest}`};
+  withWorkflowState(linked,state=>{state.authorizations.fixture={id:'fixture',repository:'fixture/scaffold',branch:'epic/EPIC-043',scope:['epics/EPIC-043'],allowedActions:['task.dispatch'],completionCriteria:['fixture-contract'],policy:provenance,authorizedBy:'fixture-owner'};});
+  const event={id:'packaged-dispatch',type:'task.dispatch',epic:'EPIC-043',task:'TASK-001',authorizationId:'fixture',completionCriterion:'fixture-contract'};
+  // Fixture identity is test data, never evidence of a real authenticated session.
+  const actor={harness:{authenticated:true,sessionId:'fixture-session',identity:'fixture-controller',ownerDecisionIds:[]}};
+  const entrypoint=pathToFileURL(path.join(linked,'scripts/workflow-event.mjs')).href;
+  const wrapper=`import {runWorkflowEvent} from ${JSON.stringify(entrypoint)}; await runWorkflowEvent(process.argv.slice(1), {actor:${JSON.stringify(actor)},observers:{}});`;
+  const embedded=run(linked,process.execPath,['--input-type=module','-e',wrapper,'task.dispatch','--root',linked],{input:JSON.stringify(event)});
+  assert.equal(embedded.status,0,embedded.stderr);
+  assert.equal(JSON.parse(embedded.stdout).decision,'continue');
+  assert.equal(JSON.parse(embedded.stdout).reason,'authorized-routine');
+  assert.equal(readWorkflowState(linked).dispatches[event.id].output.decision,'continue');
+  const standalone=run(linked,process.execPath,['scripts/workflow-event.mjs','task.dispatch','--root',linked],{input:JSON.stringify(event),env:{...process.env,WORKFLOW_HARNESS_ACTOR:JSON.stringify(actor)}});
+  assert.equal(standalone.status,1);
+  assert.match(JSON.parse(standalone.stdout).reason,/trusted harness actor is required/);
+ });
  const answers={developer:'fixture-implementer',scope:'cross-cutting',risks:{...noRisks,auth:true},userFacingUI:false,claimedTier:3,intendedFiles:['project/src/tier3-change.js'],accessibilityEvidence:null,tier3Binding:{planPath:'epics/EPIC-043/epic-plan.md',taskPath:'epics/EPIC-043/tasks/TASK-001.md'}};
  const preflight=(cwd,id,input=answers)=>run(cwd,'node',['scripts/preflight.mjs','--id',id,'--coordination-root',root,'--worktree-root',cwd],{input:JSON.stringify(input)});
 
@@ -228,6 +284,48 @@ test('generated adopter Tier 3 route',
   const staleConfig=YAML.parse(fs.readFileSync(path.join(linked,'config/workspace-config.yaml'),'utf8'));staleConfig.workspace.provider='stale-provider';fs.writeFileSync(path.join(linked,'config/workspace-config.yaml'),YAML.stringify(staleConfig));commitAll(linked,'attempt stale linked policy');
   const stale=preflight(linked,'stale-tier3');assert.notEqual(stale.status,0);assert.match(stale.stderr,/Workspace configuration changed after acceptance|stale/i);
  });
+});
+
+test('generated legacy adopter requires accepted migration before the complete workflow',t=>{
+ const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'blueprint-migrated-adopter-')));
+ t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ copyAdopterSeed(root,['scripts','project','docs','skills','package.json','package-lock.json','.gitignore','AGENTS.md']);
+ fs.symlinkSync(path.join(source,'node_modules'),path.join(root,'node_modules'),'dir');
+ const legacy={workspace:{repository:'repo',environment:'staging',provider:'codex',slack_channel_name:'ws-owner-kept-codex',timezone:'America/New_York'},approvals_required:{principal:true,qa:true,appsec:true,accessibility_reviewer:false,ui_designer:false},approvals_overrides:{reason:'Owner retained no-UI exemption',exempt:['accessibility_reviewer','ui_designer']},daily_summary:{local_time:'10:30'},task_tiers:{tier_1_direct_merge:false}};
+ fs.mkdirSync(path.join(root,'config'),{recursive:true});
+ const configFile=path.join(root,'config/workspace-config.yaml');fs.writeFileSync(configFile,YAML.stringify(legacy));
+ const run=(command,args)=>execFileSync(command,args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']});
+ const initialized=run('bash',['scripts/init-project.sh','--offline']);
+ const initial=JSON.parse(initialized.split('\n')[0]);assert.equal(initial.status,'pending');
+ const workspace=(...args)=>JSON.parse(run(process.execPath,['scripts/init-workspace.mjs',...args,'--root',root]));
+ workspace('accept','--by','fixture-owner','--reason','Accept existing legacy adopter policy','--digest',initial.digest);
+ git(root,'init','--initial-branch=main');git(root,'config','user.name','Fixture');git(root,'config','user.email','fixture@example.test');
+ commitAll(root,'Accepted legacy adopter');
+ const historyFile=path.join(root,'project/workspace-config-history.jsonl');
+ const oldConfig=fs.readFileSync(configFile,'utf8'),oldHistory=fs.readFileSync(historyFile,'utf8');
+ assert.equal(workspace('status').digest,initial.digest);
+ const candidate=structuredClone(legacy);delete candidate.task_tiers;
+ candidate.task_tier='tier_1';candidate.tier_overrides={direct_merge:false};candidate.workflow={autopilot:true};
+ const candidateFile=path.join(root,'project/migration-candidate.yaml');fs.writeFileSync(candidateFile,YAML.stringify(candidate));
+ const proposed=workspace('propose-change','--candidate',candidateFile);
+ assert.equal(proposed.base_digest,initial.digest);
+ assert.deepEqual(proposed.changes.slice().sort(),['task_tier','task_tiers','tier_overrides','workflow']);
+ assert.equal(fs.readFileSync(configFile,'utf8'),oldConfig,'proposal does not activate policy');
+ assert.equal(fs.readFileSync(historyFile,'utf8'),oldHistory,'proposal does not rewrite acceptance');
+ const accepted=workspace('apply-change','--candidate',candidateFile,'--by','fixture-owner','--reason','Explicit test-only migration','--digest',proposed.digest,'--base-digest',proposed.base_digest);
+ assert.equal(accepted.status,'accepted');assert.equal(workspace('status').digest,proposed.digest);
+ const migrated=YAML.parse(fs.readFileSync(configFile,'utf8'));
+ assert.deepEqual(migrated,candidate,'migration preserves every owner field and changes only the requested policy');
+ const history=fs.readFileSync(historyFile,'utf8'),records=history.trim().split('\n').map(line=>JSON.parse(line));
+ assert.ok(history.startsWith(oldHistory));assert.equal(records.length,3);
+ assert.equal(records.at(-1).kind,'change');assert.equal(records.at(-1).revision,2);
+ assert.equal(records.at(-1).digest,proposed.digest);assert.equal(records.at(-1).by,'fixture-owner');
+ assert.equal(records.at(-1).definition.version,1);assert.match(records.at(-1).definition.digest,/^[a-f0-9]{64}$/);
+ assert.ok(!fs.existsSync(path.join(root,'project/workspace-config-transaction.json')),'successful migration retires its transaction journal');
+ fs.rmSync(candidateFile);
+ const revisions=exerciseLifecycle(lifecycleFixture(t,{adopterRoot:root}));
+ assert.equal(new Set(Object.values(revisions)).size,3,'submitted, merged and integrated revisions remain distinct');
+ assert.ok(fs.readFileSync(historyFile,'utf8').startsWith(oldHistory),'old acceptance remains byte-for-byte intact');
 });
 
 test('native lock install is local and does not run an unexpected lifecycle hook',{timeout:120_000},t=>{

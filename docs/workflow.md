@@ -15,6 +15,153 @@ Projects that use an externally deployed Slack control plane can follow the
 contracts plus the generated, non-secret `config/workspace-config.yaml`; it does not change local Codex,
 Cline, or Claude instructions.
 
+For an authorized project message or escalation, resolve the destination from
+`workspace.slack_channel_name`. If that exact project channel does not exist,
+create it through the connected ChatGPT Slack plugin before posting; then use
+Agent Alert for the authorized message. Do not substitute a shared or default
+channel. Creating or joining a channel is routing setup only and never proves
+identity, approval, or reviewer authority.
+
+## Authenticated event controller
+
+The embedding harness imports `runWorkflowEvent` from
+`scripts/workflow-event.mjs` and calls
+`runWorkflowEvent([EVENT, '--root', PATH], {actor, observers})`. The function
+reads one bounded JSON event from stdin (64 KiB maximum), writes its structured
+decision to stdout, and returns it. A `human-needed` decision sets exit code 1;
+thrown errors also block dispatch and must be handled by the harness. Inspect
+the decision before taking any action. The standalone
+`node scripts/workflow-event.mjs EVENT --root PATH` command deliberately fails
+closed because it has no authenticated actor. Environment JSON cannot supply one.
+
+The harness must obtain actual session identity and owner authorization through
+its trusted context, then pass actor context out-of-band. Persist narrowly
+scoped authorization in the locked Git-common runtime store; event JSON only
+references its ID. Required event fields are `id`, `type`, `epic`,
+`authorizationId`, and `completionCriterion`; `task.dispatch` additionally
+requires `task`, and `epic.complete` requires `completionId`. Optional
+`repository`, `branch`, and `scope` fields must match internally resolved facts.
+They cannot select another repository or establish authority. The registered
+worktree must be on its `epic/EPIC-NNN` branch with accepted effective policy.
+
+| Event | Boundary and additional controller observations |
+| --- | --- |
+| `epic.start` | Checks predecessor completion before admitting the epic; `integration(receipt)` fetches current host integration facts for a predecessor. Provisioning in `new-epic.sh` reserves admission separately before creating resources. |
+| `task.dispatch` | Checks the canonical approved plan, listed task, legal task state and completed dependencies before dispatch. |
+| `review.ready` | Checks the canonical review stage before a PR exists. After local final reviews reach `ready-for-pr`, schedules publication of completed verdicts against the live PR head. `pullRequest(context)` returns `{repository, pr, head, state: 'open', base: 'main', headBranch}` from the host; durable claims bind that PR/head/role. |
+| `merge.eligible` | Requires the canonical PR gate and `reviewAuthority(context)` returning `{identities, api}` for authenticated, paginated current-head reviews/checks. Rechecks the head and merge gates; it does not merge. |
+| `epic.complete` | Requires a merged canonical plan. `completion(context)` supplies typed integration, policy, findings, documentation, activation and cleanup evidence; `integration(receipt)` independently refreshes host facts before completion is persisted. |
+
+Callbacks are synchronous under the state lock; promises are rejected. Context
+contains `root`, `repository`, `epic`, `head`, and the applicable `pr` or
+`completionId`. The API returned by `reviewAuthority` implements the adapter
+contract in `scripts/check-host-reviews.mjs`; use authenticated host reads,
+never caller-supplied green snapshots. Completion receipt fields are defined
+by `scripts/lib/epic-completion.mjs` and distinguish submitted head, the original
+PR's merge commit, and the current integrated revision. Harness observations identify actual activation and
+owned cleanup resources. An `authenticated` boolean or JSON receipt cannot
+authenticate anyone by itself: local files remain cooperative evidence.
+
+Duplicate delivery rechecks current actor, revocation and policy provenance.
+Review scheduling persists claims before external dispatch and requires
+acknowledgement afterward. A crash or uncertain transport result requires
+reconciliation; local disk and external delivery are not one transaction.
+Pushes and test runs never start reviewers. See [the transport contract](slack-control-plane.md).
+
+## Plan, implementation and release boundaries
+
+The staged validator distinguishes an initial documentation-only `plan-pr`
+from `implementation-pr` eligibility on an approved, started plan. Initial plan
+receipts bind plan ID/revision/reviewed SHA/role and cannot approve implementation.
+Source, policy or workflow changes cannot hide in nominal documentation paths
+in a plan-only PR. Ordinary plan edits do not create a second initial plan PR;
+material scope changes still require reconciled authorization and signoffs.
+The staged implementation action permits PR updates before final reviews; it
+does not authorize merge or override the active repository workflow instructions.
+
+EPIC-006 bootstrap retains its existing stricter pre-PR gates: complete tasks
+and QA, independent staff review, then AppSec on the same final revision, and
+conditional accessibility review before even a draft PR. Existing approvals,
+plan revision, immutable assessment and legacy policy history stay intact.
+Migration and adapter activation are release work after approved integration.
+Candidate validators and candidate role maps cannot approve their own rollout.
+See [the enforcement boundary](gates.md#enforcement-boundary).
+
+After integration, explicitly propose and accept migration with
+`scripts/init-workspace.mjs propose-change` / `apply-change` with `--candidate`, inspecting the
+candidate diff and digest first. Legacy omitted/false/true direct-merge values
+retain their historical interpretation; old acceptance hashes are not rewritten.
+Root acceptance remains authoritative and linked worktrees cannot override tier
+policy. An unchanged legacy policy can correctly return
+`autopilot-policy-required` at dispatch. Fixture migration proves compatibility,
+not adoption by the current session. Confirm actual root acceptance, loaded
+integrated revision, effective policy digest and host protections before activation.
+
+Merge alone does not complete an epic. Verify remote-main integration, required
+checks and smoke results on that integration SHA, resolved introduced findings,
+current docs, real agent-path activation and safe owned cleanup. Refresh host
+facts at admission; pending/unavailable checks, corrective PRs or missing state
+keep the epic active. Never manufacture a historical completion receipt: legacy
+merged epics need an explicit historical baseline. Next-epic provisioning stays
+blocked until completion/admission succeeds, including after restart.
+
+Record an observed merge with the ordinary `check-gate.mjs DOCUMENT merged
+--write` command, first for the plan and then the epic. The CLI obtains live
+GitHub evidence through stored `gh` authentication; supplied JSON cannot replace
+that observation. Preserve the original implementation PR in `pr_url`.
+Before opening its status-only follow-up, run `check-gate.mjs PLAN
+finalization-pr`. This separate gate permits only the same epic's status and
+original PR URL markers, with reviewed source, policy, bodies, approvals and
+task evidence unchanged. The follow-up still needs its own current-head host
+checks and independent reviews. Hosted `review.ready` resolves that open PR
+separately from the preserved original PR; it does not repeat or reopen the
+completed local implementation review.
+
+Completion after finalization retains the original merge commit and binds
+checks, smoke and documentation to the new integrated revision. Authenticated
+host observations must prove the intervening status-only PR integration.
+Arbitrary main advancement, direct pushes and policy migration cannot use this
+finalization relation. Recheck actual activation and cleanup for the resulting
+integrated revision before admitting the next epic.
+
+EPIC-006 has a separate bounded `policy-adoption-pr` continuation after original
+PR0/H0 integrates as M and the status-only marker PR integrates as F. Its pure
+`provePolicyAdoption` validator rechecks the original pinned bootstrap assessment
+at H0, the exact reviewed root candidate, and every F-to-H1 commit's paths and
+regular file modes. The final config must equal the reviewed candidate byte for
+byte; the ledger must preserve F and append exactly one normal acceptance from
+raw revision 2 to canonical revision 3. Only the two policy files may change.
+This does not reopen the merged plan or change its original PR URL or reviews.
+
+CI uses this committed-provenance proof without local runtime state or its own
+pending checks. Before publication, the trusted harness calls
+`controlPolicyAdoption` with operation `prepare`, then separately observed Staff
+and AppSec `review` operations, then the `policy-adoption-pr` gate through
+`check(..., {adoptionController: {actor, observers}})`. A standalone CLI fails
+closed. The harness must supply actual owner authority for the exact F/candidate,
+old root/raw digests and eventual root update; JSON references cannot mint it.
+Preparation requires a clean registered isolated epic checkout. Stored reviews
+bind distinct observed sessions and identities to H1. `recover` reacquires owner
+authority and clears reviews; a changed head requires new preparation/reviews.
+
+The `publish` operation records an actually observed open PR1 after local
+reviews; it does not create it. Trusted F publisher code independently repeats
+the pure proof and obtains current native H1 reviews/checks under owner-managed
+old authority. It fetches Git objects only as data and never executes candidate
+code. `integrate` verifies both submitted H1 and integrated I, including squash
+or rebase, preserving PR0/M and F in a separate typed adoption relation. Runtime
+records live under the existing Git-common lock with schema checks and atomic
+replacement. Missing or corrupt records require recovery, never assumed consent.
+
+After authorized reconciliation to I, a registered linked checkout inherits
+the coordination policy without an override marker only when its complete
+config and accepted-history bytes exactly match the canonical Git-common root.
+Both acceptances and current definition provenance must validate. Existing
+marked overlays retain their prior semantics. The old linked migration candidate
+is historical staged material; the continuation uses the root candidate once.
+I does not complete this epic: the independently approved finite evidence stage
+through J remains required by the release-continuation design and QA-GOV-010.
+
 ## Native workspace lock dependency
 
 Workspace-policy mutations use the native `fs-ext` advisory-lock dependency so

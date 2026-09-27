@@ -12,6 +12,7 @@ test('generated workspace config supplies Slack routing without a template descr
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'workspace-config-slack-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   fs.cpSync(path.join(source,'scripts'),path.join(root,'scripts'),{recursive:true});
+  fs.cpSync(path.join(source,'policy'),path.join(root,'policy'),{recursive:true});
   fs.mkdirSync(path.join(root,'project'));
   fs.writeFileSync(path.join(root,'package.json'),JSON.stringify({name:'example-repository'}));
   fs.symlinkSync(path.join(source,'node_modules'),path.join(root,'node_modules'),'dir');

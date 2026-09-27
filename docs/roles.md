@@ -19,4 +19,21 @@ Do not run both TDD skills. agent-skills' test-driven-development is deliberatel
 
 Personas live in `skills/upstream/agent-skills/agents/`; they are role prompts, not executable programs. Read the existing persona in the assigned review session, using its referenced skill and checklists. Do not invent replacements. Where a harness lacks subagents, use separate sessions with explicit handoffs and fresh context per task.
 
+The embedding harness owns observed session identity, stored owner authority,
+and live host observations for `runWorkflowEvent`; a developer cannot establish
+these by writing event JSON or setting an environment variable. Independent
+reviewers own verdicts. A generic review bot or gh-identity submitter is not
+automatically the Principal: accepted role mappings and actual host actor/head
+evidence determine which role a review satisfies. Initial plan signoff remains
+distinct from final implementation review. UI work retains independent WCAG
+2.2 AA triage, plan signoff and final accessibility review after AppSec.
+
+The release controller verifies remote-main integration, current checks/smoke,
+actual adapter adoption and safe owned cleanup before admitting another epic.
+Repository administrators configure host protection only after the trusted
+workflow is integrated and its actual status names have been observed. Cline
+hands off when its adapter cannot supply authenticated observations or dispatch
+independent work; Codex and Claude continue authorized coordination within the
+same gates. No role may turn a missing approval into consent.
+
 Sources: [agent-skills](https://github.com/addyosmani/agent-skills), [Superpowers](https://github.com/obra/superpowers). Installation details are in [installation.md](installation.md).

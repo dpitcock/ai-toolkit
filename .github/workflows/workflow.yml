@@ -2,17 +2,29 @@ name: workflow
 on:
   push:
   pull_request:
+  pull_request_review:
+    types: [submitted, edited, dismissed]
 permissions:
   contents: read
 jobs:
-  gates:
+  review-relay:
+    if: github.event_name == 'pull_request_review'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - run: echo 'Review event received; trusted workflow_run revalidates live state.'
+  gates:
+    name: ${{ github.event_name == 'pull_request_review' && 'review-relay-placeholder' || 'gates' }}
+    if: github.event_name != 'pull_request_review'
+    permissions:
+      contents: read
+      pull-requests: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
       - run: node scripts/install-native-lock.mjs
@@ -20,6 +32,7 @@ jobs:
       - name: Check changed epic plans
         if: github.event_name == 'pull_request'
         env:
+          GH_TOKEN: ${{ github.token }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           HEAD_REF: ${{ github.head_ref }}

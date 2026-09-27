@@ -113,6 +113,29 @@ action-required item needs its owner's response.
 
 ## Safety
 
+### Agent execution and review transports
+
+The authenticated embedding harness calls the exported
+`runWorkflowEvent(args, {actor, observers})` controller interface before dispatch;
+see [workflow events](workflow.md#authenticated-event-controller). Slack text,
+thread prefixes (including `APPROVED`), channel membership and display names
+are routing data, never actor identity, owner acceptance or review credentials.
+Use Agent Alert only for already-authorized agent messages. Use gh-identity's
+stdio MCP to submit a completed independent verdict; its submission interface
+does not accept a reviewed-head parameter, so verify the returned and live host
+review commit against the intended current PR head afterward. A successful
+transport acknowledgement alone is not an approval receipt.
+
+Pushes and tests dispatch zero reviews. Only explicit current-head
+`review.ready` at an eligible canonical stage creates role/PR/head claims.
+Persist the claim before delivery, acknowledge afterward, and reconcile an
+uncertain result before any retry. External delivery and local state updates
+are not atomic; exactly-once delivery is not promised. Stale responses cannot
+approve a newer head. Read approval/dismissal/check facts from GitHub and let
+the trusted status publisher revalidate them without starting reviewers.
+Store runtime claims outside tracked files under the Git common directory;
+never copy credentials, tokens, or session state into the repository.
+
 The service may post only in mapped workspace channels, their session/PR threads, and
 `#pull-requests`. Verify Slack and GitHub event signatures, use least-privilege scopes,
 validate workspace mappings, and treat all event content as untrusted. Slack routing

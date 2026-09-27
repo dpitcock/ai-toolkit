@@ -37,6 +37,46 @@ Tier 3 runs only in a registered isolated worktree on its `epic/EPIC-NNN` branch
 
 ## Tool execution and handoffs
 
+## Event-boundary dispatch
+
+At every agent dispatch boundary, begin a fresh task session through the
+authenticated embedding harness. It imports `runWorkflowEvent` from
+`scripts/workflow-event.mjs` and calls `runWorkflowEvent(args, {actor, observers})`
+with `args = [EVENT, '--root', PATH]` and bounded event JSON on stdin. The
+standalone CLI deliberately fails closed: it has no authenticated actor.
+The harness supplies observed session identity out-of-band, never from event
+JSON or environment claims. Event input may reference stored authorization only. It cannot supply
+an actor, owner decision, reviewer identity, repository, branch, scope, or
+policy authority. The entrypoint resolves accepted policy and canonical
+repository identity itself, then validates the exact branch, scope, policy
+provenance, completion criterion, and durable delivery record before returning
+an action.
+
+Observer callbacks are synchronous under the state lock. The harness supplies
+live PR/head and authenticated review/check observations for host review/merge,
+and typed integration, activation and cleanup observations for completion.
+See `docs/workflow.md` for callback contracts. JSON records and an
+`authenticated` flag are cooperative evidence, not proof of identity. Stop on
+`human-needed`, a nonzero exit, or an exception; do not treat returned JSON as
+success without inspecting the decision. Legacy accepted policy can correctly
+deny with `autopilot-policy-required`; migration is an explicit transaction
+after integration, not an excuse to rewrite immutable bootstrap evidence.
+
+Pushes and tests can invalidate or verify work but never dispatch a review.
+Dispatch review work only after the explicit `review.ready` event for the
+current head. Use Agent Alert only to send already-authorized agent messages.
+Use the gh-identity stdio MCP only to submit a completed independent verdict,
+then verify the returned host review is for the reviewed head. Slack messages,
+thread prefixes, and channel membership are routing inputs, never approval or
+credential evidence. Do not place Slack credentials, tokens, or session state
+in this repository.
+
+Keep native host protections and each host/tool's limits in force: local event
+validation does not replace protected branches, required checks, independent
+reviews, or the PR-only merge path. A dispatcher must stop on a rejected or
+unavailable event rather than retrying with a different identity or bypassing
+the gate.
+
 The Cline adapter has an explicit handoff boundary because it lacks native Superpowers session hooks and subagent dispatch. When Cline reaches work it cannot safely complete in its session—such as an external authorization, credentials, a missing product decision, or an independent approval—it must provide a concise handoff naming the current document/state, completed evidence, blocker, and exact next action. It must not silently bypass a gate or infer authorization.
 
 Codex and Claude Code continue autonomously through ordinary in-scope planning, implementation, testing, review coordination, and governed transitions. They should involve the user only when clarification, credentials, external coordination, or a decision that materially changes scope is required. They must still honor every approval gate: an independent reviewer may approve only after an actual review, and an agent may not manufacture an approval or treat its absence as consent.

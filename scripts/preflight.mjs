@@ -40,6 +40,7 @@ export async function runPreflight(args=process.argv.slice(2)) {
   const answers=await readInput();
   const result=createTaskAssessment({...options,answers,enforceTier3Binding:true});
   process.stdout.write(`${formatTaskAssessment(result)}\n`);
+  process.stdout.write('Trusted controllers must dispatch approved work through runWorkflowEvent(args, {actor, observers}) from scripts/workflow-event.mjs; bounded stdin and environment JSON do not grant actor authority.\n');
 }
 
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
