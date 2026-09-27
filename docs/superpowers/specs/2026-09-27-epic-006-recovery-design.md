@@ -33,15 +33,26 @@ host publisher executes trusted default-branch code and compares PR workflow
 files with that base. Delivery therefore has two ordered stages:
 
 1. A narrowly scoped validator is installed on the trusted default branch
-   through an independently reviewed host-maintenance change. It accepts no
-   recovery action; it only recognizes a correctly shaped recovery record and
-   validates a candidate PR against an immutable base SHA and path allowlist.
+   through one recorded host-admin bootstrap exception. The installer PR must
+   have fresh, independent Principal, QA, and AppSec verdicts on its exact
+   head and a successful `gates` check before the repository owner uses
+   GitHub's protected-branch bypass to merge it. The owner decision must bind
+   the PR number, head SHA, trusted base SHA, validator digest, and the fact
+   that this exception is limited to installing the validator. It is recorded
+   with the PR URL and merge receipt. This is an external host authorization
+   for transport only; it neither supplies a reviewer verdict nor applies to
+   a later recovery PR.
+   The installer accepts no recovery action; it only recognizes a correctly
+   shaped recovery record and validates a candidate PR against an immutable
+   base SHA and path allowlist.
 2. Only after that validator is integrated may the recovery implementation PR
    use the new `recovery-pr` path. Candidate workflow or controller changes
    cannot alter the validator selected for its own review.
 
-If a trusted validator cannot be installed, recovery remains blocked. A local
-check, a candidate PR, or an administrative merge bypass is not a substitute.
+If the bounded owner authorization, independent verdicts, or trusted
+validator installation cannot be established, recovery remains blocked. A
+local check, a candidate PR, or an unrecorded administrative bypass is not a
+substitute.
 
 ## Controlled recovery transition
 
