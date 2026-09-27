@@ -14,33 +14,35 @@ tests passed, with zero failed,
 cancelled, or skipped (16919.914208 ms). The override is therefore superseded;
 this is completed corrective QA evidence, not a waiver or a future exception.
 
-## Current personal-use priority
+## Current production-continuation verification
 
-The owner revised the immediate target to personal use on this Mac. See
-`EPIC-006-personal-use-checkpoint.md` for the independently reviewed focused
-local verification plan and explicitly deferred release work. Canonical full
-QA, final reviews and activation are still pending; this is not a full-suite
-pass or a replacement of the original release bar.
+The earlier personal-use checkpoint is historical. For the authorized
+production continuation, the controller completed the full originally affected
+regression scope without interruption:
+
+`node --test tests/bootstrap-policy.test.mjs tests/check-tier2.test.mjs tests/epic-policy-adoption.test.mjs`
+
+Result: 128 passed, zero failed, cancelled, or skipped (946436.536834 ms).
+Together with the completed `host-review-events.test.mjs` corrective run above,
+this is the current QA evidence for PR #12. It does not replace independent
+Principal/Staff, QA, or AppSec review, host checks, or merge evidence.
 
 The current session found and corrected ordinary PR stage routing and
 pre-merge materialization regressions; separate source/evidence commits are
 documented in `EPIC-006-qa-routing-correction.md` and
 `EPIC-006-qa-materialization-correction.md`. The subsequent completion schema
 correction is recorded in `EPIC-006-qa-completion-correction.md`.
-Interrupted broad runs remain
-incomplete. Focused personal-use QA passed 259 tests, independently verified
-against source `76a2785`; see `EPIC-006-personal-use-qa.md` for complete run
-identities, permitted reuse and explicit limits. This does not reuse the
-historical full-suite claims below or satisfy the canonical release bar.
+Historic interrupted broad runs remain diagnostic evidence only. The current
+production-continuation result above, not the historical personal-use result,
+is the QA basis for this PR.
 
 ## Current correction verification
 
-The 265-test result below describes the original implementation snapshot. It
-does not establish full QA for the subsequent final-review corrections. The
-canonical plan remains in progress; final Staff and AppSec reviews are pending.
-The independently approved continuation design now defines the bounded
-PR0/M/F/PR1/I/PR2/J route. Its remaining implementation and actual release
-observations must pass before completion or next-epic admission.
+The 265-test result below describes the original implementation snapshot and
+is retained only as history. The current 128-test production-continuation run
+and 39-test corrective run above establish the QA reruns for this exact PR
+head's preceding implementation. The canonical plan remains in progress until
+the independent review, host-check, and merge gates complete.
 
 Root independently verified prerequisite repair
 `205db48a025ef90ade691ae7a04f1f2003e22fd6` in a detached clone:
