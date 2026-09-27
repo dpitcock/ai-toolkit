@@ -58,8 +58,12 @@ test('trusted workflow runs only base code with scoped permissions',()=>{
   // replace the successful CI check used by the trusted publisher.
   assert.equal(candidate.jobs.gates.name,"${{ github.event_name == 'pull_request_review' && 'review-relay-placeholder' || 'gates' }}");
   assert.equal(trusted.jobs['host-review-gate'].steps[0].with.ref,'${{ github.event.repository.default_branch }}');
+  assert.equal(trusted.jobs['host-review-gate'].steps[0].uses,'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683');
+  assert.equal(trusted.jobs['host-review-gate'].steps[1].uses,'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020');
   assert.equal(trusted.jobs['host-review-gate'].steps[0].with['persist-credentials'],false);
   assert.equal(trusted.jobs['host-review-gate'].steps[0].with['fetch-depth'],0);
+  assert.equal(candidate.jobs.gates.steps[0].uses,'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683');
+  assert.equal(candidate.jobs.gates.steps[1].uses,'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020');
   const preparation=trusted.jobs['host-review-gate'].steps.find(step=>step.name==='Prepare trusted validator dependencies');
   assert.equal(preparation.run,'node scripts/install-native-lock.mjs');
   assert.equal(preparation.env,undefined);
