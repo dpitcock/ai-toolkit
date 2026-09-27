@@ -79,6 +79,12 @@ test('malformed or empty paths and malformed policy fail closed',()=>{
   assert.throws(()=>classifyReviewPaths(definition,['tests/a'],['unknown']));
 });
 
+test('reserved production roots are protected even when Git reports a symlink or gitlink',()=>{
+  for(const file of ['templates','.github/actions','policy','skills','epics/EPIC-XXX']) {
+    assert.equal(classifyReviewPaths(policy(),[file]).route,'production',file);
+  }
+});
+
 test('new toolkit PRs override global roles only for authoring; grandfathered PRs and adopters retain them',()=>{
   const definition=policy();
   const input={policy:definition,repository,pr:definition.grandfatheredThroughPr+1,

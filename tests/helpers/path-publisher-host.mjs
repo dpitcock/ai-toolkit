@@ -10,12 +10,13 @@ export function respond(stateFile,route,{args}) {
   if(args.includes('POST')) result={};
   else if(route===`${prefix}/pulls/${state.pr}`) {
     const count=calls.filter(call=>call.at(-1)===route).length;
-    result={number:state.pr,state:'open',head:{sha:state.headRace && count>1?'e'.repeat(40):state.head},
-      base:{ref:'main',sha:state.baseRace && count>1?'f'.repeat(40):state.base,repo:{full_name:'dpitcock/ai-toolkit'}},
+    const race=value=>value && count>(Number.isInteger(value)?value:1);
+    result={number:state.pr,state:'open',head:{sha:race(state.headRace)?'e'.repeat(40):state.head},
+      base:{ref:'main',sha:race(state.baseRace)?'f'.repeat(40):state.base,repo:{full_name:'dpitcock/ai-toolkit'}},
       changed_files:state.changedFiles,user:{login:'developer',type:'User'}};
   } else if(route===prefix) result={default_branch:'main'};
   else if(route===`${prefix}/contents/policy/review-paths.json?ref=${state.base}`) {
-    result={type:'file',path:'policy/review-paths.json',encoding:'base64',content:Buffer.from(state.policy).toString('base64')};
+    result=state.policyResource??{type:'file',path:'policy/review-paths.json',encoding:'base64',content:Buffer.from(state.policy).toString('base64')};
   } else if(route===`${prefix}/pulls/${state.pr}/files?per_page=100`) result=state.files;
   else if(route===`${prefix}/pulls/${state.pr}/reviews?per_page=100`) result=[state.reviews];
   else if(route===`${prefix}/commits/${state.head}/check-runs?per_page=100`) result=[{check_runs:[

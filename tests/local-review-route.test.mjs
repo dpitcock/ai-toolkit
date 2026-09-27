@@ -5,6 +5,7 @@ import path from 'node:path';
 import {execFileSync,spawnSync} from 'node:child_process';
 import test from 'node:test';
 import {localReviewRoute} from '../scripts/lib/local-review-route.mjs';
+import {parseReviewPathPolicy,reviewRouteForPull} from '../scripts/lib/review-paths.mjs';
 
 const source=path.resolve('.');
 function fixture(t,repository='dpitcock/ai-toolkit') {
@@ -41,6 +42,11 @@ test('renaming shipped code into tests remains production',t=>{
   const result=localReviewRoute({root,baseRef:base,headRef:head});
   assert.equal(result.route,'production');
   assert.ok(result.productionPaths.includes('scripts/check-gate.mjs'));
+  const host=reviewRouteForPull({policy:parseReviewPathPolicy(git('show',`${base}:policy/review-paths.json`)),
+    repository:'dpitcock/ai-toolkit',pr:99,changedFiles:1,configuredRoles:[],
+    files:[{filename:'tests/renamed.mjs',previous_filename:'scripts/check-gate.mjs',status:'renamed'}]});
+  assert.deepEqual(host.requiredRoles,result.requiredRoles);
+  assert.equal(host.route,result.route);
 });
 
 test('PR validator uses the authoring route before legacy epic gates, without trusting candidate policy',t=>{

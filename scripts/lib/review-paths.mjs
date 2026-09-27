@@ -38,7 +38,7 @@ export function classifyReviewPaths(policy,files,configuredRoles=[]) {
   paths(files,'changed files');
   roles(configuredRoles);
   const productionPaths=files.filter(file=>definition.productionFiles.includes(file)
-    || definition.productionDirectories.some(dir=>file.startsWith(dir))
+    || definition.productionDirectories.some(dir=>file===dir.slice(0,-1) || file.startsWith(dir))
     || (!file.startsWith('tests/') && /(?:^|\/)action\.ya?ml$/.test(file)));
   const production=productionPaths.length>0;
   const required=new Set(production?['code_reviewer','qa','appsec',...configuredRoles]:['code_reviewer']);

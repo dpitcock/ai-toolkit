@@ -192,8 +192,9 @@ function publishGate(repository,args,{verifyMerged=false}={}) {
         const trusted=blob(integration?.mainSha??(repository===TOOLKIT_REPOSITORY?current.base.sha:defaultBranch));
         if(typeof trusted!=='string' || trusted!==blob(head)) fail('candidate workflow differs from trusted default branch');
       }
-      const release=verifyMerged?null:trustedReleaseVerificationGate({root:process.cwd(),repository,pull:current});
-      const adoption=verifyMerged || release?null:trustedPolicyAdoptionGate({root:process.cwd(),repository,pull:current});
+      const authoring=route.route==='authoring';
+      const release=verifyMerged || authoring?null:trustedReleaseVerificationGate({root:process.cwd(),repository,pull:current});
+      const adoption=verifyMerged || authoring || release?null:trustedPolicyAdoptionGate({root:process.cwd(),repository,pull:current});
       const historical=route.route==='legacy'?(release??adoption):null;
       const result=historical??evaluateHostReviewGate({repository,pr,head,stage:'final',requiredRoles:roles,
         identities:jsonArgument('--identities',args),requiredChecks:['gates'],api:trustedApi()});
