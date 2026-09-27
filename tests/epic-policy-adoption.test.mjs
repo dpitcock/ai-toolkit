@@ -245,6 +245,17 @@ test('release provenance proves PR0/M/F/PR1/I and two-path PR2/J separately with
  assert.throws(()=>adoption.provePolicyAdoption({...f.options(),integration:{pr:12,sha:f.i}}),/main/);
  f.main='f'.repeat(40);assert.throws(()=>release.proveReleaseVerification({...f.releaseOptions(),integration:{pr:13,sha:f.j}}),/main/);
 });
+test('integration materializes the API-bound J object before proving it',t=>{
+ const f=verificationFixture(t),localParent=fs.mkdtempSync(path.join(os.tmpdir(),'release-materialized-')),local=path.join(localParent,'checkout'),remote=fs.mkdtempSync(path.join(os.tmpdir(),'release-materialized-remote-'));
+ t.after(()=>fs.rmSync(localParent,{recursive:true,force:true}));t.after(()=>fs.rmSync(remote,{recursive:true,force:true}));
+ git(process.cwd(),'clone','--quiet','--no-local',f.root,local);git(local,'remote','set-url','origin','https://github.com/dpitcock/ai-toolkit.git');git(local,'checkout','--quiet',f.h2);
+ f.j=git(f.root,'commit-tree',`${f.h2}^{tree}`,'-p',f.i,'-m','remote-only release integration');
+ f.pulls[13]={number:13,state:'closed',merged:true,merge_commit_sha:f.j,head:{sha:f.h2,ref:'epic/EPIC-006'},base:{sha:f.i,ref:'main',repo:{full_name:repository}}};f.main=f.j;
+ git(process.cwd(),'init','--bare','--quiet',remote);git(f.root,'remote','add','materialized',remote);git(f.root,'push','--quiet','materialized',`${f.j}:refs/heads/main`);
+ assert.throws(()=>git(local,'cat-file','-e',`${f.j}^{commit}`));
+ release.materializeReleaseHistory({root:local,baseSha:f.i,headSha:f.h2,integration:{pr:13,sha:f.j},api:f.api,remote});
+ assert.equal(git(local,'rev-parse',`${f.j}^{commit}`),f.j);
+});
 test('trusted release stage rejects malformed candidate paths and cannot fall back through candidate status or branch',t=>{
  assert.equal(typeof release.releaseVerificationStage,'function');const f=verificationFixture(t);
  assert.equal(release.releaseVerificationStage({root:f.root,baseSha:f.i}),'pending');
@@ -523,6 +534,13 @@ test('same open PR2 correction invalidates both readiness boundaries and require
     cleanup:{source:'session-harness',observedAt,revalidated:true,worktrees:[],branches:[],processes:[]},correctivePullRequests:[]};
    f.observers.completion=()=>completion;
    f.observers.integration=receipt=>({source:'authenticated-github-api',observedAt,repository,pullRequest:receipt.pullRequest,integrationSha:f.j,mergeCommit:f.m,checks:completion.host.checks,smoke:completion.host.smoke});
+   f.checks[0].head_sha=f.j;
+   const completionApi=f.observers.api;
+   f.observers.api=endpoint=>endpoint.includes('/actions/runs?')?[{workflow_runs:[{check_suite_id:1,path:'.github/workflows/workflow.yml',repository:{full_name:repository},head_sha:f.j,event:'push',status:'completed',conclusion:'success'}]}]:completionApi(endpoint);
+   f.checks[0].head_sha=f.head;assert.throws(()=>f.run({...f.event('stale-j-check','epic.complete'),completionId:'J-stale-check'}),/J required gates|exact J/);f.checks[0].head_sha=f.j;
+   const trustedCompletionApi=f.observers.api;
+   f.observers.api=endpoint=>endpoint.includes('/actions/runs?')?[{workflow_runs:[{check_suite_id:1,path:'untrusted.yml',repository:{full_name:repository},head_sha:f.j,event:'push',status:'completed',conclusion:'success'}]}]:trustedCompletionApi(endpoint);
+   assert.throws(()=>f.run({...f.event('untrusted-j-workflow','epic.complete'),completionId:'J-untrusted-workflow'}),/J required gates workflow provenance/);f.observers.api=trustedCompletionApi;
    const completed=f.run({...f.event('complete-at-j','epic.complete'),completionId:'J-completion'});
    assert.equal(completed.completion.integrationSha,f.j);assert.equal(completed.completion.releaseVerification.release.head,f.head);
    assert.equal(readWorkflowState(f.root).epics['EPIC-006'].completed,true);

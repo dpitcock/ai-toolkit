@@ -57,7 +57,7 @@ export function proveReleaseVerification({root,baseSha,headSha,headRef,api=githu
   release:{base:baseSha,head:headSha,pr,integrationSha:j,paths:ACTIVATION_PATHS}});
 }
 /** Fetch immutable observed objects only; never execute or check out candidate code. */
-export function materializeReleaseHistory({root,baseSha,headSha,api=githubJSON}={}) {
+export function materializeReleaseHistory({root,baseSha,headSha,api=githubJSON,integration,remote=`https://github.com/${REPOSITORY}.git`}={}) {
  if(releaseVerificationStage({root,baseSha})!=='pending') fail('materialization requires trusted I');
  const prefix=`repos/${REPOSITORY}`;
  const pulls=hostPages(api(`${prefix}/commits/${baseSha}/pulls?per_page=100`,{paginate:true})).map(item=>api(`${prefix}/pulls/${item.number}`)).filter(pull=>pull?.merged && pull.merge_commit_sha===baseSha);
@@ -65,12 +65,40 @@ export function materializeReleaseHistory({root,baseSha,headSha,api=githubJSON}=
  const adoption=pulls[0],originalMarker=localSnapshot(root,baseSha).read('epics/EPIC-006/epic-plan.md').match(/pr_url: https:\/\/github\.com\/dpitcock\/ai-toolkit\/pull\/([1-9]\d*)/);
  if(!originalMarker) fail('original PR marker is absent');
  const original=api(`${prefix}/pulls/${originalMarker[1]}`);
- for(const revision of [original?.head?.sha,original?.merge_commit_sha,adoption?.head?.sha,adoption?.base?.sha,headSha]) {
+ let integrated;
+ if(integration) {
+  if(!Number.isSafeInteger(integration.pr) || integration.pr<1 || typeof integration.sha!=='string' || !/^[a-f0-9]{40}$/.test(integration.sha)) fail('materialization requires an exact J identity');
+  integrated=api(`${prefix}/pulls/${integration.pr}`);
+  if(integrated?.number!==integration.pr || integrated.state!=='closed' || integrated.merged!==true || integrated.merge_commit_sha!==integration.sha
+   || integrated.head?.sha!==headSha || integrated.head?.ref!==BRANCH || integrated.base?.sha!==baseSha || integrated.base?.ref!=='main' || integrated.base?.repo?.full_name!==REPOSITORY) fail('materialization J identity differs from the host');
+ }
+ for(const revision of [original?.head?.sha,original?.merge_commit_sha,adoption?.head?.sha,adoption?.base?.sha,headSha,integrated?.merge_commit_sha]) {
   if(!/^[a-f0-9]{40}$/.test(revision??'')) fail('materialization requires immutable revisions');
   const git=args=>execFileSync('git',['--no-replace-objects','-C',root,...args],{encoding:'utf8',stdio:'pipe'}).trim();
-  try {git(['cat-file','-e',`${revision}^{commit}`]);} catch {git(['fetch','--no-tags','--no-recurse-submodules','--no-write-fetch-head','https://github.com/dpitcock/ai-toolkit.git',revision]);}
+  try {git(['cat-file','-e',`${revision}^{commit}`]);} catch {git(['fetch','--no-tags','--no-recurse-submodules','--no-write-fetch-head',remote,revision]);}
   if(git(['rev-parse',`${revision}^{commit}`])!==revision) fail('materialized identity differs');
  }
+}
+
+/** Native J check boundary for completion. The PR2 review gate remains at H2;
+ * completion requires a separate current status from the trusted workflow. */
+export function evaluateReleaseCompletionGate({root,baseSha,headSha,pr,integration,api=githubJSON}={}) {
+ if(!integration || integration.pr!==pr || !/^[a-f0-9]{40}$/.test(integration.sha??'')) fail('completion requires the exact PR2/J identity');
+ const proof=proveReleaseVerification({root,baseSha,headSha,headRef:BRANCH,api,integration});
+ const prefix=`repos/${REPOSITORY}`,j=integration.sha;
+ const verify=()=>{
+  const pull=api(`${prefix}/pulls/${pr}`);
+  if(pull?.number!==pr || pull.state!=='closed' || pull.merged!==true || pull.merge_commit_sha!==j || pull.head?.sha!==headSha || pull.base?.sha!==baseSha) fail('completion PR2 relation changed');
+  checkMain(api,j);
+ };
+ verify();
+ const checks=hostPages(api(`${prefix}/commits/${j}/check-runs?per_page=100`,{paginate:true}),'check_runs');
+ const latest=checks.filter(check=>check.name==='gates' && check.head_sha===j).sort((a,b)=>a.id-b.id).at(-1),suite=latest?.check_suite?.id;
+ if(!latest || latest.app?.id!==15368 || latest.app?.slug!=='github-actions' || latest.status!=='completed' || latest.conclusion!=='success' || !Number.isSafeInteger(suite) || suite<1) fail('J required gates status is missing, incomplete, or untrusted');
+ const runs=hostPages(api(`${prefix}/actions/runs?check_suite_id=${suite}&per_page=100`,{paginate:true}),'workflow_runs').filter(run=>run.check_suite_id===suite);
+ if(runs.length!==1 || runs[0].head_sha!==j || runs[0].path!=='.github/workflows/workflow.yml' || runs[0].repository?.full_name!==REPOSITORY || !['push','pull_request'].includes(runs[0].event) || runs[0].status!=='completed' || runs[0].conclusion!=='success') fail('J required gates workflow provenance is invalid');
+ verify();
+ return {proof,checks:[{id:String(latest.id),name:'gates',status:'completed',conclusion:'success',head:j}]};
 }
 
 /** Native independent current-head gate, separate from pure committed provenance. */

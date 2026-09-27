@@ -8,7 +8,7 @@ import {decideAction} from './workflow-authorization.mjs';
 import {withWorkflowState} from './workflow-state.mjs';
 import {localSnapshot,githubJSON} from './epic-finalization.mjs';
 import {assertActivationSnapshot,ACTIVATION_PATHS} from './activation-history.mjs';
-import {proveReleaseVerification,evaluateReleaseHostGate} from './release-verification-proof.mjs';
+import {proveReleaseVerification,evaluateReleaseHostGate,evaluateReleaseCompletionGate,materializeReleaseHistory} from './release-verification-proof.mjs';
 import {validateReleaseRecord,exactReleaseKeys,releaseFailure as fail} from './release-verification-record.mjs';
 import {readyReleaseReviews,controlReleaseReviews,invalidateReleaseReviews,assertEvidenceCorrection,observeReleasePull,assertLocalReleaseGate,assertReleaseReviewState} from './release-verification-reviews.mjs';
 import {evaluateCompletion,admitEpic} from './epic-completion.mjs';
@@ -161,6 +161,7 @@ export function controlReleaseVerification({root,operation,deliveryId,claimId,ac
    if(qa.head!==record.head || qa.pr!==record.publishedPr || qa.accepted!==true || typeof qa.evidence!=='string' || !qa.evidence.trim() || qa.evidence.length>2048
     || typeof qa.by!=='string' || !qa.by.trim() || qa.by.trim().toLowerCase()===record.developer.trim().toLowerCase() || typeof qa.sessionId!=='string' || !qa.sessionId.trim() || qa.sessionId===record.developerSession
     || typeof qa.observedAt!=='string' || !Number.isFinite(Date.parse(qa.observedAt))) fail('current independent final merge QA acceptance required');
+   materializeReleaseHistory({root,baseSha:record.adoption.adoption.integrationSha,headSha:record.head,integration,api:observers?.api});
    const {proof}=context(state,resolved,actor,observers,{integration});
    const hostEvidence=evaluateReleaseHostGate({root,baseSha:record.adoption.adoption.integrationSha,headSha:record.head,pr:record.publishedPr,integration,api:observers?.api});
    if(!equal(hostEvidence.releaseVerification,proof) || hostEvidence.releaseVerification.release.pr!==record.publishedPr || hostEvidence.releaseVerification.release.head!==record.head) fail('verified host relation differs from the current release runtime');
@@ -256,14 +257,17 @@ export function completeReleaseVerification(state,input,resolved,actor,observers
  if(loaded?.source!=='session-harness' || loaded.sessionId!==actor.harness.sessionId || loaded.loadedRevision!==j || loaded.policyDigest!==record.adoption.policy.canonical.digest || typeof loaded.observedAt!=='string' || !Number.isFinite(Date.parse(loaded.observedAt))) fail('fresh loaded J adapter required for completion');
  const proof=proveReleaseVerification({root:resolved.worktree,baseSha:i,headSha:record.head,headRef:resolved.branch,api:observers?.api,integration:{pr:record.publishedPr,sha:j}});
  if(!equal(proof,record.proof)) fail('J provenance differs from the persisted integration proof');
+ const completionGate=evaluateReleaseCompletionGate({root:resolved.worktree,baseSha:i,headSha:record.head,pr:record.publishedPr,integration:{pr:record.publishedPr,sha:j},api:observers?.api});
+ if(!equal(completionGate.proof,proof)) fail('J required gates provenance differs from the persisted integration proof');
  const evidence=observed(observers,'completion',{epic:EPIC,completionId:input.completionId,proof:structuredClone(proof),loaded:structuredClone(loaded)});
  const {receipt}=evaluateCompletion({...evidence,releaseVerification:proof});
  if(receipt.repository!==REPOSITORY || receipt.epic!==EPIC || receipt.pullRequest!==proof.adoption.original.pr || receipt.submittedHead!==proof.adoption.original.head || receipt.integrationSha!==j
   || receipt.policy.digest!==record.adoption.policy.canonical.digest || receipt.releaseVerification===undefined) fail('completion does not bind the preserved EPIC-006 J relation');
  if(receipt.activation.observedAt!==loaded.observedAt) fail('completion activation is not the fresh J load observation');
+ if(!equal(receipt.host.checks,completionGate.checks)) fail('completion host checks do not match the exact J required gates status');
  const admissionObservation=observed(observers,'integration',structuredClone(receipt));
  admitEpic({completion:receipt,activeEpics:[],hostObservation:admissionObservation,currentIntegrationSha:j},{id:EPIC});
- if(snapshot(resolved.worktree,record).fingerprint!==current.fingerprint || (observers?.api??githubJSON)(`repos/${REPOSITORY}/git/ref/heads/main`)?.object?.sha!==j) fail('completion observations changed during verification');
+ if(snapshot(resolved.worktree,record).fingerprint!==current.fingerprint || !equal(evaluateReleaseCompletionGate({root:resolved.worktree,baseSha:i,headSha:record.head,pr:record.publishedPr,integration:{pr:record.publishedPr,sha:j},api:observers?.api}).checks,completionGate.checks)) fail('completion observations changed during verification');
  authorize(state,resolved,actor,record,'epic.complete');
  state.epics[EPIC]={...state.epics[EPIC],completion:{id:input.completionId,receipt}};
  return {completion:receipt};
