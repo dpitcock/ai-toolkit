@@ -7,6 +7,7 @@ import {spawnSync} from 'node:child_process';
 import {runInNewContext} from 'node:vm';
 import YAML from 'yaml';
 import {evaluateHostReviewGate} from '../scripts/check-host-reviews.mjs';
+import {controlledHostArgs} from './helpers/controlled-host.mjs';
 
 const head='a'.repeat(40);
 const changedHead='b'.repeat(40);
@@ -88,37 +89,14 @@ function cli(t,{state='APPROVED',checks=[passingCheck],race=false,auth=true,keyc
   const fixture={head,changedHead,race,changedWorkflow,wrongRun,keychain,closed,merged,mergeSha,mainSha,comparison,mainRace,mergeRace,base,baseRepository,
     checks:checks.map(check=>({check_suite:{id:42},...check})),reviews:[review(1,'staff',state),review(2,'security')]};
   fs.writeFileSync(path.join(dir,'fixture.json'),JSON.stringify(fixture));
-  fs.writeFileSync(path.join(dir,'gh'),`#!/usr/bin/env node
-const fs=require('fs'),p=require('path');
-const root=__dirname,f=JSON.parse(fs.readFileSync(p.join(root,'fixture.json'))),args=process.argv.slice(2);
-if(!process.env.GH_TOKEN&&!f.keychain)process.exit(10);
-if(args[0]!=='api')process.exit(12);
-fs.appendFileSync(p.join(root,'calls'),JSON.stringify(args)+'\\n');
-const route=args.find(x=>x.startsWith('repos/'));
-let out;
-if(args.includes('POST'))out={};
-else if(route.includes('/contents/'))out={sha:f.changedWorkflow&&route.includes(f.head)?'different':'trusted'};
-else if(route.includes('/check-runs'))out=[{check_runs:f.checks}];
-else if(route.includes('/actions/runs?'))out=[{workflow_runs:[{id:9,check_suite_id:route.includes('check_suite_id=41')?41:42,path:f.wrongRun?'.github/workflows/evil.yml':'.github/workflows/workflow.yml',head_sha:f.head,event:'pull_request',status:'completed',conclusion:route.includes('check_suite_id=41')?'failure':'success',repository:{full_name:'owner/repo'}}]}];
-else if(route.includes('/reviews'))out=[f.reviews];
-else if(route.includes('/pulls?'))out=[[{number:1}]];
-else if(route.endsWith('/commits/main')){
- const n=Number(fs.existsSync(p.join(root,'main-count'))?fs.readFileSync(p.join(root,'main-count')):0)+1;
- fs.writeFileSync(p.join(root,'main-count'),String(n));
- out={sha:f.mainRace&&n>(Number.isInteger(f.mainRace)?f.mainRace:1)?'e'.repeat(40):f.mainSha};
-}
-else if(route.includes('/compare/'))out={status:f.comparison,base_commit:{sha:f.mergeSha},merge_base_commit:{sha:f.mergeSha}};
-else if(route.endsWith('/pulls/1')){
- const n=Number(fs.existsSync(p.join(root,'count'))?fs.readFileSync(p.join(root,'count')):0)+1;
- fs.writeFileSync(p.join(root,'count'),String(n));
- out={number:1,state:f.closed?'closed':'open',merged:f.merged,merge_commit_sha:f.mergeRace&&n>2?'f'.repeat(40):f.mergeSha,head:{sha:f.race&&n>2?f.changedHead:f.head},base:{ref:f.base,repo:{full_name:f.baseRepository}}};
-}else if(route==='repos/owner/repo')out={default_branch:'main'};
-else process.exit(11);
-process.stdout.write(JSON.stringify(out));
-`,{mode:0o755});
+  const preload=controlledHostArgs({stateFile:path.join(dir,'fixture.json'),responderURL:new URL('./helpers/publisher-host.mjs',import.meta.url),profile:'publisher'});
   const commandArgs=['scripts/check-host-reviews.mjs','--repository','owner/repo',...(all?[]:['--pr',prNumber]),'--stage','final','--required-roles','["code_reviewer","appsec"]','--identities',JSON.stringify(identities),'--required-checks','["gates"]',...(mode==='read'?['--head',head]:[`--${mode}`])];
   const workflowScript=YAML.parse(fs.readFileSync('.github/workflows/review-gates.yml','utf8')).jobs['host-review-gate'].steps.at(-1).run;
-  const result=spawnSync(throughWorkflow?'bash':process.execPath,throughWorkflow?['-e','-c',workflowScript]:commandArgs,{encoding:'utf8',env:{...process.env,PATH:`${dir}:${process.env.PATH}`,GH_TOKEN:auth?'test-token':'',REPOSITORY:'owner/repo',REQUIRED_ROLES:'["code_reviewer","appsec"]',REVIEW_IDENTITIES:JSON.stringify(identities),EVENT_NAME:mode==='verify-merged'?'workflow_dispatch':'workflow_run',BOOTSTRAP_PR:prNumber}});
+  const quote=value=>`'${value.replaceAll("'","'\\''")}'`;
+  // Keep the actual YAML shell body; only its node interpreter gains the
+  // explicit test preload. No executable shim or inherited NODE_OPTIONS.
+  const shell=`node() { command ${[process.execPath,...preload].map(quote).join(' ')} "$@"; }\n${workflowScript}`;
+  const result=spawnSync(throughWorkflow?'bash':process.execPath,throughWorkflow?['-e','-c',shell]:[...preload,...commandArgs],{encoding:'utf8',env:{...process.env,GH_TOKEN:auth?'test-token':'',REPOSITORY:'owner/repo',REQUIRED_ROLES:'["code_reviewer","appsec"]',REVIEW_IDENTITIES:JSON.stringify(identities),EVENT_NAME:mode==='verify-merged'?'workflow_dispatch':'workflow_run',BOOTSTRAP_PR:prNumber}});
   const calls=fs.existsSync(path.join(dir,'calls'))?fs.readFileSync(path.join(dir,'calls'),'utf8').trim().split('\n').map(JSON.parse):[];
   return {...result,calls,posts:calls.filter(call=>call.includes('POST'))};
 }
@@ -136,6 +114,8 @@ for(const [name,options] of [['dismissed',{state:'DISMISSED'}],['rejected',{stat
   test(`CLI publishes failure for ${name} evidence`,t=>{
     const result=cli(t,options);
     assert.notEqual(result.status,0);
+    const reasons={dismissed:/approval is dismissed/,rejected:/unresolved changes requested/,pending:/check gates is pending/,missing:/required check is missing/,raced:/head changed/,'candidate workflow':/candidate workflow differs/,'forged workflow check':/untrusted or incomplete workflow provenance/};
+    assert.match(result.stderr,reasons[name]);
     assert.ok(result.posts.at(-1)?.includes('state=failure'),result.stderr);
     assert.ok(result.posts.at(-1)?.includes(`repos/owner/repo/statuses/${head}`));
   });
@@ -143,6 +123,7 @@ for(const [name,options] of [['dismissed',{state:'DISMISSED'}],['rejected',{stat
 test('CLI refuses unauthenticated execution without host writes',t=>{
   const result=cli(t,{auth:false});
   assert.notEqual(result.status,0);
+  assert.match(result.stderr,/authenticated gh api request failed/);
   assert.equal(result.posts.length,0);
 });
 test('workflow completion wakeups revalidate all live PRs without trusting event metadata',t=>{
@@ -168,6 +149,7 @@ test('local read-only gate accepts stored gh authentication without token extrac
 test('ordinary publisher continues to reject a closed merged PR',t=>{
   const result=cli(t,{closed:true,merged:true});
   assert.notEqual(result.status,0);
+  assert.match(result.stderr,/outside the selected open\/merged gate/);
   assert.equal(result.posts.length,0);
 });
 
@@ -204,6 +186,7 @@ test('actual workflow shell keeps completion events on ordinary open-PR mode',t=
 test('main race after successful publication revokes the diagnostic status',t=>{
   const result=cli(t,{mode:'verify-merged',closed:true,merged:true,mainRace:2});
   assert.notEqual(result.status,0);
+  assert.match(result.stderr,/main changed|head changed/);
   assert.ok(result.posts.some(call=>call.includes('state=success')));
   assert.ok(result.posts.at(-1).includes('state=failure'));
   assert.equal(result.stdout,'');
@@ -213,7 +196,9 @@ for(const [name,patch] of [['open',{closed:false}],['closed but not merged',{mer
   test(`merged verification fails closed for ${name}`,t=>{
     const result=cli(t,{mode:'verify-merged',closed:true,merged:true,...patch});
     assert.notEqual(result.status,0);
-    assert.match(result.stderr,/Host review gate failed|Host review evidence/);
+    const reasons={open:/outside the selected open\/merged gate/,'closed but not merged':/outside the selected open\/merged gate/,'wrong base':/outside the trusted main gate/,'wrong repository':/outside the trusted main gate/,'missing integration':/observed head must be a full Git SHA/,'not integrated':/not contained in current main/,'main race':/head changed/,'integration race':/head changed/,'head race':/head changed/,'dismissed review':/approval is dismissed/,'pending checks':/check gates is pending/,'candidate workflow':/candidate workflow differs/};
+    assert.match(result.stderr,reasons[name]);
+    assert.doesNotMatch(result.stderr,/authenticated gh api request failed/,'transport failure cannot satisfy a negative host-evidence case');
     if(['open','closed but not merged','wrong base','wrong repository'].includes(name)) assert.equal(result.posts.length,0);
     else assert.ok(result.posts.at(-1)?.includes('state=failure'));
   });
@@ -222,6 +207,7 @@ for(const prNumber of ['0','-1','1.5','1e2','abc']) {
   test(`merged verification rejects invalid PR input ${prNumber} before API calls`,t=>{
     const result=cli(t,{mode:'verify-merged',closed:true,merged:true,prNumber});
     assert.notEqual(result.status,0);
+    assert.match(result.stderr,/PR must be a positive integer|--pr is required/);
     assert.equal(result.calls.length,0);
   });
 }

@@ -5,6 +5,7 @@ import path from 'node:path';
 import {execFileSync,spawnSync} from 'node:child_process';
 import YAML from 'yaml';
 import {workspaceConfigDigest,workspaceTierDefinition} from '../../scripts/lib/workspace-config.mjs';
+import {controlledHostArgs} from './controlled-host.mjs';
 
 const repositoryRoot=path.resolve('.');
 export function git(root,args) {return execFileSync('git',['-C',root,...args],{encoding:'utf8'}).trim();}
@@ -51,39 +52,15 @@ export function fixture(t,{adopterRoot}={}) {
  save();git(root,['add','.']);git(root,['commit','-m','Final review evidence']);const submitted=git(root,['rev-parse','HEAD']);
  git(root,['commit','--allow-empty','-m','Squash integration fixture']);const merged=git(root,['rev-parse','HEAD']);
  const hostDirectory=path.join(root,'.host');fs.mkdirSync(hostDirectory);const hostFile=path.join(hostDirectory,'state.json');
- fs.writeFileSync(path.join(hostDirectory,'package.json'),JSON.stringify({type:'commonjs'}));
  const host={root,submitted,merged,main:merged,mergedState:true,reviews:true,checks:true};
  const saveHost=()=>fs.writeFileSync(hostFile,JSON.stringify(host));saveHost();
- const gh=path.join(hostDirectory,'gh');fs.writeFileSync(gh,`#!${process.execPath}\n`+mockGh);fs.chmodSync(gh,0o755);
- const env={...process.env,PATH:`${hostDirectory}:${process.env.PATH}`,FIXTURE_HOST:hostFile};
- const run=(script,args=[],extra={})=>spawnSync(process.execPath,[path.join(root,'scripts',script),...args],{cwd:root,encoding:'utf8',env:{...env,...extra}});
- const script=code=>spawnSync(process.execPath,['--input-type=module','-e',code],{cwd:root,encoding:'utf8',env});
+ const preload=controlledHostArgs({stateFile:hostFile,responderURL:new URL('./lifecycle-host.mjs',import.meta.url)});
+ const env={...process.env};
+ const run=(script,args=[],extra={})=>spawnSync(process.execPath,[...preload,path.join(root,'scripts',script),...args],{cwd:root,encoding:'utf8',env:{...env,...extra}});
+ const script=code=>spawnSync(process.execPath,[...preload,'--input-type=module','-e',code],{cwd:root,encoding:'utf8',env});
  const finalize=()=>{docs['epics/EPIC-999/epic-plan.md'].status='merged';docs['epics/EPIC-999/epic.md'].status='merged';save();git(root,['add','.']);git(root,['commit','-m','Record merged epic']);return git(root,['rev-parse','HEAD']);};
  return {root,docs,save,host,saveHost,run,script,finalize,submitted,merged,digest,definition,acceptance};
 }
-
-const mockGh=String.raw`
-const fs=require('node:fs'),cp=require('node:child_process');
-const h=JSON.parse(fs.readFileSync(process.env.FIXTURE_HOST,'utf8'));
-const endpoint=process.argv.at(-1),git=args=>cp.execFileSync('git',['-C',h.root,...args],{encoding:'utf8'}).trim();
-let value;
-const pull={number:7,state:h.mergedState?'closed':'open',merged:h.mergedState,merge_commit_sha:h.merged,head:{sha:h.submitted,ref:'epic/EPIC-999',repo:{full_name:'example/repo'}},base:{ref:'main',repo:{full_name:h.repository??'example/repo'}}};
-if(endpoint.endsWith('/pulls/7')) value=pull;
-else if(endpoint.endsWith('/pulls/8')) value={...pull,number:8,state:h.publication.state,merged:h.publication.state==='closed',merge_commit_sha:h.publication.state==='closed'?h.main:null,head:{...pull.head,sha:h.publication.head,ref:h.publication.branch??pull.head.ref,repo:{full_name:h.publication.repository??'example/repo'}}};
-else if(endpoint.includes('/actions/variables/')) value={value:JSON.stringify(Object.fromEntries(['code_reviewer','appsec'].map(role=>[role,{actor:role,kind:'human',roleEvidence:true,provenance:{source:'owner-managed',id:role}}])))};
-else if(endpoint.includes('/reviews?')) value=[h.reviews?['code_reviewer','appsec'].map((role,i)=>({id:i+1,user:{login:role,type:'User'},state:h.reviewState??'APPROVED',commit_id:h.reviewHead??(endpoint.includes('/pulls/8/')?h.publication.head:h.submitted),submitted_at:'2026-09-26T12:00:00Z'})):[]];
-else if(endpoint.includes('/check-runs?')) {const sha=endpoint.split('/commits/')[1].split('/')[0];const suite=sha===h.submitted?1:sha===h.merged?2:3;value=[{check_runs:[{id:suite,name:'gates',head_sha:sha,status:h.checkStatus??'completed',conclusion:h.checks?'success':'failure',app:{id:15368,slug:'github-actions'},check_suite:{id:suite}}]}];}
-else if(endpoint.includes('/actions/runs?')) {const suite=Number(new URL('https://example/'+endpoint).searchParams.get('check_suite_id'));value=[{workflow_runs:[{check_suite_id:suite,path:'.github/workflows/workflow.yml',repository:{full_name:'example/repo'},event:'push',status:'completed',conclusion:'success',head_sha:suite===1?h.submitted:suite===2?h.merged:h.publication?.head??h.main}]}];}
-else if(endpoint.endsWith('/git/ref/heads/main')) {h.mainReads=(h.mainReads??0)+1;fs.writeFileSync(process.env.FIXTURE_HOST,JSON.stringify(h));value={object:{sha:h.race&&h.mainReads>1?h.submitted:h.main}};}
-else if(endpoint.includes('/git/trees/')) {const sha=endpoint.split('/git/trees/')[1].split('?')[0];const entries=git(['ls-tree','-r',sha]).split('\n').filter(Boolean).map(line=>{const [info,...names]=line.split('\t');const [mode,type,sha]=info.split(' ');return {mode,type,sha,path:names.join('\t')};});value={truncated:false,tree:entries};}
-else if(endpoint.includes('/contents/')) {const [file,ref]=endpoint.split('/contents/')[1].split('?ref=');value={encoding:'base64',content:Buffer.from(git(['show',ref+':'+decodeURIComponent(file)])+'\n').toString('base64')};}
-else if(endpoint.includes('/compare/')) {const [base,head]=endpoint.split('/compare/')[1].split('...');let ancestor=true;try{git(['merge-base','--is-ancestor',base,head]);}catch{ancestor=false;}value={status:base===head?'identical':ancestor?'ahead':'diverged',base_commit:{sha:base},merge_base_commit:{sha:git(['merge-base',base,head])}};}
-else if(endpoint.includes('/commits/')&&endpoint.includes('/pulls?')) value=[h.publication?.state==='closed'?[{number:8}]:[]];
-else if(endpoint.includes('/pulls?')) value=[[]];
-else throw new Error('Unexpected gh endpoint '+endpoint);
-process.stdout.write(JSON.stringify(value));
-`;
-
 
 export function exerciseLifecycle(f) {
  git(f.root,['checkout','-b','epic/EPIC-999',f.submitted]);f.host.mergedState=false;f.saveHost();
@@ -106,11 +83,12 @@ export function exerciseLifecycle(f) {
  f.host.publication={head:integrated,state:'open'};f.saveHost();
  const publication=invoke('review.ready',8);assert.equal(publication.status,0,publication.stderr);
  const verdict=JSON.parse(publication.stdout);assert.equal(verdict.review.originalPr,7);assert.equal(verdict.review.pr,8);assert.equal(verdict.review.claims.length,2);
- assert.equal(invoke('review.ready',7).status,1);
- for(const mutation of [{branch:'epic/OTHER'},{repository:'peer/repo'},{head:f.submitted}]) {f.host.publication={head:integrated,state:'open',...mutation};f.saveHost();assert.equal(invoke('review.ready',8).status,1);}
+ const rejectedPublication=result=>{assert.equal(result.status,1);assert.match(result.stderr,/open canonical branch PR at current PR head/);};
+ rejectedPublication(invoke('review.ready',7));
+ for(const mutation of [{branch:'epic/OTHER'},{repository:'peer/repo'},{head:f.submitted}]) {f.host.publication={head:integrated,state:'open',...mutation};f.saveHost();rejectedPublication(invoke('review.ready',8));}
  f.host.publication={head:integrated,state:'open'};f.saveHost();
  const eligible=invoke('merge.eligible',8);assert.equal(eligible.status,0,eligible.stderr);assert.equal(JSON.parse(eligible.stdout).decision,'continue',eligible.stdout);
- f.host.publication.state='closed';f.saveHost();assert.equal(invoke('review.ready',8).status,1);
+ f.host.publication.state='closed';f.saveHost();rejectedPublication(invoke('review.ready',8));
  f.host.main=integrated;f.saveHost();
  const check={id:'3',name:'gates',status:'completed',conclusion:'success',head:integrated},observedAt=new Date().toISOString();
  const evidence={repository:'example/repo',epic:'EPIC-999',pullRequest:7,submittedHead:f.submitted,integrationSha:integrated,host:{source:'authenticated-github-api',observedAt,merged:true,mergeCommit:f.merged,finalization:{from:f.merged,to:integrated,paths:['epics/EPIC-999/epic-plan.md','epics/EPIC-999/epic.md']},checks:[check],smoke:{revision:integrated,result:'passed'}},policy:{digest:f.digest,loadedRevision:1},findings:{unresolved:[]},documentation:{revision:integrated,current:true},activation:{source:'session-harness',observedAt,active:true,agentPath:'fixture',resourceIds:['fixture-session']},cleanup:{source:'session-harness',observedAt,revalidated:true,worktrees:[],branches:[],processes:[]},correctivePullRequests:[]};

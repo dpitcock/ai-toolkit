@@ -10,6 +10,7 @@ import {readWorkflowState,withWorkflowState} from '../scripts/lib/workflow-state
 import {check} from '../scripts/check-gate.mjs';
 import {replaceActivationBlock} from '../scripts/lib/activation-report.mjs';
 import {handleWorkflowEvent} from '../scripts/workflow-event.mjs';
+import {controlledHostArgs,withFixtureFetch} from './helpers/controlled-host.mjs';
 const releaseURL=new URL('../scripts/lib/release-verification-proof.mjs',import.meta.url);
 const release=fs.existsSync(releaseURL)?await import(releaseURL):{};
 const runtimeURL=new URL('../scripts/lib/release-verification-runtime.mjs',import.meta.url);
@@ -269,11 +270,9 @@ test('real CI release route is selected from trusted I and never needs local run
  const f=verificationFixture(t),responses={};
  release.proveReleaseVerification({...f.releaseOptions(),api:(endpoint,options)=>{const value=f.api(endpoint,options);responses[endpoint]=value;return value;}});
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'release-host-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
- const quote=value=>`'${value.replaceAll("'","'\\''")}'`;
- const cases=Object.entries(responses).map(([endpoint,value],index)=>{const file=path.join(dir,`${index}.json`);fs.writeFileSync(file,JSON.stringify(value));return `${quote(endpoint)}) /bin/cat ${quote(file)};;`;});
- fs.writeFileSync(path.join(dir,'gh'),`#!/bin/sh\nfor endpoint do :; done\ncase "$endpoint" in\n${cases.join('\n')}\n*) exit 7;;\nesac\n`,{mode:0o755});
- const env={...process.env,PATH:`${dir}:${process.env.PATH}`,BASE_SHA:f.i,HEAD_SHA:f.h2,HEAD_REF:'epic/EPIC-006'};
- const run=extra=>spawnSync(process.execPath,[path.join(source,'scripts/check-pr.mjs')],{cwd:f.root,encoding:'utf8',env:{...env,...extra}});
+ const stateFile=path.join(dir,'responses.json');fs.writeFileSync(stateFile,JSON.stringify(responses));
+ const env={...process.env,BASE_SHA:f.i,HEAD_SHA:f.h2,HEAD_REF:'epic/EPIC-006'};
+ const run=extra=>spawnSync(process.execPath,[...controlledHostArgs({stateFile}),path.join(source,'scripts/check-pr.mjs')],{cwd:f.root,encoding:'utf8',env:{...env,...extra}});
  const result=run();assert.equal(result.status,0,result.stdout+result.stderr);assert.match(result.stdout,/release-verification.*committed provenance/);
  const branch=run({HEAD_REF:'other'});assert.equal(branch.status,1);assert.match(branch.stderr,/branch/);
  edit(f,'epics/EPIC-006/epic-plan.md',text=>text.replace('status: merged','status: in-progress'));f.h2=commit(f,'forbidden route fallback');
@@ -513,23 +512,18 @@ test('fresh-checkout real CI entrypoint succeeds without runtime or PR1 reviews 
  const f=fixture(t),responses={};
  adoption.provePolicyAdoption({...f.options(),api:(endpoint,options)=>{const value=f.api(endpoint,options);responses[endpoint]=value;return value;}});
  const transport=fs.mkdtempSync(path.join(os.tmpdir(),'adoption-controlled-host-'));t.after(()=>fs.rmSync(transport,{recursive:true,force:true}));
- const quote=value=>`'${value.replaceAll("'","'\\''")}'`;
- const cases=Object.entries(responses).map(([endpoint,value],index)=>{
-  const file=path.join(transport,`${index}.json`);fs.writeFileSync(file,JSON.stringify(value));
-  return `${quote(endpoint)}) /bin/cat ${quote(file)};;`;
- });
- // A POSIX transport avoids starting a second Node runtime for every API read.
- fs.writeFileSync(path.join(transport,'gh'),`#!/bin/sh\nfor endpoint do :; done\ncase "$endpoint" in\n${cases.join('\n')}\n*) exit 7;;\nesac\n`,{mode:0o755});
- const env={...process.env,PATH:`${transport}:${process.env.PATH}`,BASE_SHA:f.f,HEAD_SHA:f.h1,HEAD_REF:'epic/EPIC-006'};
- const result=spawnSync(process.execPath,[path.join(source,'scripts/check-pr.mjs')],{cwd:f.root,encoding:'utf8',env});
+ const stateFile=path.join(transport,'responses.json');fs.writeFileSync(stateFile,JSON.stringify(responses));
+ const preload=controlledHostArgs({stateFile});
+ const env={...process.env,BASE_SHA:f.f,HEAD_SHA:f.h1,HEAD_REF:'epic/EPIC-006'};
+ const result=spawnSync(process.execPath,[...preload,path.join(source,'scripts/check-pr.mjs')],{cwd:f.root,encoding:'utf8',env});
  assert.equal(result.status,0,result.stdout+result.stderr);assert.match(result.stdout,/committed provenance verified/);
- const wrongBranch=spawnSync(process.execPath,[path.join(source,'scripts/check-pr.mjs')],{cwd:f.root,encoding:'utf8',env:{...env,HEAD_REF:'epic/EPIC-007'}});
+ const wrongBranch=spawnSync(process.execPath,[...preload,path.join(source,'scripts/check-pr.mjs')],{cwd:f.root,encoding:'utf8',env:{...env,HEAD_REF:'epic/EPIC-007'}});
  assert.equal(wrongBranch.status,1);assert.match(wrongBranch.stderr,/Policy adoption.*branch/);
- const local=spawnSync(process.execPath,[path.join(source,'scripts/check-gate.mjs'),'epics/EPIC-006/epic-plan.md','policy-adoption-pr'],{cwd:f.root,encoding:'utf8',env});
+ const local=spawnSync(process.execPath,[...preload,path.join(source,'scripts/check-gate.mjs'),'epics/EPIC-006/epic-plan.md','policy-adoption-pr'],{cwd:f.root,encoding:'utf8',env});
  assert.equal(local.status,1);assert.match(local.stderr,/harness/);
  for(const name of ['epic-plan.md','epic.md']) edit(f,`epics/EPIC-006/${name}`,text=>text.replace('status: merged','status: in-progress'));
  f.h1=commit(f,'attempt to select ordinary CI using candidate status');
- const tampered=spawnSync(process.execPath,[path.join(source,'scripts/check-pr.mjs')],{cwd:f.root,encoding:'utf8',env:{...env,HEAD_SHA:f.h1}});
+ const tampered=spawnSync(process.execPath,[...preload,path.join(source,'scripts/check-pr.mjs')],{cwd:f.root,encoding:'utf8',env:{...env,HEAD_SHA:f.h1}});
  assert.equal(tampered.status,1,'candidate status cannot select a weaker CI stage');
  assert.match(tampered.stderr,/Policy adoption.*two policy/);
 });
@@ -586,12 +580,7 @@ test('fresh non-local clone materializes an unavailable squashed H0 as immutable
  assert.equal(fs.existsSync(path.join(clone,'.git/objects/info/alternates')),false);
  assert.throws(()=>git(clone,'cat-file','-e',`${f.h0}^{commit}`));
  // Fixture-only fetch transport; do not rewrite canonical origin discovery.
- const transport=fs.mkdtempSync(path.join(os.tmpdir(),'adoption-fetch-'));t.after(()=>fs.rmSync(transport,{recursive:true,force:true}));
- const realGit=execFileSync('which',['git'],{encoding:'utf8'}).trim(),quote=value=>`'${value.replaceAll("'","'\\''")}'`;
- fs.writeFileSync(path.join(transport,'git'),`#!/bin/sh\nif [ "$4" = fetch ] && [ "$8" = https://github.com/dpitcock/ai-toolkit.git ]; then\nexec ${quote(realGit)} --no-replace-objects -C "$3" fetch --no-tags --no-recurse-submodules --no-write-fetch-head ${quote(`file://${f.root}`)} "$9"\nfi\nexec ${quote(realGit)} "$@"\n`,{mode:0o755});
- const oldPath=process.env.PATH;
- try {process.env.PATH=`${transport}:${oldPath}`;adoption.materializePolicyAdoptionHistory({...f.options(),root:clone});}
- finally {process.env.PATH=oldPath;}
+ withFixtureFetch({root:clone,canonicalURL:'https://github.com/dpitcock/ai-toolkit.git',fixtureURL:`file://${f.root}`,revision:f.h0},()=>adoption.materializePolicyAdoptionHistory({...f.options(),root:clone}));
  assert.equal(git(clone,'rev-parse','HEAD'),f.h1);
  assert.equal(adoption.provePolicyAdoption({...f.options(),root:clone}).original.submittedHead,f.h0);
 });

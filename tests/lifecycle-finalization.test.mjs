@@ -30,10 +30,11 @@ test('a direct bookkeeping push cannot stand in for a merged finalization PR',t=
 });
 
 test('real merged CLI rejects unmerged, wrong repository, stale/dismissed reviews, pending checks and races without writing',t=>{
- for(const mutation of [{mergedState:false},{reviews:false},{checks:false},{repository:'wrong/repo'},{reviewHead:'c'.repeat(40)},{reviewState:'DISMISSED'},{checkStatus:'in_progress'},{race:true}]) {
+ for(const [mutation,reason] of [[{mergedState:false},/original PR is not confirmed merged/],[{reviews:false},/no effective approval/],[{checks:false},/check gates is pending or did not pass/],[{repository:'wrong/repo'},/original PR is not confirmed merged/],[{reviewHead:'c'.repeat(40)},/no effective approval/],[{reviewState:'DISMISSED'},/approval is dismissed/],[{checkStatus:'in_progress'},/check gates is pending/],[{race:true},/merged host state changed during observation/]]) {
   const f=fixture(t);Object.assign(f.host,mutation);f.saveHost();
   const result=f.run('check-gate.mjs',['epics/EPIC-999/epic-plan.md','merged','--write']);
-  assert.equal(result.status,1);assert.match(fs.readFileSync(path.join(f.root,'epics/EPIC-999/epic-plan.md'),'utf8'),/status: ready-for-pr/);
+  assert.equal(result.status,1);assert.match(result.stderr,reason);assert.match(fs.readFileSync(path.join(f.root,'epics/EPIC-999/epic-plan.md'),'utf8'),/status: ready-for-pr/);
+  if(mutation.race) assert.equal(JSON.parse(fs.readFileSync(path.join(f.root,'.host/state.json'),'utf8')).mainReads,2,'race is rejected after the second real host observation');
  }
 });
 
@@ -52,6 +53,8 @@ test('real finalization PR checks reject source, policy, body, approval, task an
   const head=git(f.root,['rev-parse','HEAD']);
   const result=f.run('check-pr.mjs',[],{BASE_SHA:f.merged,HEAD_SHA:head,HEAD_REF:'epic/EPIC-999'});assert.equal(result.status,1,result.stdout);
   const pre=f.run('check-gate.mjs',['epics/EPIC-999/epic-plan.md','finalization-pr']);assert.equal(pre.status,1,pre.stdout);
+  assert.match(result.stderr,/only same-epic status|reviewed body, scope, approvals and evidence|cannot authorize a Tier 3 assessment/);
+  assert.match(pre.stderr,/only same-epic status|reviewed body, scope, approvals and evidence/);
  }
 });
 
@@ -59,7 +62,7 @@ test('real finalization pre-PR gate authenticates original merge and rejects an 
  const f=fixture(t);f.finalize();
  const args=['epics/EPIC-999/epic-plan.md','finalization-pr'];
  const allowed=f.run('check-gate.mjs',args);assert.equal(allowed.status,0,allowed.stderr);
- f.host.mergedState=false;f.saveHost();assert.equal(f.run('check-gate.mjs',args).status,1);
+ f.host.mergedState=false;f.saveHost();const rejected=f.run('check-gate.mjs',args);assert.equal(rejected.status,1);assert.match(rejected.stderr,/original PR is not confirmed merged/);
 });
 
 test('generated lifecycle preserves original PR while publishing finalization verdicts and completing at new main',t=>{
