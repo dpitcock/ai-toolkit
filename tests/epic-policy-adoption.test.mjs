@@ -276,9 +276,9 @@ test('release trusted host gate uses current PR2 reviews/checks and cannot trust
  const api=f.api;f.api=endpoint=>endpoint.includes('/actions/runs?')?[{workflow_runs:[{check_suite_id:1,path:'.github/workflows/workflow.yml',repository:{full_name:repository},head_sha:f.h2,event:'pull_request',status:'completed',conclusion:'success'}]}]:api(endpoint);
  assert.equal(release.evaluateReleaseHostGate({...f.releaseOptions(),pr:13}).head,f.h2);
  f.j=git(f.root,'commit-tree',`${f.h2}^{tree}`,'-p',f.i,'-m','release integration');
- f.pulls[13]={...f.pulls[13],state:'closed',merged:true,merge_commit_sha:f.j};
- f.pulls[14]={...f.pulls[13],number:14};f.main=f.j;
+ f.pulls[14]={...f.pulls[13],number:14};
  assert.throws(()=>release.evaluateReleaseHostGate({...f.releaseOptions(),pr:14,integration:{pr:13,sha:f.j}}),/integration PR|PR2/);
+ delete f.pulls[14];
  git(f.root,'checkout','--quiet','--detach',f.i);
  assert.equal(release.trustedReleaseVerificationGate({root:f.root,repository,pull:f.pulls[13],api:f.api}).head,f.h2);
  assert.equal(git(f.root,'rev-parse','HEAD'),f.i,'trusted publisher never checks out candidate code');
