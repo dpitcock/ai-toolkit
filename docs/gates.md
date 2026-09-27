@@ -1,5 +1,10 @@
 # State and approval contract
 
+For this toolkit's own `authoring` changes, the [path-review policy](review-paths.md)
+selects independent Code Reviewer only and bypasses the generic epic/production
+chain described below. The trusted host gate enforces that route. Production
+paths, grandfathered PRs and downstream adopters retain their applicable gates.
+
 Each document has YAML frontmatter. Templates explain the fields inline. Use quoted ISO dates; no YAML aliases or duplicate keys. `owner` is the author/session identity. Every approval object has `by`, `date`, `notes`, and `revision`; it must name someone other than the owner. Notes link actual review evidence. Final review objects also have `commit`. Only `appsec` may use the literal `not-required`; missing/null is never equivalent.
 
 ```yaml

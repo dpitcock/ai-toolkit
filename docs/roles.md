@@ -1,5 +1,9 @@
 # Roles and framework ownership
 
+For this repository's own development, [path-based routing](review-paths.md)
+selects Code Reviewer only for authoring infrastructure. The full applicable
+role set below is reserved for shipped paths and downstream governed work.
+
 The governance layer chooses the stage and validates its entry conditions. Upstream skills supply the engineering method; approval authority belongs to the assigned reviewer, not the implementing agent.
 
 | Role/stage | agent-skills primitive | Superpowers primitive | Owner when overlapping |

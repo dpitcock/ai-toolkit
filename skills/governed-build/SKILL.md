@@ -5,6 +5,11 @@ description: Use when implementing tasks, running /build or /test, or starting s
 
 # Governed Build
 
+First honor AGENTS.md's repository-specific path-review route. A verified
+toolkit `authoring` result uses relevant tests, independent Code Reviewer and
+PR-only delivery; do not enter the generic epic/event/production chain below.
+Reclassify the final diff. Production and legacy routes retain these gates.
+
 ## Event-boundary adapter contract
 
 Before dispatching a build task, start a fresh task session and invoke

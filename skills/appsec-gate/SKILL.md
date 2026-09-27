@@ -5,6 +5,10 @@ description: Provides AppSec gate guidance. Use when triaging an epic, signing o
 
 # Appsec Gate
 
+AGENTS.md's verified toolkit `authoring` route requires Code Reviewer only.
+Do not invoke AppSec just because authoring tests simulate production behavior.
+The requirements below apply to production and legacy governed routes.
+
 Use the existing agent-skills security-auditor persona and security-and-hardening skill. This skill adds governance only. Read docs/gates.md for field formats and commands.
 
 1. **Epic triage:** assess auth, data and external boundaries and known concerns. Record stable concern IDs and rationale. If any boundary or concern is present, AppSec records epic approvals.appsec with threat-model notes; otherwise EM records not-required and the low-risk rationale. QA approval is always required. Epic triage is not plan approval.

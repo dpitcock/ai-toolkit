@@ -1,6 +1,7 @@
+import {FINAL_REVIEW_ORDER} from './review-paths.mjs';
 const SHA=/^[a-f0-9]{40}$/i;
 const PLAN_ORDER=['principal','appsec','accessibility_reviewer'];
-const FINAL_ORDER=['code_reviewer','appsec','accessibility_reviewer'];
+const FINAL_ORDER=FINAL_REVIEW_ORDER;
 const EFFECTIVE_STATES=new Set(['APPROVED','CHANGES_REQUESTED','DISMISSED']);
 
 function fail(message) { throw new Error(`Host review evidence ${message}`); }

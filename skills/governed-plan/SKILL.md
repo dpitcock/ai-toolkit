@@ -5,6 +5,10 @@ description: Use when decomposing an epic or preparing a developer implementatio
 
 # Governed Plan
 
+First honor AGENTS.md's repository-specific path-review route. A verified
+toolkit `authoring` result does not require an epic or the production plan
+approval chain. Production and legacy routes retain the workflow below.
+
 ## Event-boundary adapter contract
 
 Before dispatching an assigned planning action, start a fresh task session and
