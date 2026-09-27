@@ -10,6 +10,7 @@ import {readWorkflowState,withWorkflowState} from '../scripts/lib/workflow-state
 import {check} from '../scripts/check-gate.mjs';
 import {replaceActivationBlock} from '../scripts/lib/activation-report.mjs';
 import {handleWorkflowEvent} from '../scripts/workflow-event.mjs';
+import {evaluateCompletion} from '../scripts/lib/epic-completion.mjs';
 import {controlledHostArgs,withFixtureFetch} from './helpers/controlled-host.mjs';
 const releaseURL=new URL('../scripts/lib/release-verification-proof.mjs',import.meta.url);
 const release=fs.existsSync(releaseURL)?await import(releaseURL):{};
@@ -521,7 +522,7 @@ test('same open PR2 correction invalidates both readiness boundaries and require
  f.j=git(f.root,'commit-tree',`${f.head}^{tree}`,'-p',f.i,'-m','actual release integration');
  f.pulls[13]={...f.pulls[13],state:'closed',merged:true,merge_commit_sha:f.j};f.main=f.j;
  assert.throws(()=>f.control('integrate',{integration:{pr:14,sha:f.j}}),/current published PR2/);
- assert.throws(()=>f.control('integrate',{integration:{pr:13,sha:'f'.repeat(40)}}),/main changed/);
+ assert.throws(()=>f.control('integrate',{integration:{pr:13,sha:'f'.repeat(40)}}),/materialization J identity differs from the host/);
  assert.throws(()=>f.control('integrate',{integration:{pr:13,sha:f.j,extra:true}}),/schema/);
  const integrated=f.control('integrate',{integration:{pr:13,sha:f.j}});
  assert.equal(integrated.phase,'integrated');assert.equal(integrated.proof.release.head,f.head);assert.equal(integrated.proof.release.integrationSha,f.j);
@@ -531,10 +532,12 @@ test('same open PR2 correction invalidates both readiness boundaries and require
    const observedAt=new Date().toISOString();
    f.observers.activation=()=>({source:'session-harness',sessionId:f.actor.harness.sessionId,loadedRevision:f.j,policyDigest:digest,observedAt});
    const completion={repository,epic:'EPIC-006',pullRequest:10,submittedHead:f.h0,integrationSha:f.j,
-    host:{source:'authenticated-github-api',observedAt,merged:true,mergeCommit:f.m,checks:[{id:'j-gates',name:'gates',status:'completed',conclusion:'success',head:f.j}],smoke:{revision:f.j,result:'passed'}},
+    host:{source:'authenticated-github-api',observedAt,merged:true,mergeCommit:f.m,checks:[{id:String(f.checks[0].id),name:'gates',status:'completed',conclusion:'success',head:f.j}],smoke:{revision:f.j,result:'passed'}},
     policy:{digest,loadedRevision:3},findings:{unresolved:[]},documentation:{revision:f.j,current:true},
     activation:{source:'session-harness',observedAt,active:true,agentPath:'controlled-fixture',resourceIds:['j-session']},
     cleanup:{source:'session-harness',observedAt,revalidated:true,worktrees:[],branches:[],processes:[]},correctivePullRequests:[]};
+   assert.throws(()=>evaluateCompletion({...completion,releaseVerification:integratedRecord.proof,submittedHead:f.head}),/release verification is not bound to this completion/);
+   assert.throws(()=>evaluateCompletion({...completion,releaseVerification:integratedRecord.proof,host:{...completion.host,mergeCommit:f.j}}),/release verification does not preserve the original completion relation/);
    f.observers.completion=()=>completion;
    f.observers.integration=receipt=>({source:'authenticated-github-api',observedAt,repository,pullRequest:receipt.pullRequest,integrationSha:f.j,mergeCommit:f.m,checks:completion.host.checks,smoke:completion.host.smoke});
    f.checks[0].head_sha=f.j;
@@ -547,7 +550,7 @@ test('same open PR2 correction invalidates both readiness boundaries and require
    const completed=f.run({...f.event('complete-at-j','epic.complete'),completionId:'J-completion'});
    assert.equal(completed.completion.integrationSha,f.j);assert.equal(completed.completion.releaseVerification.release.head,f.head);
    assert.equal(readWorkflowState(f.root).epics['EPIC-006'].completed,true);
-   assert.throws(()=>f.control('integrate',{integration:{pr:13,sha:f.j}}),/identity|integrated/);
+   assert.throws(()=>f.control('integrate',{integration:{pr:13,sha:f.j}}),/release integration is already recorded/);
  assert.throws(()=>withWorkflowState(f.root,state=>{state.epics['EPIC-006'].releaseVerification.localReady=true;}),/malformed/);
  withWorkflowState(f.root,state=>{delete state.epics['EPIC-006'].releaseVerification;});
  assert.throws(()=>f.control('gate'),/missing/);

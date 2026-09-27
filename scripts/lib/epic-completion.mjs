@@ -53,7 +53,7 @@ function hostReceipt(value,{repository,epic,pullRequest,integrationSha,releaseVe
  let finalization;
  if(releaseVerification) {
   validateReleaseRelation(releaseVerification);
-  if(releaseVerification.adoption.original.pr!==pullRequest || releaseVerification.adoption.original.head!==submittedHead
+  if(releaseVerification.adoption.original.pr!==pullRequest || releaseVerification.adoption.original.submittedHead!==submittedHead
    || releaseVerification.adoption.original.mergeCommit!==mergeCommit || releaseVerification.release.integrationSha!==integrationSha) fail('release verification does not preserve the original completion relation');
  } else if(mergeCommit!==integrationSha) {
   if(!value.finalization) fail('merge result does not match integration SHA without finalization proof');
@@ -108,7 +108,7 @@ export function evaluateCompletion(evidence={}) {
  const repository=string(evidence.repository,'repository'),epic=string(evidence.epic,'epic'),pullRequest=positive(evidence.pullRequest,'pull request');
  const submittedHead=sha(evidence.submittedHead,'submitted head'),integrationSha=sha(evidence.integrationSha,'integration SHA');
  const releaseVerification=evidence.releaseVerification===undefined?undefined:validateReleaseRelation(evidence.releaseVerification);
- if(releaseVerification && (releaseVerification.adoption.original.pr!==pullRequest || releaseVerification.adoption.original.head!==submittedHead || releaseVerification.release.integrationSha!==integrationSha)) fail('release verification is not bound to this completion');
+ if(releaseVerification && (releaseVerification.adoption.original.pr!==pullRequest || releaseVerification.adoption.original.submittedHead!==submittedHead || releaseVerification.release.integrationSha!==integrationSha)) fail('release verification is not bound to this completion');
  const host=hostReceipt(evidence.host,{repository,epic,pullRequest,integrationSha,releaseVerification,submittedHead});
  keys(evidence.policy,['digest','loadedRevision'],'policy receipt');
  if(typeof evidence.policy.digest!=='string' || !DIGEST.test(evidence.policy.digest)) fail('policy digest is malformed');
@@ -129,7 +129,7 @@ function hostAdmission(value,receipt) {
  if(value.repository!==receipt.repository || positive(value.pullRequest,'admission pull request')!==receipt.pullRequest) fail('admission host observation is for a different pull request');
  if(sha(value.integrationSha,'admission integration SHA')!==receipt.integrationSha) fail('integrated state changed since completion');
  if(value.mergeCommit!==(receipt.host.mergeCommit??receipt.integrationSha)) fail('original merge result changed since completion');
- return hostReceipt({source:value.source,observedAt:value.observedAt,merged:true,mergeCommit:value.mergeCommit,checks:value.checks,smoke:value.smoke,...(value.finalization?{finalization:value.finalization}:{}),...(receipt.releaseVerification?{releaseVerification:receipt.releaseVerification}:{})},{repository:receipt.repository,epic:receipt.epic,pullRequest:receipt.pullRequest,integrationSha:receipt.integrationSha,submittedHead:receipt.submittedHead,releaseVerification:receipt.releaseVerification});
+ return hostReceipt({source:value.source,observedAt:value.observedAt,merged:true,mergeCommit:value.mergeCommit,checks:value.checks,smoke:value.smoke,...(value.finalization?{finalization:value.finalization}:{})},{repository:receipt.repository,epic:receipt.epic,pullRequest:receipt.pullRequest,integrationSha:receipt.integrationSha,submittedHead:receipt.submittedHead,releaseVerification:receipt.releaseVerification});
 }
 
 export function admitEpic(state={},nextEpic={}) {

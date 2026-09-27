@@ -261,7 +261,7 @@ export function completeReleaseVerification(state,input,resolved,actor,observers
  if(!equal(completionGate.proof,proof)) fail('J required gates provenance differs from the persisted integration proof');
  const evidence=observed(observers,'completion',{epic:EPIC,completionId:input.completionId,proof:structuredClone(proof),loaded:structuredClone(loaded)});
  const {receipt}=evaluateCompletion({...evidence,releaseVerification:proof});
- if(receipt.repository!==REPOSITORY || receipt.epic!==EPIC || receipt.pullRequest!==proof.adoption.original.pr || receipt.submittedHead!==proof.adoption.original.head || receipt.integrationSha!==j
+ if(receipt.repository!==REPOSITORY || receipt.epic!==EPIC || receipt.pullRequest!==proof.adoption.original.pr || receipt.submittedHead!==proof.adoption.original.submittedHead || receipt.integrationSha!==j
   || receipt.policy.digest!==record.adoption.policy.canonical.digest || receipt.releaseVerification===undefined) fail('completion does not bind the preserved EPIC-006 J relation');
  if(receipt.activation.observedAt!==loaded.observedAt) fail('completion activation is not the fresh J load observation');
  if(!equal(receipt.host.checks,completionGate.checks)) fail('completion host checks do not match the exact J required gates status');
