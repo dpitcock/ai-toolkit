@@ -12,7 +12,7 @@ import {evaluateHostReviewGate} from './check-host-reviews.mjs';
 import {evaluateCompletion,admitEpic} from './lib/epic-completion.mjs';
 import {validateEpicAdmission} from './lib/workflow-admission.mjs';
 import {observeMergedEpic} from './lib/epic-finalization.mjs';
-import {applyReleaseVerification} from './lib/release-verification-runtime.mjs';
+import {applyReleaseVerification,applyReleaseReviewBoundary} from './lib/release-verification-runtime.mjs';
 
 const MAX_INPUT_BYTES=64*1024;
 const TYPES=new Set(['epic.start','task.dispatch','review.ready','merge.eligible','epic.complete','release.verify']);
@@ -77,6 +77,7 @@ function hostedContext({file,plan,root,context,identity,observers}) {
 function lifecycle(state,input,resolved,identity,observers) {
  const root=resolved.worktree,{file,data:plan}=canonicalPlan(root,input.epic),head=git(root,['rev-parse','HEAD']);
  const context={root,repository:identity.repository,epic:input.epic,head};
+ if(input.epic==='EPIC-006' && identity.repository==='dpitcock/ai-toolkit' && ['review.ready','merge.eligible'].includes(input.type) && state.epics[input.epic]?.policyAdoption?.phase==='integrated') return applyReleaseReviewBoundary(state,input,resolved,identity.actor,observers);
  if(input.type==='task.dispatch') return checkWorkflowReadiness(file,{root,task:`tasks/${input.task}.md`});
  if(input.type==='review.ready') {
   if(!plan.pr_url) {const {roles}=checkWorkflowReadiness(file,{root});return {review:{stage:'local',head,roles}};}
@@ -111,9 +112,10 @@ function lifecycle(state,input,resolved,identity,observers) {
  */
 export function handleWorkflowEvent({root,event,actor,observers}={}) {
  trustedActor(actor);
- const resolved=acceptedPolicy(root),identity={repository:resolved.repository,branch:resolved.branch};
- const input=validateEvent(event,identity);
- return withWorkflowState(resolved.worktree,state=>{
+ const initial=acceptedPolicy(root);
+ return withWorkflowState(initial.worktree,state=>{
+  const resolved=acceptedPolicy(initial.worktree),identity={repository:resolved.repository,branch:resolved.branch,actor};
+  const input=validateEvent(event,identity);
   const existing=state.dispatches[input.id];
   if(existing) {
    if(JSON.stringify(existing.event)!==JSON.stringify(input)) fail('duplicate delivery ID has different event data');
@@ -133,6 +135,8 @@ export function handleWorkflowEvent({root,event,actor,observers}={}) {
    if(decision.decision!=='continue' || decision.reason!=='authorized-routine') fail('release verification requires current active routine authorization');
    output.release=applyReleaseVerification(state,input,resolved,actor,observers);
   } else Object.assign(output,lifecycle(state,input,resolved,identity,observers));
+  const currentDecision=decideAction({authorization,policy:resolved.policy,actor,action:{repository:identity.repository,branch:identity.branch,scope:input.scope,name:input.type,completionCriterion:input.completionCriterion}});
+  if(currentDecision.decision!==decision.decision || currentDecision.reason!==decision.reason) fail(`authorization changed during observations: ${currentDecision.reason}`);
   state.dispatches[input.id]={event:input,output};
   if(input.type==='epic.start') state.epics[input.epic]={...(state.epics[input.epic]??{}),active:true,provisioning:false,repository:identity.repository,branch:identity.branch};
   if(input.type==='epic.complete' && decision.decision!=='human-needed') state.epics[input.epic]={...state.epics[input.epic],active:false,completed:true};

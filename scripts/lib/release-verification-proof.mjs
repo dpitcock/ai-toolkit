@@ -22,7 +22,7 @@ function checkMain(api,expected) {
  if(api(`repos/${REPOSITORY}/git/ref/heads/main`)?.object?.sha!==expected) fail('current main differs from the bounded release');
 }
 /** Committed provenance only: no local reviews, permit, runtime or own CI result. */
-export function proveReleaseVerification({root,baseSha,headSha,headRef,api=githubJSON,integration,empty=false}={}) {
+export function proveReleaseVerification({root,baseSha,headSha,headRef,api=githubJSON,integration,empty=false,publication}={}) {
  if(canonicalRepository(root)!==REPOSITORY || headRef!==BRANCH) fail('repository or branch is outside the finite release');
  if(releaseVerificationStage({root,baseSha})!=='pending') fail('requires the unique integrated adoption base I');
  const expected=integration?.sha??baseSha;checkMain(api,expected);
@@ -31,6 +31,10 @@ export function proveReleaseVerification({root,baseSha,headSha,headRef,api=githu
  activationBlockBounds(base.read(ACTIVATION_DOCUMENT));
  const submitted=assertActivationHistory({root,base:baseSha,head:headSha,digest:adoption.policy.canonical.digest,empty});
  const prefix=`repos/${REPOSITORY}`;
+ if(publication) {
+  if(integration || !Number.isSafeInteger(publication.pr) || publication.pr<1 || typeof publication.head!=='string' || !/^[a-f0-9]{40}$/.test(publication.head)) fail('local publication binding invalid');
+  execFileSync('git',['--no-replace-objects','-C',root,'merge-base','--is-ancestor',publication.head,headSha],{stdio:'pipe'});
+ }
  let pr=null,j=null;
  const verify=()=>{
   if(integration) {
@@ -40,7 +44,7 @@ export function proveReleaseVerification({root,baseSha,headSha,headRef,api=githu
    pr=pull.number;j=integration.sha;
   }
   const open=hostPages(api(`${prefix}/pulls?state=open&base=main&per_page=100`,{paginate:true})).filter(item=>item.head?.ref===BRANCH);
-  if(open.length>1 || open.some(item=>integration || item.head.sha!==headSha || item.base?.sha!==baseSha)) fail('wrong or second release PR remains open');
+  if(open.length>1 || (publication && (open.length!==1 || open[0].number!==publication.pr)) || open.some(item=>integration || item.head.sha!==(publication?.head??headSha) || item.base?.sha!==baseSha)) fail('wrong or second release PR remains open');
   checkMain(api,expected);
  };
  verify();

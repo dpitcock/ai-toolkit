@@ -6,6 +6,7 @@ import YAML from 'yaml';
 import { execFileSync } from 'node:child_process';
 import {observeMergedEpic} from './lib/epic-finalization.mjs';
 import {controlPolicyAdoption} from './lib/epic-policy-adoption.mjs';
+import {controlReleaseVerification} from './lib/release-verification-runtime.mjs';
 
 const roles = ['principal_engineer', 'appsec', 'qa_lead', 'code_review', 'appsec_review', 'accessibility', 'accessibility_review'];
 const graphs = {
@@ -166,8 +167,14 @@ export function checkWorkflowReadiness(file,{root=process.cwd(),task}={}) {
  return {roles:[role]};
 }
 
-export function check(file,target,{root=process.cwd(),write=false,changedFiles=[],head,hostEvidence,mergedEvidence,adoptionController}={}) {
+export function check(file,target,{root=process.cwd(),write=false,changedFiles=[],head,hostEvidence,mergedEvidence,adoptionController,releaseController}={}) {
   const ctx={...readDocument(file),root}; const d=ctx.data;
+  if(target==='release-verification-pr') {
+    requireThat(!write,'Release verification gate never changes canonical status');
+    requireThat(d.kind==='epic-plan' && d.id==='EPIC-006-PLAN' && d.status==='merged','Release verification requires the original merged plan');
+    controlReleaseVerification({root,operation:'gate',actor:releaseController?.actor,observers:releaseController?.observers});
+    return `${d.id}: release-verification-pr permitted`;
+  }
   if(target==='policy-adoption-pr') {
     requireThat(!write,'Policy adoption gate never changes canonical status');
     requireThat(d.kind==='epic-plan' && d.id==='EPIC-006-PLAN' && d.status==='merged','Policy adoption requires the original merged plan');

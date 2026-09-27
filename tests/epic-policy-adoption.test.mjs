@@ -338,6 +338,11 @@ test('release effects reject missing identity, arbitrary operations, stale decis
  withWorkflowState(f.root,state=>{state.authorizations.release.expiresAt='2000-01-01T00:00:00.000Z';});
  assert.throws(()=>control('dispatch'),/authorization-stale/);
  withWorkflowState(f.root,state=>{delete state.authorizations.release.expiresAt;});
+ const originalClock=Date.now,activation=f.observers.activation,future=originalClock()+3600000;
+ withWorkflowState(f.root,state=>{state.authorizations.release.expiresAt=new Date(future).toISOString();});
+ f.observers.activation=()=>{Date.now=()=>future+1;return activation();};
+ try {assert.throws(()=>control('dispatch'),/authorization-stale/,'authorization must still be current after observations');}
+ finally {Date.now=originalClock;f.observers.activation=activation;withWorkflowState(f.root,state=>{delete state.authorizations.release.expiresAt;});}
  control('dispatch');const head=commit(f,'authorized evidence');
  f.observers.effect=()=>({operationId:'false',head:f.i,result:'succeeded',observedAt:new Date().toISOString()});
  assert.throws(()=>control('ack'),/incomplete/);
@@ -366,6 +371,142 @@ test('release commit authorization rejects hidden index source and mismatched st
  assert.equal(f.run(f.event('valid-index','release.verify','commit')).reason,'authorized-routine');
  const activation=f.observers.activation;f.observers.activation=()=>{git(f.root,'switch','--quiet','-c','epic/EPIC-999');return activation();};
  assert.throws(()=>releaseRuntime.controlReleaseVerification({root:f.root,operation:'dispatch',deliveryId:'valid-index',actor:f.actor,observers:f.observers}),/branch|changed/);
+});
+
+function readyVerificationFixture(t,{numeric=false}={}) {
+ const f=liveVerificationFixture(t);f.run(f.event('prepare'));
+ f.control=(operation,extra={})=>releaseRuntime.controlReleaseVerification({root:f.root,operation,actor:f.actor,observers:f.observers,...extra});
+ f.increment=id=>{
+  const commitId=numeric?(id==='activation'?'4':'2'):`commit-${id}`,pushId=numeric?(id==='activation'?'3':'1'):`push-${id}`;
+  f.write();f.run(f.event(commitId,'release.verify','commit'));f.control('dispatch',{deliveryId:commitId});const head=commit(f,`useful evidence ${id}`);
+  f.observers.effect=()=>({operationId:`git-commit-${id}`,head,result:'succeeded',observedAt:new Date().toISOString()});f.control('ack',{deliveryId:commitId});
+  f.run(f.event(pushId,'release.verify','push'));f.control('dispatch',{deliveryId:pushId});
+  f.observers.effect=()=>({operationId:`git-push-${id}`,head,remoteHead:head,result:'succeeded',observedAt:new Date().toISOString()});f.control('ack',{deliveryId:pushId});return head;
+ };
+ f.first=f.increment('activation');
+ assert.throws(()=>f.run(f.event('too-early','review.ready')),/two|increments/);
+ f.report.observations.push({kind:'smoke',status:'observed',at:'2026-09-26T12:10:00.000Z',head:f.i,references:[{type:'runtime',id:'fixture-smoke'}]});
+ f.report.observations.push({kind:'host-review',status:'pending',at:null,head:null,references:[]});
+ f.head=f.increment('smoke');f.second=f.head;
+ f.observers.qa=()=>({head:f.head,by:'independent-qa',sessionId:'qa-session',verdict:'accepted',observedAt:new Date().toISOString(),evidence:'Independent useful activation and smoke observations',increments:[{commitId:numeric?'4':'commit-activation',pushId:numeric?'3':'push-activation',head:f.first,evidence:'Actual activation record'},{commitId:numeric?'2':'commit-smoke',pushId:numeric?'1':'push-smoke',head:f.second,evidence:'Independent smoke record'}],preReadinessDispatches:0,routineConfirmations:0,routineStaffAuthorizations:0});
+ f.review=(role,{uncertain=false}={})=>{
+  const record=readWorkflowState(f.root).epics['EPIC-006'].releaseVerification;
+  const claim=Object.values(readWorkflowState(f.root).reviews).find(item=>item.release==='activation-evidence' && item.role===role && item.head===record.head).claim;
+  const by=role==='code_reviewer'?'staff-reviewer':'security-reviewer',sessionId=`${by}-${record.head}`;
+  f.observers.assignment=()=>({role,by,sessionId,head:record.head,operationId:`review-${role}-${record.head}`});
+  const dispatched=f.control('review-claim',{claimId:claim.id});assert.equal(dispatched.purpose,'independent-review');
+  assert.throws(()=>f.control('review-claim',{claimId:claim.id}),/queued|replay/);
+  assert.throws(()=>f.control('review',{claimId:claim.id}),/acknowledged/,'claim and dispatch are not verdict authority');
+  f.observers.delivery=()=>({role,by,sessionId,head:record.head,operationId:`review-${role}-${record.head}`,result:'succeeded'});
+  if(uncertain) {f.control('review-uncertain',{claimId:claim.id});assert.throws(()=>f.control('review-ack',{claimId:claim.id}),/claimed|uncertain/);f.control('review-reconcile',{claimId:claim.id});}
+  else f.control('review-ack',{claimId:claim.id});
+  const actor={harness:{authenticated:true,identity:by,sessionId}};
+  f.observers.review=()=>({role,by,sessionId,head:record.head,claimId:claim.id,verdict:'approved',evidence:'Actual independent fixture review',observedAt:new Date().toISOString()});
+  assert.throws(()=>f.control('review',{claimId:claim.id}),/independently/,'developer cannot submit an assigned reviewer verdict');
+  f.observers.activation=()=>({source:'session-harness',sessionId,loadedRevision:f.i,policyDigest:digest,observedAt:new Date().toISOString()});
+  f.control('review',{actor,claimId:claim.id});
+  f.observers.activation=()=>({source:'session-harness',sessionId:f.actor.harness.sessionId,loadedRevision:f.i,policyDigest:digest,observedAt:new Date().toISOString()});
+ };
+ return f;
+}
+test('finite release readiness persists local claims before ordered independent reviews and separates PR2 publication',t=>{
+ const f=readyVerificationFixture(t,{numeric:true});
+ assert.equal(Object.keys(readWorkflowState(f.root).reviews).length,0);
+ assert.throws(()=>f.control('review-claim',{claimId:'absent'}),/readiness|claim/);
+ const qa=f.observers.qa;delete f.observers.qa;
+ assert.throws(()=>f.run(f.event('missing-qa','review.ready')),/qa|observation/);f.observers.qa=qa;
+ f.observers.qa=()=>({...qa(),by:f.actor.harness.identity});assert.throws(()=>f.run(f.event('self-qa','review.ready')),/independent/);
+ f.observers.qa=()=>{const value=qa();value.increments[0].head=f.i;return value;};assert.throws(()=>f.run(f.event('false-increment','review.ready')),/actual/);f.observers.qa=qa;
+ const ready=f.run(f.event('local-ready','review.ready')).review;
+ assert.equal(ready.stage,'local');assert.equal(ready.pr,undefined);assert.equal(ready.claims.length,2);
+ assert.equal(readWorkflowState(f.root).epics['EPIC-006'].releaseVerification.localReady.head,f.head);
+ const appsec=Object.values(readWorkflowState(f.root).reviews).find(item=>item.role==='appsec').claim;
+ f.observers.assignment=()=>({role:'appsec',by:'security-reviewer',sessionId:'security-session',head:f.head,operationId:'early-appsec'});
+ assert.throws(()=>f.control('review-claim',{claimId:appsec.id}),/Staff|order/);
+ assert.throws(()=>f.control('gate'),/Staff|review/);
+ withWorkflowState(f.root,state=>{state.authorizations.release.allowedActions=['release.verify'];});
+ assert.throws(()=>f.control('gate'),/authorization-scope/,'routine commit permission cannot authorize review operations');
+ withWorkflowState(f.root,state=>{state.authorizations.release.allowedActions=['release.verify','review.ready','merge.eligible','epic.complete'];});
+ const staff=Object.values(readWorkflowState(f.root).reviews).find(item=>item.role==='code_reviewer').claim;
+ const clock=Date.now,deadline=clock()+3600000;
+ withWorkflowState(f.root,state=>{state.authorizations.release.expiresAt=new Date(deadline).toISOString();});
+ f.observers.assignment=()=>{Date.now=()=>deadline+1;return {role:'code_reviewer',by:'staff-reviewer',sessionId:'staff-session',head:f.head,operationId:'expired-dispatch'};};
+ try {assert.throws(()=>f.control('review-claim',{claimId:staff.id}),/authorization-stale/);}
+ finally {Date.now=clock;withWorkflowState(f.root,state=>{delete state.authorizations.release.expiresAt;});}
+ assert.equal(Object.values(readWorkflowState(f.root).reviews).find(item=>item.claim.id===staff.id).claim.status,'queued');
+ f.review('code_reviewer',{uncertain:true});f.review('appsec');
+ const plan=path.join(f.root,'epics/EPIC-006/epic-plan.md');
+ assert.throws(()=>check(plan,'release-verification-pr',{root:f.root}),/harness/);
+ assert.match(check(plan,'release-verification-pr',{root:f.root,releaseController:{actor:f.actor,observers:f.observers}}),/permitted/);
+ f.pulls[13]={number:13,state:'open',merged:false,head:{sha:f.head,ref:'epic/EPIC-006'},base:{sha:f.i,ref:'main',repo:{full_name:repository}}};
+ f.observers.pullRequest=()=>({repository,pr:13,head:f.head,state:'open',base:'main',headBranch:'epic/EPIC-006'});
+ assert.equal(f.control('publish').publishedPr,13);
+ const localClaims=Object.values(readWorkflowState(f.root).reviews).filter(item=>item.release);
+ const hostedReady=f.run(f.event('host-ready','review.ready')).review;
+ assert.equal(hostedReady.stage,'host');assert.equal(hostedReady.purpose,'publish-completed-verdicts');assert.equal(hostedReady.pr,13);
+ assert.deepEqual(Object.values(readWorkflowState(f.root).reviews).filter(item=>item.release),localClaims,'publication never redispatches local reviews');
+ for(const item of Object.values(readWorkflowState(f.root).reviews).filter(item=>item.pr===13)) {
+  f.observers.assignment=()=>({role:item.role,by:'host-publisher',sessionId:'publisher-session',head:f.head,operationId:`publish-${item.role}`});
+  assert.equal(f.control('review-claim',{claimId:item.claim.id}).purpose,'publish-completed-verdicts');
+  f.observers.delivery=()=>({role:item.role,by:'host-publisher',sessionId:'publisher-session',head:f.head,pr:13,operationId:`publish-${item.role}`,result:'succeeded'});
+  f.control('review-ack',{claimId:item.claim.id});assert.throws(()=>f.control('review-claim',{claimId:item.claim.id}),/queued|replay/);
+ }
+ assert.equal(f.run(f.event('host-ready','review.ready')).review.claims.length,2);
+ withWorkflowState(f.root,state=>{const key=Object.keys(state.reviews).find(key=>state.reviews[key].claim.id===localClaims[0].claim.id);delete state.reviews[key];});
+ assert.throws(()=>f.run(f.event('lost-claim','review.ready')),/missing|corrupt/,'lost runtime claims cannot be recreated as a new dispatch');
+});
+
+test('same open PR2 correction invalidates both readiness boundaries and requires fresh independent review',t=>{
+ const f=readyVerificationFixture(t);f.run(f.event('ready','review.ready'));f.review('code_reviewer');f.review('appsec');
+ f.pulls[13]={number:13,state:'open',merged:false,head:{sha:f.head,ref:'epic/EPIC-006'},base:{sha:f.i,ref:'main',repo:{full_name:repository}}};
+ f.observers.pullRequest=()=>({repository,pr:13,head:f.head,state:'open',base:'main',headBranch:'epic/EPIC-006'});f.control('publish');f.run(f.event('host','review.ready'));
+ f.report.observations[2]={kind:'host-review',status:'observed',at:'2026-09-26T12:20:00.000Z',head:f.head,references:[{type:'host',id:'real-earlier-review'}]};f.write();
+ assert.throws(()=>f.run(f.event('unauthorized-correction','release.verify','commit')),/independent request/);
+ git(f.root,'restore','.');
+ const by='staff-reviewer',sessionId=`staff-reviewer-${f.head}`,actor={harness:{authenticated:true,identity:by,sessionId}};
+ f.observers.activation=()=>({source:'session-harness',sessionId,loadedRevision:f.i,policyDigest:digest,observedAt:new Date().toISOString()});
+ const staffClaim=Object.values(readWorkflowState(f.root).reviews).find(item=>item.release==='activation-evidence' && item.role==='code_reviewer' && item.head===f.head).claim.id;
+ f.observers.review=()=>({head:f.head,role:'code_reviewer',claimId:staffClaim,by,sessionId,verdict:'changes-requested',evidence:'Actual newly available host facts are still pending in report',observedAt:new Date().toISOString()});
+ f.control('review',{actor,claimId:staffClaim});
+ assert.deepEqual(readWorkflowState(f.root).epics['EPIC-006'].releaseVerification.localReviews,[]);
+ assert.equal(readWorkflowState(f.root).epics['EPIC-006'].releaseVerification.lastReview.verdict,'changes-requested');
+ f.observers.correction=()=>({head:f.head,pr:13,by,sessionId,evidence:'New hosted review facts replace honest pending evidence',observedAt:new Date().toISOString(),indices:[2]});
+ f.control('correction',{actor});
+ f.observers.activation=()=>({source:'session-harness',sessionId:f.actor.harness.sessionId,loadedRevision:f.i,policyDigest:digest,observedAt:new Date().toISOString()});
+ const oldHead=f.head,oldClaims=Object.values(readWorkflowState(f.root).reviews).filter(item=>item.head===oldHead);
+ f.write();f.run(f.event('commit-correction','release.verify','commit'));f.control('dispatch',{deliveryId:'commit-correction'});f.head=commit(f,'honest newly available evidence');
+ f.observers.effect=()=>({operationId:'git-commit-correction',head:f.head,result:'succeeded',observedAt:new Date().toISOString()});f.control('ack',{deliveryId:'commit-correction'});
+ const state=readWorkflowState(f.root),record=state.epics['EPIC-006'].releaseVerification;
+ assert.equal(record.phase,'active');assert.equal(record.publishedPr,13);assert.equal(record.localReady,false);assert.equal(record.hostReady,false);assert.deepEqual(record.localReviews,[]);
+ assert.equal(f.pulls[13].head.sha,oldHead,'local commit acknowledgement precedes actual push');
+ assert.throws(()=>f.run(f.event('unpublished-local-head','review.ready')),/current published/);
+ for(const item of oldClaims) assert.equal(Object.values(state.reviews).find(current=>current.claim.id===item.claim.id).invalidated,true);
+ assert.throws(()=>f.control('review-claim',{claimId:oldClaims[0].claim.id}),/stale|readiness/);
+ assert.throws(()=>f.control('publish'),/Staff|review|current published/);
+ f.pulls[13].head.sha=f.i;assert.throws(()=>f.run(f.event('raced-remote','release.verify','push')),/remote head/);f.pulls[13].head.sha=oldHead;
+ f.run(f.event('push-correction','release.verify','push'));f.control('dispatch',{deliveryId:'push-correction'});
+ f.observers.effect=()=>({operationId:'git-push-correction',head:f.head,remoteHead:f.head,result:'succeeded',observedAt:new Date().toISOString()});
+ assert.throws(()=>f.control('ack',{deliveryId:'push-correction'}),/current published/,'a successful receipt cannot override the actual stale PR2 head');
+ f.pulls[13].head.sha=f.head;f.control('ack',{deliveryId:'push-correction'});
+ f.run(f.event('new-local','review.ready'));f.review('code_reviewer');f.review('appsec');
+ const hosted=f.run(f.event('new-host','review.ready')).review;assert.equal(hosted.pr,13);assert.equal(hosted.head,f.head);
+ assert.throws(()=>f.run(f.event('unpublished-verdicts','merge.eligible')),/acknowledgements/);
+ for(const item of Object.values(readWorkflowState(f.root).reviews).filter(item=>item.pr===13 && item.head===f.head)) {
+  f.observers.assignment=()=>({role:item.role,by:'host-publisher',sessionId:'publisher-session',head:f.head,operationId:`final-${item.role}`});f.control('review-claim',{claimId:item.claim.id});
+  f.observers.delivery=()=>({role:item.role,by:'host-publisher',sessionId:'publisher-session',head:f.head,pr:13,operationId:`final-${item.role}`,result:'succeeded'});f.control('review-ack',{claimId:item.claim.id});
+ }
+ assert.throws(()=>f.run(f.event('missing-final-qa','merge.eligible')),/mergeQA/);
+ f.observers.mergeQA=()=>({head:f.head,pr:13,accepted:true,evidence:'Independent full pre-merge trace acceptance',by:'independent-qa',sessionId:'qa-session',observedAt:new Date().toISOString()});
+ for(const review of f.reviews) review.commit_id=f.head;f.checks[0].head_sha=f.head;
+ const api=f.api;f.observers.api=endpoint=>endpoint.includes('/actions/runs?')?[{workflow_runs:[{check_suite_id:1,path:'.github/workflows/workflow.yml',repository:{full_name:repository},head_sha:f.head,event:'pull_request',status:'completed',conclusion:'success'}]}]:api(endpoint);
+ const eligible=f.run(f.event('actual-current-merge','merge.eligible'));assert.equal(eligible.publicationPr,13);assert.equal(eligible.originalPr,10);assert.equal(eligible.hostEvidence.head,f.head);
+ f.reviews[1].commit_id=oldHead;assert.throws(()=>f.run(f.event('stale-native-review','merge.eligible')),/approval/);f.reviews[1].commit_id=f.head;
+ f.observers.pullRequest=()=>({repository,pr:14,head:f.head,state:'open',base:'main',headBranch:'epic/EPIC-006'});
+ assert.throws(()=>f.run(f.event('replacement-pr','review.ready')),/PR2|same/);
+ assert.throws(()=>withWorkflowState(f.root,state=>{state.epics['EPIC-006'].releaseVerification.localReady=true;}),/malformed/);
+ withWorkflowState(f.root,state=>{delete state.epics['EPIC-006'].releaseVerification;});
+ assert.throws(()=>f.control('gate'),/missing/);
+ assert.throws(()=>f.run(f.event('fresh-clone','review.ready')),/runtime|release/);
 });
 
 test('fresh-checkout real CI entrypoint succeeds without runtime or PR1 reviews while standalone publication gate denies',t=>{
