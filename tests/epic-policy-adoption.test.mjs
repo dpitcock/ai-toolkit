@@ -11,6 +11,7 @@ import {check} from '../scripts/check-gate.mjs';
 import {replaceActivationBlock} from '../scripts/lib/activation-report.mjs';
 import {handleWorkflowEvent} from '../scripts/workflow-event.mjs';
 import {evaluateCompletion} from '../scripts/lib/epic-completion.mjs';
+import {observeEpicIntegration} from '../scripts/lib/epic-integration.mjs';
 import {controlledHostArgs,withFixtureFetch} from './helpers/controlled-host.mjs';
 const releaseURL=new URL('../scripts/lib/release-verification-proof.mjs',import.meta.url);
 const release=fs.existsSync(releaseURL)?await import(releaseURL):{};
@@ -539,7 +540,7 @@ test('same open PR2 correction invalidates both readiness boundaries and require
    assert.throws(()=>evaluateCompletion({...completion,releaseVerification:integratedRecord.proof,submittedHead:f.head}),/release verification is not bound to this completion/);
    assert.throws(()=>evaluateCompletion({...completion,releaseVerification:integratedRecord.proof,host:{...completion.host,mergeCommit:f.j}}),/release verification does not preserve the original completion relation/);
    f.observers.completion=()=>completion;
-   f.observers.integration=receipt=>({source:'authenticated-github-api',observedAt,repository,pullRequest:receipt.pullRequest,integrationSha:f.j,mergeCommit:f.m,checks:completion.host.checks,smoke:completion.host.smoke});
+   f.observers.integration=receipt=>observeEpicIntegration(receipt,{api:f.observers.api});
    f.checks[0].head_sha=f.j;
    const completionApi=f.observers.api;
    f.observers.api=endpoint=>endpoint.includes('/actions/runs?')?[{workflow_runs:[{check_suite_id:1,path:'.github/workflows/workflow.yml',repository:{full_name:repository},head_sha:f.j,event:'push',status:'completed',conclusion:'success'}]}]:completionApi(endpoint);
@@ -547,6 +548,10 @@ test('same open PR2 correction invalidates both readiness boundaries and require
    const trustedCompletionApi=f.observers.api;
    f.observers.api=endpoint=>endpoint.includes('/actions/runs?')?[{workflow_runs:[{check_suite_id:1,path:'untrusted.yml',repository:{full_name:repository},head_sha:f.j,event:'push',status:'completed',conclusion:'success'}]}]:trustedCompletionApi(endpoint);
    assert.throws(()=>f.run({...f.event('untrusted-j-workflow','epic.complete'),completionId:'J-untrusted-workflow'}),/J required gates workflow provenance/);f.observers.api=trustedCompletionApi;
+   const jReceipt=evaluateCompletion({...completion,releaseVerification:integratedRecord.proof}).receipt;
+   f.pulls[13].merge_commit_sha=f.i;
+   assert.throws(()=>observeEpicIntegration(jReceipt,{api:f.observers.api}),/release PR2 is not the canonical J integration/);
+   f.pulls[13].merge_commit_sha=f.j;
    const completed=f.run({...f.event('complete-at-j','epic.complete'),completionId:'J-completion'});
    assert.equal(completed.completion.integrationSha,f.j);assert.equal(completed.completion.releaseVerification.release.head,f.head);
    assert.equal(readWorkflowState(f.root).epics['EPIC-006'].completed,true);

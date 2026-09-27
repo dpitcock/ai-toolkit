@@ -1,6 +1,7 @@
 import {execFileSync} from 'node:child_process';
 import {evaluateChecks} from './review-evidence.mjs';
 import {assertHostFinalization} from './epic-finalization.mjs';
+import {validateReleaseRelation} from './release-verification-record.mjs';
 
 function fail(message) {throw new Error(`Epic integration ${message}`);}
 function github(endpoint,{paginate=false}={}) {
@@ -11,6 +12,20 @@ function github(endpoint,{paginate=false}={}) {
 function pages(value,field) {
  if(!Array.isArray(value) || value.some(page=>!Array.isArray(field?page?.[field]:page))) fail('paginated host response is malformed');
  return value.flatMap(page=>field?page[field]:page);
+}
+
+function observeReleaseIntegration({api,prefix,repository,pullRequest,integrationSha,mergeCommit,receipt}) {
+ const proof=receipt.releaseVerification;
+ if(!proof) return false;
+ validateReleaseRelation(proof);
+ const {adoption,release}=proof;
+ if(adoption.original.pr!==pullRequest || adoption.original.submittedHead!==receipt.submittedHead
+  || adoption.original.mergeCommit!==mergeCommit || release.integrationSha!==integrationSha || release.pr===null) fail('release proof does not bind the observed original integration');
+ const pull=api(`${prefix}/pulls/${release.pr}`);
+ if(pull?.number!==release.pr || pull.state!=='closed' || pull.merged!==true || pull.merge_commit_sha!==integrationSha
+  || pull.head?.sha!==release.head || pull.head?.ref!==`epic/${receipt.epic}` || pull.base?.sha!==release.base
+  || pull.base?.ref!=='main' || pull.base?.repo?.full_name!==repository) fail('release PR2 is not the canonical J integration');
+ return true;
 }
 
 // The default observer uses the existing authenticated gh session. No token is
@@ -28,7 +43,7 @@ export function observeEpicIntegration(receipt,{api=github}={}) {
   if(api(`${prefix}/git/ref/heads/main`)?.object?.sha!==integrationSha) fail('remote main integration changed');
  };
  verify();
- if(mergeCommit!==integrationSha) {
+ if(mergeCommit!==integrationSha && !observeReleaseIntegration({api,prefix,repository,pullRequest,integrationSha,mergeCommit,receipt})) {
   const {changed}=assertHostFinalization({api,repository,epic,pr:pullRequest,from:mergeCommit,to:integrationSha});
   if(!changed.length) fail('advanced integration requires actual finalization markers');
   finalization={from:mergeCommit,to:integrationSha,paths:changed};
