@@ -58,6 +58,12 @@ small serial groups, capturing full logs and exit codes:
   `tests/review-scheduling.test.mjs`, `tests/release-review-integrity.test.mjs`,
   `tests/controlled-host-transport.test.mjs`.
 
+QA additionally requires the small complete `tests/epic-completion.test.mjs`
+file after the completion schema correction, along with wrong-submitted-head
+and wrong-original-merge rejection assertions in the existing same-PR2 case.
+This affected-code coverage was requested by `/root/verify_full_qa` on
+2026-09-27 and does not expand the deferred hosted activation scope.
+
 Run these exact named `tests/init-workspace.test.mjs` cases:
 
 - policy candidates cannot self-declare delegated owner acceptance

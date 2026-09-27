@@ -16,7 +16,9 @@ pass or a replacement of the original release bar.
 The current session found and corrected ordinary PR stage routing and
 pre-merge materialization regressions; separate source/evidence commits are
 documented in `EPIC-006-qa-routing-correction.md` and
-`EPIC-006-qa-materialization-correction.md`. Interrupted broad runs remain
+`EPIC-006-qa-materialization-correction.md`. The subsequent completion schema
+correction is recorded in `EPIC-006-qa-completion-correction.md`.
+Interrupted broad runs remain
 incomplete. Focused local results will be recorded separately against their
 actual tested source, without reusing the historical full-suite claims below.
 
