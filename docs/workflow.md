@@ -15,6 +15,13 @@ Projects that use an externally deployed Slack control plane can follow the
 contracts plus the generated, non-secret `config/workspace-config.yaml`; it does not change local Codex,
 Cline, or Claude instructions.
 
+For an authorized project message or escalation, resolve the destination from
+`workspace.slack_channel_name`. If that exact project channel does not exist,
+create it through the connected ChatGPT Slack plugin before posting; then use
+Agent Alert for the authorized message. Do not substitute a shared or default
+channel. Creating or joining a channel is routing setup only and never proves
+identity, approval, or reviewer authority.
+
 ## Authenticated event controller
 
 The embedding harness imports `runWorkflowEvent` from
