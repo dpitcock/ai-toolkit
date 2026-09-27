@@ -48,11 +48,11 @@ function sameTree(left,right) {if(!equal(left.tree,right.tree)) fail('original m
 
 /** Trusted-base stage discovery only; it never grants adoption authority. */
 export function policyAdoptionStage({root,baseSha}={}) {
- if(canonicalRepository(root)!==REPOSITORY) return null;
  const base=localSnapshot(root,sha(baseSha));
  if(!base.tree.has(PLAN)) return null;
  const plan=doc(base);
  if(plan.id!=='EPIC-006-PLAN' || plan.revision!==1 || plan.status!=='merged') return null;
+ if(canonicalRepository(root)!==REPOSITORY) return null;
  const config=parseWorkspaceConfig(regular(base,POLICY[0]));
  const record=parseWorkspaceHistory(regular(base,POLICY[1])).at(-1);
  const raw='d58b8020bf9db0f73ab1ddcbe8867106132d3a713491c906a6711373a6eab7ab';
