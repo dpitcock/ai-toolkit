@@ -37,8 +37,9 @@ and the exact source subsequently committed above. `git diff --check` passed.
 
 Independent QA `/root/verify_full_qa` inspected the canonical schema and
 completion/admission path and agreed with the narrow corrections. The wider
-independent personal-use QA result remains pending. This regression is not
-full-suite, final Staff/AppSec or hosted activation evidence.
+independent personal-use QA result is recorded in `EPIC-006-personal-use-qa.md`.
+This regression is not full-suite, final Staff/AppSec or hosted activation
+evidence.
 
 ## Deferred hosted observer finding
 

@@ -111,6 +111,8 @@ on 2026-09-26 (local date), at document SHA-256
 
 A canonical revision reset would conflict with pinned bootstrap provenance and
 completed task history; do not reset or rewrite them to make a reduced bar pass.
-Actual local verification remains pending. These are planning assessments,
-not final implementation, QA-result, PR or activation approvals. This section
-records the reviews after their reviewed document snapshot.
+Local verification subsequently passed on 2026-09-27; the independent result
+and its limits are recorded in `EPIC-006-personal-use-qa.md`. The assessments
+listed above are planning assessments, not final implementation, QA-result,
+PR or activation approvals. This section records the reviews after their
+reviewed document snapshot.

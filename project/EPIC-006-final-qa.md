@@ -19,8 +19,10 @@ documented in `EPIC-006-qa-routing-correction.md` and
 `EPIC-006-qa-materialization-correction.md`. The subsequent completion schema
 correction is recorded in `EPIC-006-qa-completion-correction.md`.
 Interrupted broad runs remain
-incomplete. Focused local results will be recorded separately against their
-actual tested source, without reusing the historical full-suite claims below.
+incomplete. Focused personal-use QA passed 259 tests, independently verified
+against source `76a2785`; see `EPIC-006-personal-use-qa.md` for complete run
+identities, permitted reuse and explicit limits. This does not reuse the
+historical full-suite claims below or satisfy the canonical release bar.
 
 ## Current correction verification
 
