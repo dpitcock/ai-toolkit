@@ -34,14 +34,19 @@ files with that base. Delivery therefore has two ordered stages:
 
 1. A narrowly scoped validator is installed on the trusted default branch
    through one recorded host-admin bootstrap exception. The installer PR must
-   have fresh, independent Principal, QA, and AppSec verdicts on its exact
-   head and a successful `gates` check before the repository owner uses
-   GitHub's protected-branch bypass to merge it. The owner decision must bind
-   the PR number, head SHA, trusted base SHA, validator digest, and the fact
-   that this exception is limited to installing the validator. It is recorded
-   with the PR URL and merge receipt. This is an external host authorization
-   for transport only; it neither supplies a reviewer verdict nor applies to
-   a later recovery PR.
+   have fresh, independent GitHub-hosted Principal, QA, and AppSec approvals
+   from configured identities on its exact head and a successful `gates`
+   check. Immediately before the repository owner uses GitHub's
+   protected-branch bypass, the owner must re-read those approvals and the
+   check from GitHub's live PR/head data; local review records do not qualify.
+   The owner decision must bind one immutable `(PR number, head SHA, trusted
+   base SHA, validator digest)` tuple and state that it is limited to
+   installing the validator. It is recorded with the PR URL and merge receipt.
+   The installed validator consumes that exact authorization and rejects a
+   second bootstrap authorization, a tuple mismatch, or any later owner
+   bypass as recovery authority. This is an external host authorization for
+   transport only; it neither supplies a reviewer verdict nor applies to a
+   later recovery PR.
    The installer accepts no recovery action; it only recognizes a correctly
    shaped recovery record and validates a candidate PR against an immutable
    base SHA and path allowlist.
