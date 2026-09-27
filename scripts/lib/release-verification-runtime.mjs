@@ -51,9 +51,9 @@ function mirrors(resolved,i) {
  const base=localSnapshot(resolved.worktree,i);
  for(const name of POLICY) if(regular(resolved.worktree,name)!==base.read(name) || regular(resolved.coordinationRoot,name)!==base.read(name)) fail('root/worktree policy history must exactly mirror I');
 }
-function revalidate(resolved,record,observers,current,{dirty=false}={}) {
+function revalidate(resolved,record,observers,current,{dirty=false,integration}={}) {
  const i=record.adoption.adoption.integrationSha,api=observers?.api??githubJSON;
- if(api(`repos/${REPOSITORY}/git/ref/heads/main`)?.object?.sha!==i) fail('current main changed during effect observation');
+ if(api(`repos/${REPOSITORY}/git/ref/heads/main`)?.object?.sha!==(integration?.sha??i)) fail('current main changed during effect observation');
  mirrors(resolved,i);
  publicationBinding(record,current.head,api);
  const fresh=acceptedPolicy(resolved.worktree);
@@ -71,7 +71,7 @@ function publicationBinding(record,head,api) {
  if(remote!==pushed && !(advancing && remote===head)) fail('PR2 remote head differs from acknowledged push or current dispatched push');
  return {pr:record.publishedPr,head:remote};
 }
-function context(state,resolved,actor,observers,{empty=false}={}) {
+function context(state,resolved,actor,observers,{empty=false,integration}={}) {
  const {worktree:root,coordinationRoot,repository,branch,policy}=resolved;
  if(root===coordinationRoot || repository!==REPOSITORY || branch!==BRANCH) fail('requires the registered isolated EPIC-006 worktree');
  const adopted=state.epics[EPIC]?.policyAdoption;
@@ -83,8 +83,12 @@ function context(state,resolved,actor,observers,{empty=false}={}) {
  if(loaded?.source!=='session-harness' || loaded.sessionId!==actor.harness.sessionId || loaded.loadedRevision!==i || loaded.policyDigest!==digest || typeof loaded.observedAt!=='string' || !Number.isFinite(Date.parse(loaded.observedAt))) fail('observed loaded integrated adapter required');
  const head=git(root,['rev-parse','HEAD']);
  const record=state.epics[EPIC]?.releaseVerification;
- const publication=publicationBinding(record,head,observers?.api??githubJSON);
- const proof=proveReleaseVerification({root,baseSha:i,headSha:head,headRef:branch,api:observers?.api,empty,publication});
+ // The published PR2/H2 receipt remains a separate runtime binding after the
+ // PR closes.  It cannot be passed into the pure integrated proof: that proof
+ // deliberately permits no open PR publication alongside a merged J relation.
+ const publication=integration?undefined:publicationBinding(record,head,observers?.api??githubJSON);
+ if(integration) publicationBinding(record,head,observers?.api??githubJSON);
+ const proof=proveReleaseVerification({root,baseSha:i,headSha:head,headRef:branch,api:observers?.api,empty,publication,integration});
  if(!equal(proof.adoption,adopted.proof)) fail('runtime adoption differs from live historical chain');
  mirrors(resolved,i);
  return {head,loaded,proof};
@@ -133,14 +137,37 @@ export function applyReleaseVerification(state,input,resolved,actor,observers) {
  * before execution; ack/reconcile observe effects. No method executes commands,
  * pushes, grants tool permissions or writes to the coordination checkout.
  */
-export function controlReleaseVerification({root,operation,deliveryId,claimId,actor,observers}={}) {
+export function controlReleaseVerification({root,operation,deliveryId,claimId,actor,observers,integration}={}) {
  trustedActor(actor);root=fs.realpathSync(root);
  return withWorkflowState(root,state=>{
   const resolved=acceptedPolicy(root);
   const record=state.epics[EPIC]?.releaseVerification;if(!record) fail('runtime release record is missing');
   validateReleaseRecord(record);assertReleaseReviewState(state,record);
-  const action=['dispatch','ack','uncertain','reconcile'].includes(operation)?'release.verify':'review.ready';
+  const action=operation==='integrate'?'merge.eligible':['dispatch','ack','uncertain','reconcile'].includes(operation)?'release.verify':'review.ready';
   authorize(state,resolved,actor,record,action);
+  if(operation==='integrate') {
+   if(record.phase==='integrated') fail('release integration is already recorded');
+   exactReleaseKeys(integration,['pr','sha']);
+   if(!Number.isSafeInteger(integration.pr) || integration.pr!==record.publishedPr || typeof integration.sha!=='string' || !/^[a-f0-9]{40}$/.test(integration.sha)) fail('integration must name the current published PR2 and J');
+   const current=snapshot(root,record);
+   if(current.head!==record.head || Object.values(record.actions).some(item=>['authorized','dispatched','uncertain'].includes(item.status))) fail('unacknowledged head change or pending action prevents integration');
+   assertLocalReleaseGate(state,record);
+   if(!record.hostReady || !record.correction || record.correction.status!=='committed' || record.correction.correctedHead!==record.head) fail('integrated release requires current same-PR evidence correction');
+   const publications=Object.values(state.reviews).filter(item=>item.pr===record.publishedPr && item.head===record.head && !item.invalidated);
+   if(publications.length!==2 || publications.some(item=>!['acknowledged','reconciled'].includes(item.claim.status))) fail('integrated release requires current hosted publication acknowledgements');
+   const qa=observed(observers,'mergeQA',{head:record.head,pr:record.publishedPr,correction:record.correction});
+   exactReleaseKeys(qa,['head','pr','accepted','evidence','by','sessionId','observedAt']);
+   if(qa.head!==record.head || qa.pr!==record.publishedPr || qa.accepted!==true || typeof qa.evidence!=='string' || !qa.evidence.trim() || qa.evidence.length>2048
+    || typeof qa.by!=='string' || !qa.by.trim() || qa.by.trim().toLowerCase()===record.developer.trim().toLowerCase() || typeof qa.sessionId!=='string' || !qa.sessionId.trim() || qa.sessionId===record.developerSession
+    || typeof qa.observedAt!=='string' || !Number.isFinite(Date.parse(qa.observedAt))) fail('current independent final merge QA acceptance required');
+   const {proof}=context(state,resolved,actor,observers,{integration});
+   const hostEvidence=evaluateReleaseHostGate({root,baseSha:record.adoption.adoption.integrationSha,headSha:record.head,pr:record.publishedPr,integration,api:observers?.api});
+   if(!equal(hostEvidence.releaseVerification,proof) || hostEvidence.releaseVerification.release.pr!==record.publishedPr || hostEvidence.releaseVerification.release.head!==record.head) fail('verified host relation differs from the current release runtime');
+   revalidate(resolved,record,observers,current,{integration});context(state,resolved,actor,observers,{integration});
+   authorize(state,resolved,actor,record,action);
+   record.proof=hostEvidence.releaseVerification;record.phase='integrated';validateReleaseRecord(record);
+   return {phase:record.phase,proof:structuredClone(record.proof),hostEvidence};
+  }
   if(!['dispatch','ack','uncertain','reconcile'].includes(operation)) {
    context(state,resolved,actor,observers);const current=snapshot(root,record);
    exactPublishedHead(record,observers);

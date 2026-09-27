@@ -75,6 +75,7 @@ export function materializeReleaseHistory({root,baseSha,headSha,api=githubJSON}=
 
 /** Native independent current-head gate, separate from pure committed provenance. */
 export function evaluateReleaseHostGate({root,baseSha,headSha,headRef=BRANCH,pr,api=githubJSON,integration}={}) {
+ if(integration!==undefined && (!integration || Object.keys(integration).sort().join(',')!=='pr,sha' || integration.pr!==pr || !Number.isSafeInteger(integration.pr) || integration.pr<1 || typeof integration.sha!=='string' || !/^[a-f0-9]{40}$/.test(integration.sha))) fail('integration PR must exactly match requested PR2');
  const proof=proveReleaseVerification({root,baseSha,headSha,headRef,api,integration}),prefix=`repos/${REPOSITORY}`;
  const verify=()=>{
   const pull=api(`${prefix}/pulls/${pr}`);

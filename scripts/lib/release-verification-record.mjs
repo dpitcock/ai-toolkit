@@ -79,7 +79,9 @@ export function validateReleaseRecord(value) {
  if(value.hostReady && (value.localReviews.length!==2 || value.publishedPr===null)) releaseFailure('host readiness requires local reviews and PR2');
  if(value.publishedPr!==null && (!Number.isSafeInteger(value.publishedPr) || value.publishedPr<1 || [value.adoption.original.pr,value.adoption.finalization.pr,value.adoption.adoption.pr].includes(value.publishedPr))) releaseFailure('PR2 identity invalid');
  if(value.proof!==null) validateReleaseRelation(value.proof);
- if(value.phase==='integrated' && (!value.proof?.release.integrationSha || value.proof.release.pr!==value.publishedPr)) releaseFailure('integrated runtime lacks J proof');
+ if(value.phase==='integrated' && (!value.proof?.release.integrationSha || value.proof.release.pr!==value.publishedPr || value.proof.release.head!==value.head
+  || !value.localReady || !value.hostReady || value.localReviews.length!==2 || !value.correction || value.correction.status!=='committed' || value.correction.correctedHead!==value.head
+  || Object.values(value.actions).some(item=>!['acknowledged','reconciled'].includes(item.status)))) releaseFailure('integrated runtime lacks the final J relation');
  return value;
 }
 
