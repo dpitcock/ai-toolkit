@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "repository": "dpitcock/ai-toolkit",
+  "grandfatheredThroughPr": 13,
+  "productionDirectories": [
+    "templates/", "epics/EPIC-XXX/", "policy/", ".clinerules/", "skills/",
+    ".github/workflows/", ".github/actions/"
+  ],
+  "productionFiles": [
+    "project/project-plan.md.template",
+    "config/workspace-config.yaml",
+    "project/workspace-config-history.jsonl",
+    "AGENTS.md", "CLAUDE.md", "skills-lock.json", "package.json", "package-lock.json",
+    "docs/gates.md", "docs/roles.md", "docs/workflow.md", "docs/installation.md", "docs/review-paths.md",
+    ".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS",
+    "scripts/init-project.sh", "scripts/init-workspace.mjs",
+    "scripts/install-native-lock.mjs", "scripts/install-skills.sh",
+    "scripts/link-skills.mjs", "scripts/new-epic.sh",
+    "scripts/check-gate.mjs", "scripts/check-gate.sh", "scripts/check-pr.mjs",
+    "scripts/check-project.mjs", "scripts/check-tier1.mjs", "scripts/check-tier2.mjs",
+    "scripts/check-host-reviews.mjs", "scripts/preflight.mjs",
+    "scripts/admit-epic.mjs", "scripts/workflow-event.mjs", "scripts/review-route.mjs",
+    "scripts/lib/review-paths.mjs", "scripts/lib/local-review-route.mjs",
+    "scripts/lib/activation-history.mjs", "scripts/lib/activation-report.mjs",
+    "scripts/lib/bootstrap-policy.mjs", "scripts/lib/epic-completion.mjs",
+    "scripts/lib/epic-finalization.mjs", "scripts/lib/epic-integration.mjs",
+    "scripts/lib/epic-policy-adoption.mjs", "scripts/lib/policy-adoption-record.mjs",
+    "scripts/lib/release-verification-proof.mjs", "scripts/lib/release-verification-record.mjs",
+    "scripts/lib/release-verification-reviews.mjs", "scripts/lib/release-verification-runtime.mjs",
+    "scripts/lib/review-evidence.mjs", "scripts/lib/review-scheduling.mjs",
+    "scripts/lib/task-assessment.mjs", "scripts/lib/task-tier.mjs",
+    "scripts/lib/tier-defaults.mjs", "scripts/lib/tier3-policy.mjs",
+    "scripts/lib/workflow-admission.mjs", "scripts/lib/workflow-authorization.mjs",
+    "scripts/lib/workflow-context.mjs", "scripts/lib/workflow-state.mjs",
+    "scripts/lib/workspace-config.mjs", "scripts/lib/workspace-history-validation.mjs",
+    "scripts/lib/workspace-history.mjs"
+  ]
+}
