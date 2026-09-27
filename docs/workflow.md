@@ -1,5 +1,12 @@
 # Project lifecycle
 
+For this toolkit's own development, first apply the repository-specific
+[path-review route](review-paths.md). A verified `authoring` route requires
+Code Reviewer only, relevant tests and a PR, without the epic or production
+review chain below. Shipped-path changes and downstream adopters keep their
+applicable governed workflow. Classify paths, not the production-like systems
+that an internal test happens to simulate.
+
 This repository turns a project goal into independently reviewable epics. The EM owns scope and assignment, the Principal owns technical coherence, QA defines evidence, and AppSec participates at three distinct points. Developers own implementation; independent reviewers decide whether it can ship. Read roles.md for the upstream skill used at each stage and gates.md for exact approval fields.
 
 ## Tool-specific execution

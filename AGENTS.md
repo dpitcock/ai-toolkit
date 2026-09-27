@@ -1,5 +1,34 @@
 # Agent workflow blueprint
 
+## This toolkit's own development
+
+For `dpitcock/ai-toolkit`, first classify intended paths with
+`node scripts/review-route.mjs --base origin/main --files PATH ...` after
+refreshing the trusted base. Repeat against the complete committed diff with
+`--base origin/main --head HEAD` before review; supply `--pr NUMBER` for an
+existing PR. The versioned boundary is `policy/review-paths.json`.
+
+An `authoring` result is dev-environment work: use an isolated branch, relevant
+tests, independent Code Reviewer on the current commit, and PR-only delivery.
+Do not run the epic-admission, task-tier or production specialist-review chain
+for this route. Tests and their helpers/fixtures, ordinary docs, development
+records and internal tooling default to this route. A test fixture is not a
+production service merely because it models one.
+
+A `production` result uses the governed workflow below, including QA and
+AppSec and all applicable other roles. The manifest lists shipped templates,
+policy, bootstrap/adoption/enforcement code, normative instructions, dependency
+manifests and CI/Actions. New shipped entrypoints/dependencies must be added to
+it; do not introduce a blanket production rule for internal scripts or tests.
+The host gate reads trusted-base policy and checks the complete PR diff,
+including deletions and old rename paths. Candidate policy cannot relax its
+own review. PRs through the recorded cutover keep their existing requirements.
+
+This section takes precedence over the generic workflow only for a verified
+toolkit `authoring` route. `legacy` results and downstream adopters retain their
+existing environment and approval rules. Missing/malformed policy errors block
+classification. See `docs/review-paths.md` for the exact mapping and host setup.
+
 For project development, read docs/roles.md and docs/workflow.md at session start. Governance below is the outer workflow for every upstream skill and lifecycle command. Resolve paths from the repository/worktree root. Bootstrap: `bash scripts/init-project.sh`; missing skills are an installation problem, never permission to skip gates.
 
 | Intent / command | Required local workflow before upstream skill |

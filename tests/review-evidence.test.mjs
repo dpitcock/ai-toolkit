@@ -29,6 +29,20 @@ test('accepts current-head mapped approvals and returns host-bound receipts',()=
   assert.ok(result.receipts.every(receipt=>receipt.reviewedSha===head && receipt.verdict==='APPROVED'));
 });
 
+test('production final roles include QA and applicable Principal and UI review, with exact-head evidence',()=>{
+  const requiredRoles=['code_reviewer','principal','qa','appsec','accessibility_reviewer','ui_designer'];
+  const identities=Object.fromEntries(requiredRoles.map(role=>[role,identity(role)]));
+  const reviews=requiredRoles.map((role,index)=>review(index+1,role));
+  const value=input({requiredRoles,identities,reviews});
+  assert.deepEqual(evaluateReviews(value).receipts.map(receipt=>receipt.role),requiredRoles);
+  for(const role of requiredRoles) {
+    assert.throws(()=>evaluateReviews({...value,reviews:reviews.filter(item=>item.user.login!==role)}),/approval/);
+    assert.throws(()=>evaluateReviews({...value,identities:{...identities,[role]:undefined}}),/identity/);
+    assert.throws(()=>evaluateReviews({...value,reviews:reviews.map(item=>item.user.login===role?{...item,commit_id:oldHead}:item)}),/approval/);
+  }
+  assert.throws(()=>evaluateReviews({...value,requiredRoles:['appsec','qa','code_reviewer']}),/order/);
+});
+
 test('reads all paginated pages and rejects outdated approvals',()=>{
   const paginated=[[review(1,'staff','APPROVED',oldHead)],[review(2,'security')]];
   assert.throws(()=>evaluateReviews(input({reviews:paginated})),/current head|approval/i);

@@ -5,6 +5,7 @@ import {validateTier2Assessment} from './check-tier2.mjs';
 import {observeMergedEpic,assertFinalizationSnapshots,localSnapshot} from './lib/epic-finalization.mjs';
 import {provePolicyAdoption,policyAdoptionStage,materializePolicyAdoptionHistory} from './lib/epic-policy-adoption.mjs';
 import {releaseVerificationStage,materializeReleaseHistory,proveReleaseVerification} from './lib/release-verification-proof.mjs';
+import {localReviewRoute} from './lib/local-review-route.mjs';
 function canonicalCommit(value,label) {
  if(!/^[a-f0-9]{40}$/i.test(value??'')) throw new Error(`${label} must be a full commit SHA`);
  const canonical=execFileSync('git',['rev-parse',`${value}^{commit}`],{encoding:'utf8'}).trim();
@@ -16,11 +17,17 @@ if(!/^[a-f0-9]{40}$/.test(base??'')) throw new Error('BASE_SHA must be a full co
 const headSha=canonicalCommit(process.env.HEAD_SHA,'HEAD_SHA');
 const checkedOutHead=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
 if(checkedOutHead.toLowerCase()!==headSha.toLowerCase()) throw new Error('HEAD_SHA must match the checked-out PR HEAD');
-const changed=execFileSync('git',['diff','--name-only','-z',`${base}...${headSha}`],{encoding:'utf8'}).split('\0').filter(Boolean);
+const changed=execFileSync('git',['diff','--no-renames','--name-only','-z',`${base}...${headSha}`],{encoding:'utf8'}).split('\0').filter(Boolean);
+const event=process.env.GITHUB_EVENT_PATH?JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH,'utf8')):null;
+const route=localReviewRoute({baseRef:base,headRef:headSha,prNumber:event?.pull_request?.number});
+if(route.route==='authoring') {
+ console.log('Authoring infrastructure: independent code_reviewer required by host-review-gate; legacy epic and production role gates do not apply.');
+ process.exit(0);
+}
 const ids=new Set(changed.map(f=>f.match(/^epics\/(EPIC-\d+)\//)?.[1]).filter(Boolean));
 const branch=process.env.HEAD_REF || execFileSync('git',['branch','--show-current'],{encoding:'utf8'}).trim();
 const branchId=branch.match(/^epic\/(EPIC-\d+)$/)?.[1]; if(branchId) ids.add(branchId);
-const templateFile=/^(?:docs\/|project\/|scripts\/|tests\/|skills\/|\.github\/|\.clinerules\/|epics\/EPIC-XXX\/|project\/project-plan\.md\.template$|(?:README\.md|AGENTS\.md|CLAUDE\.md|package(?:-lock)?\.json|skills-lock\.json|\.gitignore)$)/;
+const templateFile=/^(?:docs\/|project\/|policy\/|scripts\/|tests\/|skills\/|\.github\/|\.clinerules\/|epics\/EPIC-XXX\/|project\/project-plan\.md\.template$|(?:README\.md|AGENTS\.md|CLAUDE\.md|package(?:-lock)?\.json|skills-lock\.json|\.gitignore)$)/;
 const planOnlyFile=/^(?:docs\/[^/]+\.md|project\/[^/]+\.md|epics\/.+\.md|README\.md)$/;
 const assessmentPaths=changed.filter(file=>/^project\/task-assessments\/.+\.yaml$/.test(file));
 const policyChanged=changed.some(name=>['config/workspace-config.yaml','project/workspace-config-history.jsonl'].includes(name));

@@ -5,6 +5,12 @@ description: Use when opening a PR, invoking /ship, finishing a development bran
 
 # Governed Ship
 
+First honor AGENTS.md's repository-specific path-review route. For a verified
+toolkit `authoring` diff, require relevant tests, independent Code Reviewer on
+the current commit and PR-only delivery, not the epic/event/AppSec chain below.
+The trusted host gate independently checks the full diff. Production and
+legacy routes retain these gates; do not waive existing PR requirements.
+
 ## Event-boundary adapter contract
 
 Before dispatching review or merge-readiness work, start a fresh task session

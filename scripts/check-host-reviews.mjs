@@ -3,6 +3,7 @@ import {execFileSync} from 'node:child_process';
 import {assertSameHead,evaluateChecks,evaluateReviews} from './lib/review-evidence.mjs';
 import {trustedPolicyAdoptionGate} from './lib/epic-policy-adoption.mjs';
 import {trustedReleaseVerificationGate} from './lib/release-verification-proof.mjs';
+import {parseReviewPathPolicy,reviewRouteForPull,REVIEW_POLICY_PATH,TOOLKIT_REPOSITORY} from './lib/review-paths.mjs';
 
 function fail(message) { throw new Error(`Host review gate failed: ${message}`); }
 function argument(name,args=process.argv) {
@@ -35,6 +36,29 @@ function pull(repository,pr) {
   const value=json(gh([`repos/${repository}/pulls/${pr}`]),'pull request');
   if(typeof value?.head?.sha!=='string') fail('pull request head is unavailable');
   return value.head.sha;
+}
+
+function currentPull(repository,pr,expected) {
+  const current=json(gh([`repos/${repository}/pulls/${pr}`]),'pull request');
+  assertSameHead(current.head?.sha,expected.head.sha);
+  if(current.base?.sha!==expected.base.sha || current.base?.ref!==expected.base.ref
+    || current.base?.repo?.full_name!==expected.base.repo.full_name) fail('base changed during review routing');
+  if(current.state!==expected.state || current.changed_files!==expected.changed_files) fail('PR changed during review routing');
+  return current;
+}
+
+function pathRoute(repository,pr,current,configuredRoles) {
+  if(repository!==TOOLKIT_REPOSITORY) return reviewRouteForPull({repository,pr,configuredRoles});
+  const base=current.base?.sha;
+  assertSameHead(base,base);
+  const resource=json(gh([`repos/${repository}/contents/${REVIEW_POLICY_PATH}?ref=${base}`]),'trusted review policy');
+  if(resource?.type!=='file' || resource.path!==REVIEW_POLICY_PATH || resource.encoding!=='base64'
+    || typeof resource.content!=='string' || resource.content.length>128*1024) fail('trusted review policy is missing or malformed');
+  const policy=parseReviewPathPolicy(Buffer.from(resource.content,'base64').toString('utf8'));
+  const files=pr<=policy.grandfatheredThroughPr?undefined:paginated(
+    gh([`repos/${repository}/pulls/${pr}/files?per_page=100`],{paginated:true}),'changed files');
+  currentPull(repository,pr,current);
+  return reviewRouteForPull({policy,repository,pr,configuredRoles,files,changedFiles:current.changed_files});
 }
 
 function trustedApi() {
@@ -114,12 +138,17 @@ export function runHostReviewGate(args=process.argv.slice(2)) {
   const pr=argument('--pr',args);
   if(!/^\d+$/.test(pr) || Number(pr)<1) fail('--pr must be a positive integer');
   const stage=argument('--stage',args);
+  const current=repository===TOOLKIT_REPOSITORY && stage==='final'?json(gh([`repos/${repository}/pulls/${pr}`]),'pull request'):null;
+  if(current && (current.state!=='open' || current.base?.ref!=='main' || current.base?.repo?.full_name!==repository)) fail('PR is outside the trusted main gate');
+  const configuredRoles=jsonArgument('--required-roles',args);
+  const route=current?pathRoute(repository,Number(pr),current,configuredRoles):null;
   const result=evaluateHostReviewGate({
     repository,pr:Number(pr),head:argument('--head',args),stage,
-    requiredRoles:jsonArgument('--required-roles',args),identities:jsonArgument('--identities',args),
+    requiredRoles:route?.requiredRoles??configuredRoles,identities:jsonArgument('--identities',args),
     requiredChecks:jsonArgument('--required-checks',args),
     plan:stage==='plan'?jsonArgument('--plan',args):undefined,api:trustedApi(),
   });
+  if(current) currentPull(repository,Number(pr),current);
   process.stdout.write(`${JSON.stringify(result)}\n`);
   return result;
 }
@@ -149,8 +178,9 @@ function publishGate(repository,args,{verifyMerged=false}={}) {
       head=current.head?.sha;
       assertSameHead(head,head);
       publish('pending');
-      const roles=jsonArgument('--required-roles',args);
-      if(!Array.isArray(roles) || !roles.includes('code_reviewer') || !roles.includes('appsec')) fail('final code reviewer and AppSec are mandatory');
+      const configuredRoles=jsonArgument('--required-roles',args);
+      const route=verifyMerged?reviewRouteForPull({repository:'legacy',pr,configuredRoles}):pathRoute(repository,pr,current,configuredRoles);
+      const roles=route.requiredRoles;
       // Owner-managed role maps cannot remove these final-review floors.
       // Compare CI definitions to trusted main. Workflow changes require the
       // existing independent bootstrap/maintenance path, never self-validation.
@@ -159,17 +189,21 @@ function publishGate(repository,args,{verifyMerged=false}={}) {
       const integration=verifyMerged?integratedSnapshot(repository,current):null;
       for(const file of ['workflow.yml','review-gates.yml']) {
         const blob=ref=>json(gh([`repos/${repository}/contents/.github/workflows/${file}?ref=${ref}`]),'workflow').sha;
-        const trusted=blob(integration?.mainSha??defaultBranch);
+        const trusted=blob(integration?.mainSha??(repository===TOOLKIT_REPOSITORY?current.base.sha:defaultBranch));
         if(typeof trusted!=='string' || trusted!==blob(head)) fail('candidate workflow differs from trusted default branch');
       }
-      const release=verifyMerged?null:trustedReleaseVerificationGate({root:process.cwd(),repository,pull:current});
-      const adoption=verifyMerged || release?null:trustedPolicyAdoptionGate({root:process.cwd(),repository,pull:current});
-      const result=release??adoption??evaluateHostReviewGate({repository,pr,head,stage:'final',requiredRoles:roles,
+      const authoring=route.route==='authoring';
+      const release=verifyMerged || authoring?null:trustedReleaseVerificationGate({root:process.cwd(),repository,pull:current});
+      const adoption=verifyMerged || authoring || release?null:trustedPolicyAdoptionGate({root:process.cwd(),repository,pull:current});
+      const historical=route.route==='legacy'?(release??adoption):null;
+      const result=historical??evaluateHostReviewGate({repository,pr,head,stage:'final',requiredRoles:roles,
         identities:jsonArgument('--identities',args),requiredChecks:['gates'],api:trustedApi()});
+      if(repository===TOOLKIT_REPOSITORY && !verifyMerged) currentPull(repository,pr,current);
       if(integration) recheckIntegration(repository,pr,head,integration);
       publish('success');
       // Close a head change during publication by revoking this snapshot.
       assertSameHead(pull(repository,pr),head);
+      if(repository===TOOLKIT_REPOSITORY && !verifyMerged) currentPull(repository,pr,current);
       if(adoption) trustedPolicyAdoptionGate({root:process.cwd(),repository,pull:json(gh([`repos/${repository}/pulls/${pr}`]),'pull request')});
       if(release) trustedReleaseVerificationGate({root:process.cwd(),repository,pull:json(gh([`repos/${repository}/pulls/${pr}`]),'pull request')});
       if(integration) recheckIntegration(repository,pr,head,integration);
