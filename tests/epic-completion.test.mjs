@@ -60,6 +60,16 @@ test('a corrective PR or changed integration keeps the same epic active',()=>{
  assert.throws(()=>admitEpic(admission(receipt,{currentIntegrationSha:submitted}),{id:'EPIC-007'}),/changed/i);
 });
 
+test('admission revalidates the recorded findings, documentation, and corrective-PR receipts',()=>{
+ const receipt=evaluateCompletion(completion()).receipt;
+ receipt.findings.unresolved.push('SEC-1');
+ assert.throws(()=>admitEpic(admission(receipt),{id:'EPIC-007'}),/findings/i);
+ const stale=evaluateCompletion(completion()).receipt;stale.documentation.revision=submitted;
+ assert.throws(()=>admitEpic(admission(stale),{id:'EPIC-007'}),/documentation/i);
+ const corrective=evaluateCompletion(completion()).receipt;corrective.correctivePullRequests.push(43);
+ assert.throws(()=>admitEpic(admission(corrective),{id:'EPIC-007'}),/corrective/i);
+});
+
 test('deleted state needs recovery and legacy history is an explicit baseline',()=>{
  const receipt=evaluateCompletion(completion()).receipt;
  assert.throws(()=>admitEpic(admission(receipt,{deleted:true}),{id:'EPIC-007'}),/recovery/i);

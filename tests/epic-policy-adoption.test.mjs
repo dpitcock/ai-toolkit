@@ -511,10 +511,22 @@ test('same open PR2 correction invalidates both readiness boundaries and require
  assert.throws(()=>f.control('integrate',{integration:{pr:13,sha:f.j,extra:true}}),/schema/);
  const integrated=f.control('integrate',{integration:{pr:13,sha:f.j}});
  assert.equal(integrated.phase,'integrated');assert.equal(integrated.proof.release.head,f.head);assert.equal(integrated.proof.release.integrationSha,f.j);
- const integratedRecord=readWorkflowState(f.root).epics['EPIC-006'].releaseVerification;
- assert.equal(integratedRecord.loaded.loadedRevision,f.i,'J adapter adoption belongs to the later completion stage');
- assert.throws(()=>f.run({...f.event('still-incomplete','epic.complete'),completionId:'not-yet'}),/fresh|completion|verified J/);
- assert.throws(()=>f.control('integrate',{integration:{pr:13,sha:f.j}}),/identity|integrated/);
+   const integratedRecord=readWorkflowState(f.root).epics['EPIC-006'].releaseVerification;
+   assert.equal(integratedRecord.loaded.loadedRevision,f.i,'J adapter adoption belongs to the later completion stage');
+   assert.throws(()=>f.run({...f.event('still-incomplete','epic.complete'),completionId:'not-yet'}),/fresh|completion|verified J/);
+   const observedAt=new Date().toISOString();
+   f.observers.activation=()=>({source:'session-harness',sessionId:f.actor.harness.sessionId,loadedRevision:f.j,policyDigest:digest,observedAt});
+   const completion={repository,epic:'EPIC-006',pullRequest:10,submittedHead:f.h0,integrationSha:f.j,
+    host:{source:'authenticated-github-api',observedAt,merged:true,mergeCommit:f.m,checks:[{id:'j-gates',name:'gates',status:'completed',conclusion:'success',head:f.j}],smoke:{revision:f.j,result:'passed'}},
+    policy:{digest,loadedRevision:3},findings:{unresolved:[]},documentation:{revision:f.j,current:true},
+    activation:{source:'session-harness',observedAt,active:true,agentPath:'controlled-fixture',resourceIds:['j-session']},
+    cleanup:{source:'session-harness',observedAt,revalidated:true,worktrees:[],branches:[],processes:[]},correctivePullRequests:[]};
+   f.observers.completion=()=>completion;
+   f.observers.integration=receipt=>({source:'authenticated-github-api',observedAt,repository,pullRequest:receipt.pullRequest,integrationSha:f.j,mergeCommit:f.m,checks:completion.host.checks,smoke:completion.host.smoke});
+   const completed=f.run({...f.event('complete-at-j','epic.complete'),completionId:'J-completion'});
+   assert.equal(completed.completion.integrationSha,f.j);assert.equal(completed.completion.releaseVerification.release.head,f.head);
+   assert.equal(readWorkflowState(f.root).epics['EPIC-006'].completed,true);
+   assert.throws(()=>f.control('integrate',{integration:{pr:13,sha:f.j}}),/identity|integrated/);
  assert.throws(()=>withWorkflowState(f.root,state=>{state.epics['EPIC-006'].releaseVerification.localReady=true;}),/malformed/);
  withWorkflowState(f.root,state=>{delete state.epics['EPIC-006'].releaseVerification;});
  assert.throws(()=>f.control('gate'),/missing/);

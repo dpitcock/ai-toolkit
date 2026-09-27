@@ -12,7 +12,7 @@ import {evaluateHostReviewGate} from './check-host-reviews.mjs';
 import {evaluateCompletion,admitEpic} from './lib/epic-completion.mjs';
 import {validateEpicAdmission} from './lib/workflow-admission.mjs';
 import {observeMergedEpic} from './lib/epic-finalization.mjs';
-import {applyReleaseVerification,applyReleaseReviewBoundary} from './lib/release-verification-runtime.mjs';
+import {applyReleaseVerification,applyReleaseReviewBoundary,completeReleaseVerification} from './lib/release-verification-runtime.mjs';
 
 const MAX_INPUT_BYTES=64*1024;
 const TYPES=new Set(['epic.start','task.dispatch','review.ready','merge.eligible','epic.complete','release.verify']);
@@ -95,7 +95,10 @@ function lifecycle(state,input,resolved,identity,observers) {
  }
  if(input.type==='epic.complete') {
   if(plan.status!=='merged') fail('completion requires canonical merged plan');
-  if(identity.repository==='dpitcock/ai-toolkit' && input.epic==='EPIC-006' && state.epics[input.epic]?.releaseVerification?.phase!=='integrated') fail('EPIC-006 completion requires verified J release integration');
+  if(identity.repository==='dpitcock/ai-toolkit' && input.epic==='EPIC-006') {
+   if(state.epics[input.epic]?.releaseVerification?.phase!=='integrated') fail('EPIC-006 completion requires verified J release integration');
+   return completeReleaseVerification(state,input,resolved,identity.actor,observers);
+  }
   const evidence=observed(observers,'completion',{...context,completionId:input.completionId});
   if(evidence?.repository!==identity.repository || evidence?.epic!==input.epic || evidence?.pullRequest!==pullRequest(plan,identity.repository) || evidence?.policy?.digest!==resolved.policy.provenance.digest) fail('completion does not bind canonical epic, PR, and accepted policy');
   const {receipt}=evaluateCompletion(evidence);
