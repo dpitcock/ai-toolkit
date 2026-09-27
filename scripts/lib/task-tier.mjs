@@ -58,21 +58,6 @@ function hasAccessibilityEvidence(input) {
     && evidence.finalReview.commit.toLowerCase() === input.reviewedCommit.toLowerCase();
 }
 
-function validTier(value) {
-  return Number.isInteger(value) && value >= 1 && value <= 3;
-}
-
-/**
- * Retains every applicable floor when a task is routed. Callers must provide
- * the classifier result rather than a developer-supplied tier claim.
- */
-export function selectEffectiveTier({configuredMinimum, riskTier, earlierPreflightTier = 1}) {
-  for (const [name, tier] of Object.entries({configuredMinimum, riskTier, earlierPreflightTier})) {
-    if (!validTier(tier)) throw new Error(`${name} must be a tier from 1 through 3`);
-  }
-  return Math.max(configuredMinimum, riskTier, earlierPreflightTier);
-}
-
 export function classifyTask(input) {
   const reasons = new Set();
   let tier = 1;

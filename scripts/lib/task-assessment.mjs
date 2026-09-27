@@ -3,8 +3,8 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import YAML from 'yaml';
-import {classifyTask,selectEffectiveTier} from './task-tier.mjs';
-import {parseWorkspaceConfig,resolveWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from './workspace-config.mjs';
+import {classifyTask} from './task-tier.mjs';
+import {parseWorkspaceConfig,resolveWorkspaceConfig,workspaceConfigDigest} from './workspace-config.mjs';
 import {readWorkspaceHistory,assertAcceptedWorkspaceConfig} from './workspace-history.mjs';
 import {resolveTier3Policy} from './tier3-policy.mjs';
 
@@ -105,14 +105,6 @@ function acceptedConfig(root,label) {
   if(!history.length) reject(`${label} has no accepted workspace config history`);
   const accepted=assertAcceptedWorkspaceConfig(root,config);
   return {config,accepted};
-}
-
-function tierPolicy(config) {
-  if (!Object.hasOwn(config,'task_tier')) return {configuredMinimum:1,definition:null};
-  return {
-    configuredMinimum:Number(config.task_tier.slice(-1)),
-    definition:workspaceTierDefinition(config),
-  };
 }
 
 function git(root,args) {
@@ -262,16 +254,10 @@ export function buildTaskAssessment({id,answers,coordinationRoot,worktreeRoot,en
   const startingHead=git(worktree,['rev-parse','HEAD']);
   if(!/^[a-f0-9]{40}$/i.test(startingHead)) reject('Unable to determine a full starting HEAD commit');
   const classification=classifyTask({...normalizedAnswers,stage:'preflight'});
-  const effectiveTierPolicy=tierPolicy(resolved.config);
-  const selectedTier=selectEffectiveTier({
-    configuredMinimum:effectiveTierPolicy.configuredMinimum,
-    riskTier:classification.tier,
-    earlierPreflightTier:1,
-  });
-  const tier3Binding=selectedTier===3 && enforceTier3Binding
+  const tier3Binding=classification.tier===3 && enforceTier3Binding
     ? buildTier3Binding({answers:normalizedAnswers,coordination,worktree,rootPolicy,worktreePolicy,resolved})
     : null;
-  if(enforceTier3Binding && selectedTier!==3 && Object.hasOwn(normalizedAnswers,'tier3Binding')) {
+  if(enforceTier3Binding && classification.tier!==3 && Object.hasOwn(normalizedAnswers,'tier3Binding')) {
     reject('tier3Binding is allowed only when Tier 3 is selected');
   }
   const record={
@@ -283,8 +269,7 @@ export function buildTaskAssessment({id,answers,coordinationRoot,worktreeRoot,en
     },
     developer:normalizedAnswers.developer,scope:normalizedAnswers.scope,risks:normalizedAnswers.risks,
     userFacingUI:normalizedAnswers.userFacingUI,intendedFiles:normalizedAnswers.intendedFiles,
-    claimedTier:normalizedAnswers.claimedTier,selectedTier,reasons:classification.reasons,
-    tierPolicy:effectiveTierPolicy,
+    claimedTier:normalizedAnswers.claimedTier,selectedTier:classification.tier,reasons:classification.reasons,
     accessibilityEvidence:normalizedAnswers.accessibilityEvidence,reviewEvidence:null,roleEvidence:null,
     ...(tier3Binding===null ? {} : {tier3Binding}),
   };

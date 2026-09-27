@@ -12,7 +12,6 @@ node scripts/check-project.mjs
 if [ -n "$(git status --porcelain --untracked-files=normal)" ]; then echo 'Commit the approved project plan and scaffold before creating an epic' >&2; exit 1; fi
 if [ "$(git rev-parse --git-dir)" != "$(git rev-parse --git-common-dir)" ]; then echo 'Run from the coordination checkout, not another epic worktree' >&2; exit 1; fi
 git check-ignore -q .worktrees/probe || { echo '.worktrees must be ignored' >&2; exit 1; }
-node scripts/admit-epic.mjs "$id" --root .
 git worktree add ".worktrees/$id" -b "epic/$id"
 (
  cd ".worktrees/$id"
@@ -24,4 +23,3 @@ git worktree add ".worktrees/$id" -b "epic/$id"
  sed 's/TASK-XXX/TASK-001/g' epics/EPIC-XXX/tasks/TASK-XXX.md.template > "epics/$id/tasks/TASK-001.md"
 )
 printf '%s\n' "Worktree .worktrees/$id ready for epic triage. Run scripts/install-skills.sh there before agent work. Implementation remains gated."
-printf '%s\n' "After the trusted harness assigns authority, admit this epic through: node scripts/workflow-event.mjs epic.start --root .worktrees/$id"

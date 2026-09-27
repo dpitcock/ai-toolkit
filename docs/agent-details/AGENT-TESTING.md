@@ -59,35 +59,6 @@ The tests create temporary files and repositories and clean them up afterward. T
 
 These tests verify the governance infrastructure. Projects built from this template must also add their own application tests and the coverage requested by their QA Lead.
 
-### Event, packaging and release evidence
-
-`tests/scaffold.test.mjs` copies shared `policy/` assets and the complete
-`scripts/` helper tree into generated adopters, while excluding instance config,
-acceptance history, transactions and assessments. It initializes and accepts
-the fixture's own policy and executes the packaged exported `runWorkflowEvent`
-through a fixture controller under the generated accepted policy, checking both
-authorized dispatch and persisted delivery. This fixture success is not actual
-session activation. The standalone CLI must reject even a supplied
-actor environment variable. Documentation assertions only supplement these
-real entrypoint and worktree tests.
-
-Run `node --test tests/workflow-event.test.mjs tests/host-review-events.test.mjs`
-for positive dispatch, rejected authority, canonical stage, synchronous observer,
-host event and completion regressions. Fixture actors and host API doubles are
-test data; passing them does not establish a real session or remote host fact.
-No test result replaces an independent review or accepted policy transaction.
-
-QA-GOV-009 covers entrypoint/scaffold integration. QA-GOV-010 is separate release
-acceptance: record the actual harness session, owner authorization references,
-integrated code revision and effective accepted policy digest; observe multiple
-authorized commits/pushes without routine confirmations, zero review dispatches
-before readiness, and one eligible role/head dispatch after readiness, with fixes
-on the same PR. Obtain live host receipts for merge and integration checks/smoke,
-then persist actual activation, resolved findings, current docs and safe cleanup.
-Verify restart-safe next-epic denial until admission succeeds. Legacy bootstrap
-policy/history remains unchanged during implementation; generated-adopter
-migration tests do not prove own-repository migration or release completion.
-
 ## Check a gate directly
 
 For an existing epic, substitute its actual ID:

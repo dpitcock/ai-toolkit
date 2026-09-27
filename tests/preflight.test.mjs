@@ -5,18 +5,14 @@ import os from 'node:os';
 import path from 'node:path';
 import {execFileSync,spawnSync} from 'node:child_process';
 import YAML from 'yaml';
-import {workspaceConfigDigest,workspaceTierDefinition} from '../scripts/lib/workspace-config.mjs';
+import {workspaceConfigDigest} from '../scripts/lib/workspace-config.mjs';
 
 const cli=path.resolve(import.meta.dirname,'../scripts/preflight.mjs');
 const answers={developer:'implementer-session',scope:'single-file',risks:{auth:false,secrets:false,schema:false,publicApi:false,financial:false,userData:false,criticalInfrastructure:false,hardToRevert:false},userFacingUI:false,claimedTier:1,intendedFiles:['src/notify.js'],accessibilityEvidence:null};
 function git(root,...args) { return execFileSync('git',['-C',root,...args],{encoding:'utf8'}).trim(); }
 function history(config) {
   const digest=workspaceConfigDigest(config);
-  const definition=workspaceTierDefinition(config);
-  return [
-    {kind:'proposal',revision:1,date:'2026-09-25',digest,config,reasons:{},...(definition?{definition}:{})},
-    {kind:'acceptance',revision:1,date:'2026-09-25',digest,by:'Dennis',reason:'Accepted fixture policy',changes:[],...(definition?{definition}:{})},
-  ].map(value=>JSON.stringify(value)).join('\n')+'\n';
+  return [{kind:'proposal',revision:1,date:'2026-09-25',digest,config,reasons:{}},{kind:'acceptance',revision:1,date:'2026-09-25',digest,by:'Dennis',reason:'Accepted fixture policy',changes:[]}].map(value=>JSON.stringify(value)).join('\n')+'\n';
 }
 function fixture(t,{branch='preflight-worktree'}={}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'preflight-root-'));
@@ -70,27 +66,6 @@ test('preflight consumes only stdin attestations and prints selected route plus 
   assert.equal(record.roleEvidence,null);
 });
 
-test('preflight preserves a stricter accepted workspace minimum and records its shared definition provenance',t=>{
-  const {root,worktree}=fixture(t);
-  const config={workspace:{repository:'preflight-fixture',environment:'test',provider:'codex',slack_channel_name:'ws-preflight-fixture-codex',timezone:'UTC'},approvals_required:{principal:true,qa:true,appsec:true,accessibility_reviewer:false,ui_designer:false},approvals_overrides:{reason:'No UI in fixture',exempt:['accessibility_reviewer','ui_designer']},daily_summary:{local_time:'09:00'},task_tier:'tier_2',tier_overrides:{direct_merge:false}};
-  const write=(base,value)=>{
-    fs.writeFileSync(path.join(base,'config/workspace-config.yaml'),YAML.stringify(value));
-    fs.writeFileSync(path.join(base,'project/workspace-config-history.jsonl'),history(value));
-  };
-  write(root,config);write(worktree,{...config,workspace:{...config.workspace,provider:'vscode'},worktree_overrides:['workspace.provider']});
-  git(root,'add','config','project');git(root,'commit','-qm','accepted strict root policy');
-  git(worktree,'add','config','project');git(worktree,'commit','-qm','accepted strict linked policy');
-
-  const result=run({root,worktree,id:'strict-workspace-minimum'});
-  assert.equal(result.status,0,result.stderr);
-  assert.match(result.stdout,/Selected tier:\s+2/);
-  const record=YAML.parse(fs.readFileSync(path.join(worktree,'project/task-assessments/strict-workspace-minimum.yaml'),'utf8'));
-  assert.equal(record.selectedTier,2);
-  assert.equal(record.tierPolicy.configuredMinimum,2);
-  assert.equal(record.tierPolicy.definition.version,1);
-  assert.match(record.tierPolicy.definition.digest,/^[a-f0-9]{64}$/);
-});
-
 test('preflight refuses derived fields, malformed input, unsafe IDs, and unaccepted histories without writing',t=>{
   const {root,worktree}=fixture(t);
   for(const [id,input] of [
@@ -109,19 +84,6 @@ test('preflight refuses derived fields, malformed input, unsafe IDs, and unaccep
   assert.notEqual(pending.status,0);
   assert.match(pending.stderr,/accepted|history|pending/i);
   assert.equal(fs.existsSync(path.join(worktree,'project/task-assessments/pending.yaml')),false);
-});
-
-test('preflight CLI accepts a clean canonical markerless mirror with root sources',t=>{
-  const {root,worktree}=fixture(t);
-  for(const relative of ['config/workspace-config.yaml','project/workspace-config-history.jsonl']) {
-    fs.copyFileSync(path.join(root,relative),path.join(worktree,relative));
-  }
-  git(worktree,'add','config','project');git(worktree,'commit','-qm','canonical accepted mirror');
-  const result=run({root,worktree,id:'canonical-mirror'});
-  assert.equal(result.status,0,result.stderr);
-  assert.match(result.stdout,/Effective provider:\s+codex.*root/i);
-  const record=YAML.parse(fs.readFileSync(path.join(worktree,'project/task-assessments/canonical-mirror.yaml'),'utf8'));
-  assert.deepEqual(record.acceptedConfig.worktree,record.acceptedConfig.coordination);
 });
 
 test('preflight refuses dirty worktrees and symlinked evidence directories before writing',t=>{

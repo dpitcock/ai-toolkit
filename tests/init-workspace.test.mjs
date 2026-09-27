@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {execFileSync,spawn} from 'node:child_process';
 import YAML from 'yaml';
-import {parseWorkspaceConfig,workspaceConfigDigest,workspaceTierDefinition} from '../scripts/lib/workspace-config.mjs';
+import {parseWorkspaceConfig,workspaceConfigDigest} from '../scripts/lib/workspace-config.mjs';
 import {readWorkspaceHistory,assertAcceptedWorkspaceConfig} from '../scripts/lib/workspace-history.mjs';
 
 const source=path.resolve(import.meta.dirname,'..');
@@ -32,18 +32,6 @@ function fixture(t,name='headless-tool',dependencies={}) {
 function run(root,...args) {
   return execFileSync(process.execPath,[cli,...args,'--root',root],{encoding:'utf8',stdio:['ignore','pipe','pipe']});
 }
-
-test('policy adoption preserves the exact validated reviewed candidate bytes transactionally',t=>{
- const root=fixture(t),proposal=JSON.parse(run(root,'propose'));
- run(root,'accept','--by','Dennis','--reason','Reviewed fixture proposal','--digest',proposal.digest);
- const file=path.join(root,'config/workspace-config.yaml'),candidate=path.join(root,'candidate.yaml');
- const raw='# Exact reviewed candidate formatting\n'+fs.readFileSync(file,'utf8').replace('environment: local','environment: staging');
- fs.writeFileSync(candidate,raw);
- const change=JSON.parse(run(root,'propose-change','--candidate',candidate));
- run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','Preserve inspected bytes','--digest',change.digest,'--base-digest',change.base_digest);
- assert.equal(fs.readFileSync(file,'utf8'),raw);
- assert.doesNotThrow(()=>assertAcceptedWorkspaceConfig(root,parseWorkspaceConfig(raw)));
-});
 
 function runWithEnv(root,env,...args) {
   return execFileSync(process.execPath,[cli,...args,'--root',root],{
@@ -89,89 +77,19 @@ test('headless proposal explains roles and stays pending on repeat',t=>{
   assert.equal(proposal.status,'pending');
   assert.equal(proposal.digest,workspaceConfigDigest(config));
   assert.deepEqual(Object.keys(proposal.reasons).sort(),[
-    'accessibility_reviewer','appsec','principal','qa','task_tier','ui_designer','workflow',
+    'accessibility_reviewer','appsec','principal','qa','task_tiers','ui_designer',
   ]);
   assert.equal(config.workspace.repository,'headless-tool');
   assert.equal(config.workspace.provider,'codex');
   assert.equal(config.workspace.slack_channel_name,'ws-headless-tool-codex');
-  assert.equal(config.task_tier,'tier_1');
-  assert.deepEqual(config.tier_overrides,{direct_merge:false});
-  assert.deepEqual(config.workflow,{autopilot:true});
-  assert.match(proposal.reasons.task_tier,/off|disabled|direct.merge/i);
-  assert.match(proposal.reasons.workflow,/autopilot|owner/i);
+  assert.deepEqual(config.task_tiers,{tier_1_direct_merge:false});
+  assert.match(proposal.reasons.task_tiers,/off|disabled|direct.merge/i);
   assert.deepEqual(config.approvals_overrides.exempt,['accessibility_reviewer','ui_designer']);
   assert.throws(()=>assertAcceptedWorkspaceConfig(root,config));
   assert.throws(()=>run(root,'status'));
   assert.equal(JSON.parse(run(root,'propose')).status,'pending');
   assert.equal(fs.readFileSync(file,'utf8'),first);
   assert.equal(readWorkspaceHistory(root).length,1);
-});
-
-test('legacy omission remains a checkpoint until an accepted autopilot policy change',t=>{
-  const root=fixture(t);
-  const configFile=path.join(root,'config/workspace-config.yaml');
-  const oldPolicy={workspace:{repository:'headless-tool',environment:'local',provider:'codex',slack_channel_name:'ws-headless-tool-codex',timezone:'UTC'},approvals_required:{principal:true,qa:true,appsec:true,accessibility_reviewer:false,ui_designer:false},approvals_overrides:{reason:'No UI',exempt:['accessibility_reviewer','ui_designer']},daily_summary:{local_time:'09:00'}};
-  fs.writeFileSync(configFile,YAML.stringify(oldPolicy));
-  const initial=JSON.parse(run(root,'propose'));
-  assert.equal(Object.hasOwn(initial.reasons,'workflow'),false);
-  run(root,'accept','--by','Dennis','--reason','Accept legacy checkpoint policy','--digest',initial.digest);
-  const accepted=parseWorkspaceConfig(fs.readFileSync(configFile,'utf8'));
-  assert.equal(Object.hasOwn(accepted,'workflow'),false);
-
-  const candidate=structuredClone(accepted);
-  candidate.workflow={autopilot:false};
-  const candidateFile=path.join(root,'autopilot-policy.yaml');
-  fs.writeFileSync(candidateFile,YAML.stringify(candidate));
-  const proposed=JSON.parse(run(root,'propose-change','--candidate',candidateFile));
-  assert.ok(proposed.changes.includes('workflow'));
-  const applied=JSON.parse(run(root,'apply-change','--candidate',candidateFile,'--by','Dennis','--reason','Owner reviewed disabled autopilot','--digest',proposed.digest,'--base-digest',proposed.base_digest));
-  assert.equal(applied.status,'accepted');
-  assert.equal(parseWorkspaceConfig(fs.readFileSync(configFile,'utf8')).workflow.autopilot,false);
-});
-
-test('policy candidates cannot self-declare delegated owner acceptance',t=>{
-  const root=fixture(t);
-  const proposal=JSON.parse(run(root,'propose'));
-  run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
-  const candidate=YAML.parse(fs.readFileSync(path.join(root,'config/workspace-config.yaml'),'utf8'));
-  candidate.workflow.delegated_decision={by:'agent',decision:'accepted'};
-  const candidateFile=path.join(root,'delegated-owner-decision.yaml');
-  fs.writeFileSync(candidateFile,YAML.stringify(candidate));
-  assert.throws(()=>run(root,'propose-change','--candidate',candidateFile),/delegated_decision.*allowed/i);
-});
-
-test('accepted migration replaces legacy tier policy and binds shared definition provenance',t=>{
-  const root=fixture(t);
-  const legacy={workspace:{repository:'headless-tool',environment:'local',provider:'codex',slack_channel_name:'ws-headless-tool-codex',timezone:'UTC'},approvals_required:{principal:true,qa:true,appsec:true,accessibility_reviewer:false,ui_designer:false},approvals_overrides:{reason:'No UI',exempt:['accessibility_reviewer','ui_designer']},daily_summary:{local_time:'09:00'},task_tiers:{tier_1_direct_merge:false}};
-  const configFile=path.join(root,'config/workspace-config.yaml');
-  fs.writeFileSync(configFile,YAML.stringify(legacy));
-  const initial=JSON.parse(run(root,'propose'));
-  run(root,'accept','--by','Dennis','--reason','Accept legacy policy','--digest',initial.digest);
-  const candidate=structuredClone(legacy);
-  delete candidate.task_tiers;
-  candidate.task_tier='tier_1';
-  candidate.tier_overrides={direct_merge:false};
-  const candidateFile=path.join(root,'tier-migration.yaml');
-  fs.writeFileSync(candidateFile,YAML.stringify(candidate));
-  const proposed=JSON.parse(run(root,'propose-change','--candidate',candidateFile));
-  assert.ok(proposed.changes.includes('task_tier'));
-  assert.ok(proposed.changes.includes('tier_overrides'));
-  assert.ok(proposed.changes.includes('task_tiers'));
-  assert.throws(()=>run(root,'apply-change','--candidate',candidateFile,'--by','Dennis','--reason','Migrate tiers','--digest',proposed.digest,'--base-digest','0'.repeat(64)),/reviewed base/);
-  const applied=JSON.parse(run(root,'apply-change','--candidate',candidateFile,'--by','Dennis','--reason','Migrate tiers','--digest',proposed.digest,'--base-digest',proposed.base_digest));
-  assert.equal(applied.status,'accepted');
-  const accepted=parseWorkspaceConfig(fs.readFileSync(configFile,'utf8'));
-  assert.equal(accepted.task_tier,'tier_1');
-  assert.equal(accepted.tier_overrides.direct_merge,false);
-  assert.equal(Object.hasOwn(accepted,'task_tiers'),false);
-  const record=readWorkspaceHistory(root).at(-1);
-  assert.equal(record.by,'Dennis');
-  assert.equal(record.definition.version,1);
-  assert.match(record.definition.digest,/^[a-f0-9]{64}$/);
-  assert.doesNotThrow(()=>assertAcceptedWorkspaceConfig(root,accepted));
-  record.definition.digest='0'.repeat(64);
-  fs.writeFileSync(path.join(root,'project/workspace-config-history.jsonl'),`${readWorkspaceHistory(root).slice(0,-1).map(item=>JSON.stringify(item)).join('\n')}\n${JSON.stringify(record)}\n`);
-  assert.throws(()=>assertAcceptedWorkspaceConfig(root,accepted),/definition.*invalid|stale/i);
 });
 
 test('frontend proposal requires UI reviews without an exemption',t=>{
@@ -215,7 +133,6 @@ test('offline bootstrap proposes policy without accepting it',t=>{
   const root=fixture(t,'bootstrap-tool');
   fs.mkdirSync(path.join(root,'scripts'));
   fs.cpSync(path.join(source,'scripts'),path.join(root,'scripts'),{recursive:true});
-  fs.cpSync(path.join(source,'policy'),path.join(root,'policy'),{recursive:true});
   fs.cpSync(path.join(source,'project/project-plan.md.template'),path.join(root,'project/project-plan.md.template'));
   fs.symlinkSync(path.join(source,'node_modules'),path.join(root,'node_modules'),'dir');
   execFileSync('bash',['scripts/init-project.sh','--offline'],{cwd:root,stdio:'pipe'});
@@ -228,7 +145,6 @@ test('normal bootstrap proposes policy after dependency setup',t=>{
   const root=fixture(t,'normal-bootstrap');
   fs.mkdirSync(path.join(root,'scripts'));
   fs.cpSync(path.join(source,'scripts'),path.join(root,'scripts'),{recursive:true});
-  fs.cpSync(path.join(source,'policy'),path.join(root,'policy'),{recursive:true});
   fs.cpSync(path.join(source,'project/project-plan.md.template'),path.join(root,'project/project-plan.md.template'));
   fs.symlinkSync(path.join(source,'node_modules'),path.join(root,'node_modules'),'dir');
   fs.writeFileSync(path.join(root,'scripts/install-skills.sh'),'#!/bin/sh\nexit 0\n');
@@ -372,21 +288,21 @@ test('Tier 1 direct merge stays off until a matching reviewed policy change is a
   const configFile=path.join(root,'config/workspace-config.yaml');
   run(root,'accept','--by','Dennis','--reason','Initial policy','--digest',proposal.digest);
   const accepted=parseWorkspaceConfig(fs.readFileSync(configFile,'utf8'));
-  assert.equal(accepted.tier_overrides.direct_merge,false);
+  assert.equal(accepted.task_tiers.tier_1_direct_merge,false);
 
   const candidate=path.join(root,'candidate.yaml');
   const changed=structuredClone(accepted);
-  changed.tier_overrides.direct_merge=true;
+  changed.task_tiers.tier_1_direct_merge=true;
   fs.writeFileSync(candidate,YAML.stringify(changed));
   const pending=JSON.parse(run(root,'propose-change','--candidate',candidate));
   assert.equal(pending.status,'pending-change');
-  assert.ok(pending.changes.includes('tier_overrides.direct_merge'));
-  assert.equal(parseWorkspaceConfig(fs.readFileSync(configFile,'utf8')).tier_overrides.direct_merge,false);
+  assert.ok(pending.changes.includes('task_tiers.tier_1_direct_merge'));
+  assert.equal(parseWorkspaceConfig(fs.readFileSync(configFile,'utf8')).task_tiers.tier_1_direct_merge,false);
 
   assert.throws(()=>run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','Enable after review','--digest','0'.repeat(64),'--base-digest',pending.base_digest));
   const applied=JSON.parse(run(root,'apply-change','--candidate',candidate,'--by','Dennis','--reason','Enable after review','--digest',pending.digest,'--base-digest',pending.base_digest));
   assert.equal(applied.status,'accepted');
-  assert.equal(parseWorkspaceConfig(fs.readFileSync(configFile,'utf8')).tier_overrides.direct_merge,true);
+  assert.equal(parseWorkspaceConfig(fs.readFileSync(configFile,'utf8')).task_tiers.tier_1_direct_merge,true);
   assert.doesNotThrow(()=>assertAcceptedWorkspaceConfig(root,parseWorkspaceConfig(fs.readFileSync(configFile,'utf8'))));
 });
 
@@ -524,8 +440,7 @@ test('status recovers an interrupted policy change to its accepted pair',t=>{
   const oldHistory=fs.readFileSync(historyFile,'utf8');
   const candidate=YAML.parse(oldConfig);candidate.approvals_required.qa=false;
   const newConfig=YAML.stringify(candidate);
-  const nextConfig=parseWorkspaceConfig(newConfig);
-  const record={kind:'change',digest:workspaceConfigDigest(nextConfig),revision:2,date:'2026-09-25',by:'Dennis',reason:'Interrupted change',changes:['approvals_required.qa'],definition:workspaceTierDefinition(nextConfig)};
+  const record={kind:'change',digest:workspaceConfigDigest(parseWorkspaceConfig(newConfig)),revision:2,date:'2026-09-25',by:'Dennis',reason:'Interrupted change',changes:['approvals_required.qa']};
   fs.writeFileSync(configFile,newConfig);
   fs.writeFileSync(path.join(root,'project/workspace-config-transaction.json'),JSON.stringify({
     phase:'config-replaced',oldConfig,oldHistory,oldHistoryLength:Buffer.byteLength(oldHistory),newConfig,
@@ -549,8 +464,7 @@ test('status resolves every durable transaction phase to its valid pair',t=>{
     const oldHistory=fs.readFileSync(historyFile,'utf8');
     const candidate=YAML.parse(oldConfig);candidate.approvals_required.qa=false;
     const newConfig=YAML.stringify(candidate);
-    const nextConfig=parseWorkspaceConfig(newConfig);
-    const record={kind:'change',digest:workspaceConfigDigest(nextConfig),revision:2,date:'2026-09-25',by:'Dennis',reason:'Interrupted change',changes:['approvals_required.qa'],definition:workspaceTierDefinition(nextConfig)};
+    const record={kind:'change',digest:workspaceConfigDigest(parseWorkspaceConfig(newConfig)),revision:2,date:'2026-09-25',by:'Dennis',reason:'Interrupted change',changes:['approvals_required.qa']};
     const newHistory=`${oldHistory}${JSON.stringify(record)}\n`;
     if(phase!=='prepared') fs.writeFileSync(configFile,newConfig);
     if(['history-appended','committed'].includes(phase)) fs.writeFileSync(historyFile,newHistory);
@@ -575,8 +489,7 @@ test('accept rereads history after recovering an uncommitted appended change',t=
   const oldHistory=fs.readFileSync(historyFile,'utf8');
   const candidate=YAML.parse(oldConfig);candidate.approvals_required.qa=false;
   const newConfig=YAML.stringify(candidate);
-  const nextConfig=parseWorkspaceConfig(newConfig);
-  const record={kind:'change',digest:workspaceConfigDigest(nextConfig),revision:2,date:'2026-09-25',by:'Dennis',reason:'Interrupted change',changes:['approvals_required.qa'],definition:workspaceTierDefinition(nextConfig)};
+  const record={kind:'change',digest:workspaceConfigDigest(parseWorkspaceConfig(newConfig)),revision:2,date:'2026-09-25',by:'Dennis',reason:'Interrupted change',changes:['approvals_required.qa']};
   fs.writeFileSync(configFile,newConfig);
   fs.writeFileSync(historyFile,`${oldHistory}${JSON.stringify(record)}\n`);
   fs.writeFileSync(path.join(root,'project/workspace-config-transaction.json'),JSON.stringify({
@@ -597,8 +510,7 @@ test('status rejects a transaction journal without its byte length and new diges
   const oldHistory=fs.readFileSync(historyFile,'utf8');
   const candidate=YAML.parse(oldConfig);candidate.approvals_required.qa=false;
   const newConfig=YAML.stringify(candidate);
-  const nextConfig=parseWorkspaceConfig(newConfig);
-  const record={kind:'change',digest:workspaceConfigDigest(nextConfig),revision:2,date:'2026-09-25',by:'Dennis',reason:'Interrupted change',changes:['approvals_required.qa'],definition:workspaceTierDefinition(nextConfig)};
+  const record={kind:'change',digest:workspaceConfigDigest(parseWorkspaceConfig(newConfig)),revision:2,date:'2026-09-25',by:'Dennis',reason:'Interrupted change',changes:['approvals_required.qa']};
   fs.writeFileSync(path.join(root,'project/workspace-config-transaction.json'),JSON.stringify({phase:'prepared',oldConfig,oldHistory,newConfig,record}));
   assert.throws(()=>run(root,'status'));
   assert.equal(fs.readFileSync(configFile,'utf8'),oldConfig);
