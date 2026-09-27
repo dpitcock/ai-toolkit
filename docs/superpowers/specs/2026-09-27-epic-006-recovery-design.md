@@ -26,6 +26,23 @@ the canonical epic/plan revisions, the four historical finding IDs, and the
 replacement scope. It is evidence only: it grants no review, merge, completion,
 or successor authority.
 
+## Trusted validator staging
+
+The recovery PR cannot introduce the controller that authorizes itself. The
+host publisher executes trusted default-branch code and compares PR workflow
+files with that base. Delivery therefore has two ordered stages:
+
+1. A narrowly scoped validator is installed on the trusted default branch
+   through an independently reviewed host-maintenance change. It accepts no
+   recovery action; it only recognizes a correctly shaped recovery record and
+   validates a candidate PR against an immutable base SHA and path allowlist.
+2. Only after that validator is integrated may the recovery implementation PR
+   use the new `recovery-pr` path. Candidate workflow or controller changes
+   cannot alter the validator selected for its own review.
+
+If a trusted validator cannot be installed, recovery remains blocked. A local
+check, a candidate PR, or an administrative merge bypass is not a substitute.
+
 ## Controlled recovery transition
 
 Implement a distinct `recovery-pr` controller, not a fallback in ordinary
@@ -44,15 +61,17 @@ The ordinary implementation, finalization, and adoption routes remain strict.
 
 ## Review and delivery
 
-The recovery plan must have fresh independent Principal, QA, and AppSec review.
-The implementation must receive independent staff and AppSec review on its
-exact head. The host must expose a dedicated, authenticated recovery approval
-path; local state and a branch-protection bypass cannot stand in for it.
+The validator-installation change and recovery plan must each have fresh
+independent Principal, QA, and AppSec review. The recovery implementation must
+receive independent staff and AppSec review on its exact head. The host must
+expose a dedicated, authenticated recovery approval path; local state and a
+branch-protection bypass cannot stand in for it.
 
 ## Verification
 
 Tests must prove that malformed-root recovery is impossible through the normal
-transaction, valid recovery is limited to the listed paths, historical task and
-assessment evidence cannot become new approval, open EPIC-006 findings remain
-auditable without blocking the dedicated recovery gate, and successor admission
-requires a validated terminal supersession record plus fresh successor evidence.
+transaction; a candidate cannot select or modify its own trusted validator;
+valid recovery is limited to the listed paths; historical task and assessment
+evidence cannot become new approval; open EPIC-006 findings remain auditable
+without blocking the dedicated recovery gate; and successor admission requires
+a validated terminal supersession record plus fresh successor evidence.
