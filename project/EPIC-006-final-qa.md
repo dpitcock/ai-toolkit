@@ -5,6 +5,17 @@ Recorded by root controller `/root`, 2026-09-26. All 17 canonical tasks are
 policy/history and immutable assessment remain unchanged. This records test
 evidence, not independent Staff/AppSec approval or release activation.
 
+## Operator override — incomplete corrective verification
+
+At `2026-09-27T15:44:04Z`, the operator explicitly terminated the live
+`node --test tests/host-review-events.test.mjs` corrective-verification run
+after it exceeded the expected duration. Status: **NOT RUN /
+SKIPPED-BY-OVERRIDE**. It must not be described as passed or used as completed
+QA evidence. This is a one-time production-release override only; it does not
+change `approvals_required`, alter the test suite, or establish a future QA
+exception. Reviewers must consider this missing verification before approving
+the release continuation.
+
 ## Current personal-use priority
 
 The owner revised the immediate target to personal use on this Mac. See
