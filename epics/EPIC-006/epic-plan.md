@@ -169,3 +169,9 @@ renewed final review. Live merge checks use exact host head and actor receipts.
 Only after merge, integrated verification, actual-session activation and owned
 cleanup may completion release EPIC-007. This release phase is outside task
 completion, preventing a merge/task dependency cycle.
+
+The owner's immediate priority is now the personal-use checkpoint in
+`project/EPIC-006-personal-use-checkpoint.md`: focused serial verification on
+the existing Mac installation, with broader release work deferred. This
+checkpoint preserves the canonical acceptance requirements above and does
+not establish full QA, PR readiness, activation, or epic completion.

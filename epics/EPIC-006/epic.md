@@ -92,6 +92,11 @@ Use focused RED/GREEN checks per canonical task, preserve all existing assertion
 then run the full suite. Actual runtime/host activation is release evidence,
 not a task that must claim merge complete before the final-review gate.
 
+Immediate personal-use verification follows
+`project/EPIC-006-personal-use-checkpoint.md`. Its focused local milestone and
+explicit release deferrals do not replace this canonical QA bar or establish
+activation, completion, or next-epic admission.
+
 ## Dependencies and ownership
 
 Developer: Codex. Delivered EPIC-001 through EPIC-005 are historical foundations.
