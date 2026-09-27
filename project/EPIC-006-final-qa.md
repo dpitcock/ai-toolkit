@@ -5,6 +5,67 @@ Recorded by root controller `/root`, 2026-09-26. All 17 canonical tasks are
 policy/history and immutable assessment remain unchanged. This records test
 evidence, not independent Staff/AppSec approval or release activation.
 
+## Current correction verification
+
+The 265-test result below describes the original implementation snapshot. It
+does not establish full QA for the subsequent final-review corrections. The
+canonical plan remains in progress; final Staff and AppSec reviews are pending.
+The independently approved continuation design now defines the bounded
+PR0/M/F/PR1/I/PR2/J route. Its remaining implementation and actual release
+observations must pass before completion or next-epic admission.
+
+Root independently verified prerequisite repair
+`205db48a025ef90ade691ae7a04f1f2003e22fd6` in a detached clone:
+`node --test --test-name-pattern='release commit authorization rejects hidden index'
+tests/epic-policy-adoption.test.mjs` passed 1/1, with zero failed, skipped,
+cancelled or todo (87837.589417 ms). The regression covers hidden staged source,
+whitespace-prefixed unauthorized paths, mismatched staged evidence and a branch
+change during observation. Log: `/tmp/epic006-effect-fix-independent.log`.
+
+Root independently ran `node --test tests/release-review-integrity.test.mjs`
+against the readiness worker's frozen source. Both tests passed, with zero
+failed, skipped, cancelled or todo (3371.889458 ms). This verifies missing-claim
+and assignment rejection plus numeric delivery-ID ordering, not the complete
+release lifecycle. Log: `/tmp/epic006-readiness-integrity-independent-sh.log`.
+The tested file SHA-256 was
+`69f5588232cff4e3450f19e5233b6c29c4d2499ef640c64efdb1d14e0fb43bdf`.
+The frozen readiness implementation was subsequently committed as
+`70d21cbaedce52889e2d1cf8659670fd92fb5ef5`. Root's separate two-case runtime
+verification is running against a detached clone of that exact commit; it is
+not counted as passing until its completed result is recorded.
+
+### Failed runs retained for diagnosis
+
+The independent eight-file run on
+`10e09fb8ccd32df52817b97d4387c7d1d37e81a0` passed 90/95 tests and failed five
+real-CLI positive cases (1449020.758458 ms). It is not a passing QA run.
+Log: `/tmp/epic006-release-proof-independent.log`. A diagnostic rerun of those
+five cases passed 0/5 (all five failed; 1375765.473875 ms), with unchanged
+assertions and production timeout. Log: `/tmp/epic006-observation-diagnostic-rerun.log`.
+Each failed CLI recorded a local controlled `gh` subprocess timing out after
+approximately 30000 ms, with `ETIMEDOUT`, `SIGTERM` and empty stderr. An
+outside-sandbox rerun of the real CI release route also passed 0/1; sandbox
+causality is therefore not established.
+
+Independent read-only debugging by `/root/diagnose_host_mock_timeout`
+reproduced a generated shell mock blocked before its code ran: direct execution
+stalled for 118.09 seconds, while `/bin/sh` executing the same script returned
+in 0.00 seconds. A sample showed `_dyld_start+0` and a 96 KiB footprint.
+One-line Node startup also took 56.58 seconds. Executable launch blocking is
+observed; attribution to macOS executable-policy validation remains an inference.
+No operating-system security control or production timeout was changed.
+
+The test transport correction and full affected rerun remain required. Negative
+tests that merely returned status 1 during the failed run cannot establish their
+intended rejection behavior when an unrelated API timeout could explain it.
+Fixtures and diagnostic observations never count as live activation evidence.
+
+Root's dependency audit reported zero vulnerabilities with
+`npm audit --omit=dev --ignore-scripts --cache .npm-cache` on Node v24.11.0,
+npm 11.6.1, package-lock blob
+`24902f510e4e61fb9c1c4c9ffa47292da7eff5b0`. Verify that lock identity again at
+the final QA snapshot. Hosted Node 22 verification remains a separate obligation.
+
 ## Verified implementation
 
 TASK-013 implementation: `976511818e8ff65e7c71839adc361e419cd9720d`.
