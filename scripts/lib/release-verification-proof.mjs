@@ -72,7 +72,9 @@ export function materializeReleaseHistory({root,baseSha,headSha,api=githubJSON,i
   if(integrated?.number!==integration.pr || integrated.state!=='closed' || integrated.merged!==true || integrated.merge_commit_sha!==integration.sha
    || integrated.head?.sha!==headSha || integrated.head?.ref!==BRANCH || integrated.base?.sha!==baseSha || integrated.base?.ref!=='main' || integrated.base?.repo?.full_name!==REPOSITORY) fail('materialization J identity differs from the host');
  }
- for(const revision of [original?.head?.sha,original?.merge_commit_sha,adoption?.head?.sha,adoption?.base?.sha,headSha,integrated?.merge_commit_sha]) {
+ const revisions=[original?.head?.sha,original?.merge_commit_sha,adoption?.head?.sha,adoption?.base?.sha,headSha];
+ if(integration) revisions.push(integrated.merge_commit_sha);
+ for(const revision of revisions) {
   if(!/^[a-f0-9]{40}$/.test(revision??'')) fail('materialization requires immutable revisions');
   const git=args=>execFileSync('git',['--no-replace-objects','-C',root,...args],{encoding:'utf8',stdio:'pipe'}).trim();
   try {git(['cat-file','-e',`${revision}^{commit}`]);} catch {git(['fetch','--no-tags','--no-recurse-submodules','--no-write-fetch-head',remote,revision]);}

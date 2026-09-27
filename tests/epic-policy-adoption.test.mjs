@@ -251,7 +251,10 @@ test('integration materializes the API-bound J object before proving it',t=>{
  git(process.cwd(),'clone','--quiet','--no-local',f.root,local);git(local,'remote','set-url','origin','https://github.com/dpitcock/ai-toolkit.git');git(local,'checkout','--quiet',f.h2);
  f.j=git(f.root,'commit-tree',`${f.h2}^{tree}`,'-p',f.i,'-m','remote-only release integration');
  f.pulls[13]={number:13,state:'closed',merged:true,merge_commit_sha:f.j,head:{sha:f.h2,ref:'epic/EPIC-006'},base:{sha:f.i,ref:'main',repo:{full_name:repository}}};f.main=f.j;
- git(process.cwd(),'init','--bare','--quiet',remote);git(f.root,'remote','add','materialized',remote);git(f.root,'push','--quiet','materialized',`${f.j}:refs/heads/main`);
+ git(process.cwd(),'init','--bare','--quiet',remote);git(f.root,'remote','add','materialized',remote);
+ // The squashed I omits submitted H1 from its ancestry; retain that PR object
+ // on the remote as well as J so every host-observed revision can be fetched.
+ git(f.root,'push','--quiet','materialized',`${f.j}:refs/heads/main`,`${f.h1}:refs/heads/adoption`);
  assert.throws(()=>git(local,'cat-file','-e',`${f.j}^{commit}`));
  release.materializeReleaseHistory({root:local,baseSha:f.i,headSha:f.h2,integration:{pr:13,sha:f.j},api:f.api,remote});
  assert.equal(git(local,'rev-parse',`${f.j}^{commit}`),f.j);
