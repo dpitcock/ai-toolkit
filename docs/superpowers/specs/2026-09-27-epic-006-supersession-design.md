@@ -65,10 +65,12 @@ EPIC-006 candidate while the supersession is pending.
 
 The implementation updates the canonical document schema and transition graph,
 the PR/admission logic, the EPIC-006-specific policy/release controllers, and
-the project plan. It adds tests for valid supersession, forged or stale records,
-terminal-state rejection, and an independent successor migration. It does not
-rewrite or delete `epics/EPIC-006/**`, current workspace-policy history, GitHub
-PRs, reviews, branches, or worktrees.
+the project plan. Admission recognizes only a valid, terminal supersession
+record as the predecessor exception; it continues to reject a missing, stale,
+forged, or active predecessor. It adds tests for valid supersession, forged or
+stale records, terminal-state rejection, and an independent successor
+migration. It does not rewrite or delete `epics/EPIC-006/**`, current
+workspace-policy history, GitHub PRs, reviews, branches, or worktrees.
 
 ## Security and audit requirements
 
@@ -82,10 +84,11 @@ successor approval.
 ## Verification
 
 Tests must prove that a valid supersession blocks all EPIC-006 delivery actions
-and preserves existing files byte-for-byte. Tests must also prove that a
-successor requires its own accepted policy, assessment, plan, and reviewer
-evidence. The full applicable governance test suite, independent code review,
-and AppSec review run on the final implementation revision before any PR.
+and preserves existing files byte-for-byte. Tests must also prove that only the
+validated supersession permits successor admission, and that the successor
+requires its own accepted policy, assessment, plan, and reviewer evidence. The
+full applicable governance test suite, independent code review, and AppSec
+review run on the final implementation revision before any PR.
 
 ## Non-goals
 
