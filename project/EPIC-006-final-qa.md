@@ -30,9 +30,13 @@ release lifecycle. Log: `/tmp/epic006-readiness-integrity-independent-sh.log`.
 The tested file SHA-256 was
 `69f5588232cff4e3450f19e5233b6c29c4d2499ef640c64efdb1d14e0fb43bdf`.
 The frozen readiness implementation was subsequently committed as
-`70d21cbaedce52889e2d1cf8659670fd92fb5ef5`. Root's separate two-case runtime
-verification is running against a detached clone of that exact commit; it is
-not counted as passing until its completed result is recorded.
+`70d21cbaedce52889e2d1cf8659670fd92fb5ef5`. Root then independently ran
+`node --test --test-name-pattern='finite release readiness|same open PR2 correction'
+tests/epic-policy-adoption.test.mjs` in a detached clone of that exact commit.
+Both runtime tests passed, with zero failed, skipped, cancelled or todo
+(498146.36225 ms). They exercise local readiness, independent ordered reviews,
+separate hosted publication, and renewed reviews after the same-PR evidence
+correction. Log: `/tmp/epic006-readiness-runtime-independent.log`.
 
 ### Failed runs retained for diagnosis
 
